@@ -429,19 +429,30 @@ async def test_email_verification_default_off_isolation(
     """
     sent_emails_sink.clear()
 
-    # 1. Проверяем эндпоинты в default-off
-    req_res = await pg_client.post(
-        "/api/v1/mfa/email/request",
-        json={"email": "test@alxprgs.tech"},
-    )
-    assert req_res.status_code == 404
-    assert req_res.json()["error"] == "feature_disabled"
+    def _get_disabled_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = False
+        overridden.REQUIRE_VERIFIED_EMAIL = False
+        return overridden
 
-    confirm_res = await pg_client.post(
-        "/api/v1/mfa/email/confirm",
-        json={"token": "x" * 32},
-    )
-    assert confirm_res.status_code == 404
-    assert confirm_res.json()["error"] == "feature_disabled"
+    app.dependency_overrides[get_settings] = _get_disabled_settings
+    try:
+        # 1. Проверяем эндпоинты в default-off
+        req_res = await pg_client.post(
+            "/api/v1/mfa/email/request",
+            json={"email": "test@alxprgs.tech"},
+        )
+        assert req_res.status_code == 404
+        assert req_res.json()["error"] == "feature_disabled"
 
-    assert len(sent_emails_sink) == 0
+        confirm_res = await pg_client.post(
+            "/api/v1/mfa/email/confirm",
+            json={"token": "x" * 32},
+        )
+        assert confirm_res.status_code == 404
+        assert confirm_res.json()["error"] == "feature_disabled"
+
+        assert len(sent_emails_sink) == 0
+    finally:
+        app.dependency_overrides.pop(get_settings, None)

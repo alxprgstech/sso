@@ -213,9 +213,10 @@ async def passkey_register_options(
     rp_id = (
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
+        and settings.ENVIRONMENT != "production"
         else settings.WEBAUTHN_RP_ID
     )
-    return await WebAuthnService.get_registration_options(db, user, rp_id=rp_id)
+    return await WebAuthnService.get_registration_options(db, user, rp_id=rp_id, settings=settings)
 
 
 @passkey_router.post("/register/verify", dependencies=[Depends(verify_csrf)])
@@ -229,10 +230,18 @@ async def passkey_register_verify(
     rp_id = (
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
+        and settings.ENVIRONMENT != "production"
         else settings.WEBAUTHN_RP_ID
     )
+    origin = request.headers.get("origin")
     await WebAuthnService.verify_registration(
-        db, user, payload.credential, name=payload.name, rp_id=rp_id
+        db,
+        user,
+        payload.credential,
+        name=payload.name,
+        rp_id=rp_id,
+        origin=origin,
+        settings=settings,
     )
     return {"status": "ok", "message": "Passkey успешно зарегистрирован"}
 
@@ -246,9 +255,12 @@ async def passkey_auth_options(
     rp_id = (
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
+        and settings.ENVIRONMENT != "production"
         else settings.WEBAUTHN_RP_ID
     )
-    return await WebAuthnService.get_authentication_options(db, user=None, rp_id=rp_id)
+    return await WebAuthnService.get_authentication_options(
+        db, user=None, rp_id=rp_id, settings=settings
+    )
 
 
 @passkey_router.post("/auth/verify")
@@ -264,8 +276,10 @@ async def passkey_auth_verify(
     rp_id = (
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
+        and settings.ENVIRONMENT != "production"
         else settings.WEBAUTHN_RP_ID
     )
+    origin = request.headers.get("origin")
 
     if payload.mfa_token:
         user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
@@ -293,7 +307,9 @@ async def passkey_auth_verify(
         if not user or not user.is_active:
             raise AuthenticationException("Пользователь не найден или заблокирован")
 
-    await WebAuthnService.verify_authentication(db, user, payload.credential, rp_id=rp_id)
+    await WebAuthnService.verify_authentication(
+        db, user, payload.credential, rp_id=rp_id, origin=origin, settings=settings
+    )
 
     ip = request.client.host if request.client else None
     ua = request.headers.get("User-Agent")

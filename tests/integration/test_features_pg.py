@@ -22,65 +22,80 @@ async def test_default_off_profile_capabilities_and_404_pg(
     QA-08, SEC-FLAG-01, SEC-FLAG-02: В default-профиле все 4 флага выключены (false).
     Прямые вызовы эндпоинтов MFA возвращают 404 feature_disabled.
     """
-    # 1. Проверяем capabilities
-    cap_res = await pg_client.get("/api/v1/auth/capabilities")
-    assert cap_res.status_code == 200
-    caps = cap_res.json()
-    assert caps["totp_enabled"] is False
-    assert caps["passkey_enabled"] is False
-    assert caps["recovery_codes_enabled"] is False
-    assert caps["email_verification_enabled"] is False
 
-    # 2. Создаем пользователя и входим
-    code, _ = await execute_bootstrap(
-        session=pg_session,
-        username="mfa_disabled_user",
-        email="mfa_dis@alxprgs.tech",
-        password="PasswordDisabled2026!",
-        registration_mode="closed",
-    )
-    assert code == 0
+    def _get_default_off_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_TOTP_ENABLED = False
+        overridden.FEATURE_PASSKEY_ENABLED = False
+        overridden.FEATURE_RECOVERY_CODES_ENABLED = False
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = False
+        overridden.REQUIRE_VERIFIED_EMAIL = False
+        return overridden
 
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "mfa_disabled_user", "password": "PasswordDisabled2026!"},
-    )
-    assert login_res.status_code == 200
-    csrf_token = login_res.json()["csrf_token"]
+    app.dependency_overrides[get_settings] = _get_default_off_settings
+    try:
+        # 1. Проверяем capabilities
+        cap_res = await pg_client.get("/api/v1/auth/capabilities")
+        assert cap_res.status_code == 200
+        caps = cap_res.json()
+        assert caps["totp_enabled"] is False
+        assert caps["passkey_enabled"] is False
+        assert caps["recovery_codes_enabled"] is False
+        assert caps["email_verification_enabled"] is False
 
-    # 3. Прямые вызовы всех MFA эндпоинтов возвращают 404 Not Found (SEC-FLAG-02)
-    # 3.1 TOTP setup
-    totp_setup = await pg_client.post(
-        "/api/v1/mfa/totp/setup",
-        headers={"X-CSRF-Token": csrf_token},
-    )
-    assert totp_setup.status_code == 404
-    assert "отключен" in str(totp_setup.json())
+        # 2. Создаем пользователя и входим
+        code, _ = await execute_bootstrap(
+            session=pg_session,
+            username="mfa_disabled_user",
+            email="mfa_dis@alxprgs.tech",
+            password="PasswordDisabled2026!",
+            registration_mode="closed",
+        )
+        assert code == 0
 
-    # 3.2 Recovery codes generate
-    rec_gen = await pg_client.post(
-        "/api/v1/mfa/recovery-codes/generate",
-        headers={"X-CSRF-Token": csrf_token},
-    )
-    assert rec_gen.status_code == 404
-    assert "отключен" in str(rec_gen.json())
+        login_res = await pg_client.post(
+            "/api/v1/auth/login",
+            json={"username": "mfa_disabled_user", "password": "PasswordDisabled2026!"},
+        )
+        assert login_res.status_code == 200
+        csrf_token = login_res.json()["csrf_token"]
 
-    # 3.3 Passkey register options
-    passkey_opt = await pg_client.post(
-        "/api/v1/mfa/passkey/register/options",
-        headers={"X-CSRF-Token": csrf_token},
-    )
-    assert passkey_opt.status_code == 404
-    assert "отключен" in str(passkey_opt.json())
+        # 3. Прямые вызовы всех MFA эндпоинтов возвращают 404 Not Found (SEC-FLAG-02)
+        # 3.1 TOTP setup
+        totp_setup = await pg_client.post(
+            "/api/v1/mfa/totp/setup",
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert totp_setup.status_code == 404
+        assert "отключен" in str(totp_setup.json())
 
-    # 3.4 Email verification request
-    email_req = await pg_client.post(
-        "/api/v1/mfa/email/request",
-        headers={"X-CSRF-Token": csrf_token},
-        json={"email": "mfa_dis@alxprgs.tech"},
-    )
-    assert email_req.status_code == 404
-    assert "отключен" in str(email_req.json())
+        # 3.2 Recovery codes generate
+        rec_gen = await pg_client.post(
+            "/api/v1/mfa/recovery-codes/generate",
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert rec_gen.status_code == 404
+        assert "отключен" in str(rec_gen.json())
+
+        # 3.3 Passkey register options
+        passkey_opt = await pg_client.post(
+            "/api/v1/mfa/passkey/register/options",
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert passkey_opt.status_code == 404
+        assert "отключен" in str(passkey_opt.json())
+
+        # 3.4 Email verification request
+        email_req = await pg_client.post(
+            "/api/v1/mfa/email/request",
+            headers={"X-CSRF-Token": csrf_token},
+            json={"email": "mfa_dis@alxprgs.tech"},
+        )
+        assert email_req.status_code == 404
+        assert "отключен" in str(email_req.json())
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.mark.postgres

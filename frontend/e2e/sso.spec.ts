@@ -8,28 +8,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 test.describe("ALXPRGS SSO End-to-End Suite", () => {
+  test.use({ baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173" });
+
   test.beforeAll(() => {
-    try {
-      let pythonExe =
-        process.env.PYTHON_BIN ||
-        (process.platform === "win32"
-          ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
-          : path.resolve(__dirname, "../../.venv/bin/python"));
-      if (!fs.existsSync(pythonExe)) {
-        pythonExe = process.platform === "win32" ? "python" : "python3";
-      }
-      const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
-      execFileSync(pythonExe, [scriptPath], {
-        env: {
-          ...process.env,
-          TEST_DATABASE_URL:
-            process.env.TEST_DATABASE_URL ||
-            "postgresql+psycopg://sso_test_user:sso_test_password@localhost:5433/alxprgs_sso_test",
-        },
-      });
-    } catch (e) {
-      console.error("E2E setup error:", e);
+    const testDbUrl = process.env.TEST_DATABASE_URL;
+    if (!testDbUrl) {
+      throw new Error("TEST_DATABASE_URL environment variable is required for E2E tests");
     }
+    let pythonExe =
+      process.env.PYTHON_BIN ||
+      (process.platform === "win32"
+        ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
+        : path.resolve(__dirname, "../../.venv/bin/python"));
+    if (!fs.existsSync(pythonExe)) {
+      pythonExe = process.platform === "win32" ? "python" : "python3";
+    }
+    const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
+    execFileSync(pythonExe, [scriptPath], {
+      env: {
+        ...process.env,
+        TEST_DATABASE_URL: testDbUrl,
+      },
+      stdio: "inherit",
+    });
   });
   test("01. Default Profile: Capabilities & Security Invariants UI", async ({ page }) => {
     // 1. Открываем главную страницу входа
@@ -124,10 +125,16 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
       page.getByText("Учётная запись успешно зарегистрирована!")
     ).toBeVisible({ timeout: 10000 });
 
-    // Ожидаем автоматического перехода на форму входа или переходим явно
-    await page.waitForTimeout(2500);
-    if (await page.getByRole("heading", { name: "Регистрация в ALXPRGS SSO" }).isVisible()) {
-      await page.click('button:has-text("Войти")');
+    // Ожидаем возврата на форму входа (автоматически через 2 сек или по нажатию Войти)
+    const loginHeader = page.getByRole("heading", { name: "Единая система входа ALXPRGS" });
+    try {
+      await expect(loginHeader).toBeVisible({ timeout: 4000 });
+    } catch {
+      const loginButton = page.locator('button:has-text("Войти")');
+      if (await loginButton.isVisible()) {
+        await loginButton.click();
+      }
+      await expect(loginHeader).toBeVisible({ timeout: 5000 });
     }
 
     // Входим созданным пользователем

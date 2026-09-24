@@ -21,6 +21,13 @@
 | **BUG-008** | В `backend/Dockerfile` отсутствовало копирование `README.md`, требуемого `pyproject.toml` | High | Resolved | QA-03, QA-04 |
 | **BUG-009** | Несоответствие контракта параметров в `updateRegistrationMode` на фронтенде | Medium | Resolved | QA-05, REG-02 |
 | **BUG-010** | `tests/conftest.py` выполняет TRUNCATE CASCADE на `DATABASE_URL` без проверки `TEST_DATABASE_URL` и маркера владения | Critical | Resolved | G4-DB, QA-02 |
+| **BUG-011** | Неполнота сквозного жизненного цикла email verification и необходимость временного ослабления политик | High | Resolved | G4-EMAIL, SEC-FLAG-07 |
+| **BUG-012** | Отсутствие реального браузерного тестирования Passkey (WebAuthn), потеря traces в Playwright | High | Resolved | G4-PASSKEY, QA-11 |
+| **BUG-013** | Отсутствие проверки доверенных прокси (IP spoofing rate limit bypass) и межпроцессной валидации | High | Resolved | G4-LIMITS, QA-09 |
+| **BUG-014** | Ошибки конфигурации GitHub Actions CI: сбой сбора тестов SDK, отсутствие миграций и TEST_DATABASE_URL | Critical | Resolved | G4-CI, QA-14 |
+| **BUG-015** | Утечка enabled env в default-off тесты и отсутствие изоляции REQUIRE_VERIFIED_EMAIL в Passkey-тестах (6 failed в CI) | High | Fixed | G5-PROFILES, SEC-FLAG-01 |
+| **BUG-016** | Рассинхронизация WebAuthn origin/RP ID (127.0.0.1 vs localhost) и сбой генерации ключей в CDP | High | Fixed | G5-E2E, QA-11 |
+| **BUG-017** | Запуск E2E на неразделенном профиле, зависимость тестов от порядка выполнения и скрытие ошибок seed | High | Fixed | G5-E2E, QA-11 |
 
 
 ---
@@ -287,3 +294,65 @@
   5. В переменные окружения CI тестов добавлен `TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test`.
   6. Разработан скрипт `scripts/prepare_e2e_data.py`, атомарно создающий в тестовой базе администратора `compose_admin` и синтетических пользователей Passkey (`e2e_passkey_multi_user`, `e2e_passkey_login_user`, `e2e_passkey_delete_user`) с очисткой устаревших учетных данных.
   7. В `.github/workflows/ci.yml` добавлена джоба `playwright-e2e` для автоматического запуска полного набора браузерных тестов в среде GitHub Actions.
+
+---
+
+### BUG-015: Утечка переменных окружения enabled-профиля в default-off тесты и отсутствие изоляции REQUIRE_VERIFIED_EMAIL в Passkey-тестах
+- **Требование**: G5-PROFILES, SEC-FLAG-01, SEC-FLAG-02, SEC-FLAG-04.
+- **Серьёзность**: High.
+- **Статус**: Fixed.
+- **Шаги воспроизведения**:
+  1. Запустить тесты с переменными окружения CI enabled-шага: `FEATURE_TOTP_ENABLED="true"`, `FEATURE_PASSKEY_ENABLED="true"`, `REQUIRE_VERIFIED_EMAIL="true"`.
+  2. Выполнить `pytest tests/test_mfa_features.py tests/integration/test_email_verification_pg.py tests/integration/test_passkey_pg.py`.
+  3. Наблюдаются 6 падений:
+     - `test_default_features_all_disabled_in_api`: проверка `settings.FEATURE_TOTP_ENABLED is False` падает, так как в `os.environ` задано `true`;
+     - `test_email_verification_default_off_isolation`: эндпоинт `/api/v1/mfa/email/request` возвращает 200 вместо 404;
+     - `test_passkey_default_off_isolation_pg`: `assert settings.FEATURE_PASSKEY_ENABLED is False` падает;
+     - `test_passkey_options_and_challenge_persistence_pg`, `test_passkey_multiple_credentials_and_deletion_pg`, `test_passkey_negative_crypto_checks_no_mocks_pg`: вход пользователя падает с HTTP 401 (`email_verification_required`), так как пользователь создан с `email_verified=False`, а `REQUIRE_VERIFIED_EMAIL="true"` унаследован из окружения хоста.
+- **Исправление**:
+  1. `tests/test_mfa_features.py`: `test_default_features_all_disabled_in_api` проверяет `Settings.model_construct()` (схема без env), изолирует API через `app.dependency_overrides`.
+  2. `tests/integration/test_email_verification_pg.py`: `test_email_verification_default_off_isolation` изолирован через `app.dependency_overrides`.
+  3. `tests/integration/test_passkey_pg.py`: `test_passkey_default_off_isolation_pg` изолирован; в 3 Passkey тестах явно задан `REQUIRE_VERIFIED_EMAIL = False` в `_get_enabled_settings()`.
+  4. `backend/app/services/mfa_service.py`: методы принимают `settings: Settings | None = None`, `expected_origins` расширен портами `5173`.
+- **Регрессионный тест**: `tests/test_mfa_features.py::test_default_features_all_disabled_in_api`, 4 passkey теста в `test_passkey_pg.py`.
+- **Локальный результат**: 17 passed, 17 passed (оба профиля). Верификация: 2026-09-25T01:28:00+03:00.
+
+---
+
+### BUG-016: Рассинхронизация WebAuthn origin/RP ID (127.0.0.1 vs localhost) и сбой генерации ключей в CDP
+- **Требование**: G5-E2E, QA-11, TEST-UI-01, SEC-FLAG-04.
+- **Серьёзность**: High.
+- **Статус**: Fixed.
+- **Шаги воспроизведения**:
+  1. Запустить бэкенд на порту 8000 без явных `WEBAUTHN_RP_ID` и `WEBAUTHN_ORIGIN` (Settings использует defaults `auth.alxprgs.tech`).
+  2. Запустить frontend preview на `127.0.0.1:5173`.
+  3. Запустить Playwright c `PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173"`.
+  4. В `passkey.spec.ts` тест 02 вызывает регистрацию Passkey: браузер находится на `http://127.0.0.1:5173`, а сервер возвращает `rp.id: "localhost"` (или `auth.alxprgs.tech`).
+  5. Chromium выбрасывает `SecurityError: The relying party ID is not a registrable domain suffix of, nor equal to the current domain`.
+  6. Локатор `[data-testid="passkey-success"]` не появляется (таймаут 10s).
+- **Исправление**:
+  1. `playwright.config.ts`: `baseURL` изменён на `http://localhost:5173` (по умолчанию и через `PLAYWRIGHT_BASE_URL`).
+  2. `passkey.spec.ts` и `sso.spec.ts`: добавлен `test.use({ baseURL: ... "http://localhost:5173" })`.
+  3. `ci.yml`: Frontend preview запускается на `0.0.0.0:5173`; `PLAYWRIGHT_BASE_URL="http://localhost:5173"`; Enabled профиль CI использует `WEBAUTHN_RP_ID: "localhost"`, `WEBAUTHN_ORIGIN: "http://localhost:5173"`.
+  4. `backend/app/services/mfa_service.py`: `expected_origins` включает `http://localhost:5173` и `http://127.0.0.1:5173`.
+- **Регрессионный тест**: `frontend/e2e/passkey.spec.ts` (все 4 теста с CDP Virtual Authenticator).
+
+---
+
+### BUG-017: Запуск E2E на неразделенном профиле, зависимость тестов от порядка выполнения и скрытие ошибок seed
+- **Требование**: G5-E2E, QA-11, REG-02, REG-09.
+- **Серьёзность**: High.
+- **Статус**: Fixed.
+- **Шаги воспроизведения**:
+  1. Запустить бэкенд в enabled-профиле с `REQUIRE_VERIFIED_EMAIL=true`.
+  2. Запустить `sso.spec.ts`: тест 03 выполняет самостоятельную регистрацию пользователя и пытается сразу войти по паролю (сценарий default-off).
+  3. Вход отклоняется с HTTP 401 (`email_verification_required`), «Личный кабинет» не появляется.
+  4. Тест 04 ожидает, что режим регистрации остался «Открыта (open)», но состояние нарушено.
+  5. В `beforeEach`/`beforeAll` ошибки выполнения `prepare_e2e_data.py` проглатываются через `catch (e) { console.error(...) }`, допуская продолжение теста на поврежденной БД.
+- **Исправление**:
+  1. `ci.yml`: Разделён на Default-off профиль (`sso.spec.ts`, `REQUIRE_VERIFIED_EMAIL=false`) и Enabled профиль (`passkey.spec.ts`, `REQUIRE_VERIFIED_EMAIL=false`). Два изолированных бэкенда, стартующих последовательно.
+  2. `sso.spec.ts` и `passkey.spec.ts`: Убраны `try/catch` и fallback DSN в `beforeAll`/`beforeEach`; требуется явный `TEST_DATABASE_URL` (иначе ошибка); `stdio: "inherit"`.
+  3. `scripts/prepare_e2e_data.py`: Вызывает `initialize_test_database_marker` и `verify_test_database_marker` перед посевом.
+  4. `sso.spec.ts` тест 03: Добавлен надёжный переход на форму входа после регистрации (с fallback `Войти`).
+- **Регрессионный тест**: `frontend/e2e/sso.spec.ts` (4 теста), `frontend/e2e/passkey.spec.ts` (4 теста).
+

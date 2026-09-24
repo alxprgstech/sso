@@ -34,61 +34,77 @@ async def test_passkey_default_off_isolation_pg(
     Проверка инварианта default-off для Passkey (SEC-FLAG-02, SEC-FLAG-04, G4-PASSKEY):
     Все роуты /api/v1/mfa/passkey/* возвращают HTTP 404 с feature_disabled при настройках по умолчанию.
     """
-    settings = get_settings()
-    assert settings.FEATURE_PASSKEY_ENABLED is False
 
-    # 1. Проверяем capabilities
-    caps_res = await pg_client.get("/api/v1/auth/capabilities")
-    assert caps_res.status_code == 200
-    caps = caps_res.json()
-    assert (caps.get("capabilities", {}).get("passkey_enabled") is False) or (
-        caps.get("passkey_enabled") is False
-    )
+    def _get_disabled_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_PASSKEY_ENABLED = False
+        overridden.REQUIRE_VERIFIED_EMAIL = False
+        return overridden
 
-    # 2. Создаем пользователя и входим
-    code, _ = await execute_bootstrap(
-        session=pg_session,
-        username="passkey_default_user",
-        email="passkey_def@alxprgs.tech",
-        password="PasskeyPassword2026!",
-        registration_mode="closed",
-    )
-    assert code == 0
+    app.dependency_overrides[get_settings] = _get_disabled_settings
+    try:
+        settings = _get_disabled_settings()
+        assert settings.FEATURE_PASSKEY_ENABLED is False
 
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "passkey_default_user", "password": "PasskeyPassword2026!"},
-    )
-    assert login_res.status_code == 200
-    csrf_token = login_res.json()["csrf_token"]
-
-    # 3. Проверяем, что ВСЕ эндпоинты Passkey возвращают 404 Not Found
-    headers = {"X-CSRF-Token": csrf_token}
-
-    def _check_disabled(res):
-        assert res.status_code == 404
-        data = res.json()
-        assert data.get("feature") == "FEATURE_PASSKEY_ENABLED" or (
-            isinstance(data.get("detail"), dict)
-            and data["detail"].get("feature") == "FEATURE_PASSKEY_ENABLED"
+        # 1. Проверяем capabilities
+        caps_res = await pg_client.get("/api/v1/auth/capabilities")
+        assert caps_res.status_code == 200
+        caps = caps_res.json()
+        assert (caps.get("capabilities", {}).get("passkey_enabled") is False) or (
+            caps.get("passkey_enabled") is False
         )
 
-    _check_disabled(await pg_client.post("/api/v1/mfa/passkey/register/options", headers=headers))
-    _check_disabled(
-        await pg_client.post(
-            "/api/v1/mfa/passkey/register/verify",
-            json={"credential": {}, "name": "Key1"},
-            headers=headers,
+        # 2. Создаем пользователя и входим
+        code, _ = await execute_bootstrap(
+            session=pg_session,
+            username="passkey_default_user",
+            email="passkey_def@alxprgs.tech",
+            password="PasskeyPassword2026!",
+            registration_mode="closed",
         )
-    )
-    _check_disabled(await pg_client.post("/api/v1/mfa/passkey/auth/options"))
-    _check_disabled(
-        await pg_client.post("/api/v1/mfa/passkey/auth/verify", json={"credential": {}})
-    )
-    _check_disabled(await pg_client.get("/api/v1/mfa/passkey/credentials"))
-    _check_disabled(
-        await pg_client.delete("/api/v1/mfa/passkey/credentials/dummy_id", headers=headers)
-    )
+        assert code == 0
+
+        login_res = await pg_client.post(
+            "/api/v1/auth/login",
+            json={"username": "passkey_default_user", "password": "PasskeyPassword2026!"},
+        )
+        assert login_res.status_code == 200, (
+            f"Login failed: {login_res.status_code} {login_res.text}"
+        )
+        csrf_token = login_res.json()["csrf_token"]
+
+        # 3. Проверяем, что ВСЕ эндпоинты Passkey возвращают 404 Not Found
+        headers = {"X-CSRF-Token": csrf_token}
+
+        def _check_disabled(res):
+            assert res.status_code == 404
+            data = res.json()
+            assert data.get("feature") == "FEATURE_PASSKEY_ENABLED" or (
+                isinstance(data.get("detail"), dict)
+                and data["detail"].get("feature") == "FEATURE_PASSKEY_ENABLED"
+            )
+
+        _check_disabled(
+            await pg_client.post("/api/v1/mfa/passkey/register/options", headers=headers)
+        )
+        _check_disabled(
+            await pg_client.post(
+                "/api/v1/mfa/passkey/register/verify",
+                json={"credential": {}, "name": "Key1"},
+                headers=headers,
+            )
+        )
+        _check_disabled(await pg_client.post("/api/v1/mfa/passkey/auth/options"))
+        _check_disabled(
+            await pg_client.post("/api/v1/mfa/passkey/auth/verify", json={"credential": {}})
+        )
+        _check_disabled(await pg_client.get("/api/v1/mfa/passkey/credentials"))
+        _check_disabled(
+            await pg_client.delete("/api/v1/mfa/passkey/credentials/dummy_id", headers=headers)
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.mark.postgres
@@ -104,6 +120,7 @@ async def test_passkey_options_and_challenge_persistence_pg(
         current = get_settings()
         overridden = copy.copy(current)
         overridden.FEATURE_PASSKEY_ENABLED = True
+        overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings
@@ -122,7 +139,9 @@ async def test_passkey_options_and_challenge_persistence_pg(
             "/api/v1/auth/login",
             json={"username": "passkey_flow_user", "password": "FlowPasswordPasskey2026!"},
         )
-        assert login_res.status_code == 200
+        assert login_res.status_code == 200, (
+            f"Login failed: {login_res.status_code} {login_res.text}"
+        )
         csrf_token = login_res.json()["csrf_token"]
 
         # 1. Запрос registration options
@@ -184,6 +203,7 @@ async def test_passkey_multiple_credentials_and_deletion_pg(
         current = get_settings()
         overridden = copy.copy(current)
         overridden.FEATURE_PASSKEY_ENABLED = True
+        overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings
@@ -209,7 +229,9 @@ async def test_passkey_multiple_credentials_and_deletion_pg(
             "/api/v1/auth/login",
             json={"username": "multi_passkey_user", "password": "MultiPasskey2026!"},
         )
-        assert login_res.status_code == 200
+        assert login_res.status_code == 200, (
+            f"Login failed: {login_res.status_code} {login_res.text}"
+        )
         csrf_token = login_res.json()["csrf_token"]
 
         # 2. Создаем два фиктивных ключа напрямую в PostgreSQL
@@ -295,6 +317,7 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(
         current = get_settings()
         overridden = copy.copy(current)
         overridden.FEATURE_PASSKEY_ENABLED = True
+        overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings
@@ -314,7 +337,9 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(
             "/api/v1/auth/login",
             json={"username": "passkey_neg_user", "password": "NegPasskeyPassword2026!"},
         )
-        assert login_res.status_code == 200
+        assert login_res.status_code == 200, (
+            f"Login failed: {login_res.status_code} {login_res.text}"
+        )
         csrf_token = login_res.json()["csrf_token"]
 
         # 1. Попытка подтверждения регистрации без активного challenge в БД

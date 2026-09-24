@@ -1406,3 +1406,59 @@
 
 
 
+
+### WL-045 — постановка GOAL-05 по упавшему CI
+- Исполнитель: Codex. TASK-043. Начало: 2026-09-25T01:06:41+03:00; завершение: 2026-09-25T01:09:23+03:00.
+- Прочитаны отчёт GOAL-04 и два предоставленных лога run 36064941763, сверены workflow, E2E hooks и Passkey fixtures. Подтверждён запуск default-off проверок с enabled env; причины браузерных таймаутов обозначены гипотезами до анализа traces.
+- Создан GOAL-05-ci-profiles-and-e2e.md: изоляция профилей, WebAuthn origin/RP ID, независимость seed/тестов, диагностика и обязательная удалённая приёмка итогового SHA.
+- Файлы: новый GOAL-05, docs/plan.md, docs/status.md, docs/worklog.md. Проверены структура задания, ссылки и согласованность ограничений; git diff --check для изменения плана без ошибок.
+- Тесты приложения не запускались, код/workflows не изменялись; commit/push не выполнялись. TASK-043 done означает готовность задания, а не исправление CI.
+- Следующий шаг: выполнить GOAL-05 в новом чате. Блокеров подготовки документа нет.
+
+### WL-046 — воспроизведение baseline CI run 36064941763 и детерминирование первопричин
+- **Исполнитель**: Antigravity. TASK-044, TASK-045. Начало: 2026-09-25T01:13:00+03:00; фиксация этапа: 2026-09-25T01:18:00+03:00.
+- **Действия и анализ**:
+  1. Проанализированы упавшие джобы run 36064941763: Backend tests (6 failed, 11 passed) и Playwright E2E (5 failed, 3 passed).
+  2. Воспроизведена конфигурация CI на локальном стенде PostgreSQL (порт 5433) с флагами enabled-профиля.
+  3. Получено 100% совпадение с baseline: в точности те же 6 упавших тестов (test_default_features_all_disabled_in_api, test_email_verification_default_off_isolation, test_passkey_default_off_isolation_pg, test_passkey_options_and_challenge_persistence_pg, test_passkey_multiple_credentials_and_deletion_pg, test_passkey_negative_crypto_checks_no_mocks_pg).
+  4. Доказаны первопричины:
+     - Запуск тестов со строгой проверкой default-off флагов в окружении, где установлены переменные `FEATURE_*="true"`, без локальной изоляции фикстур;
+     - Падение 3 тестов Passkey с HTTP 401 на шаге входа: `REQUIRE_VERIFIED_EMAIL="true"` из окружения CI блокирует вход пользователей с `email_verified=False`, так как в `_get_enabled_settings()` не изолировалась политика подтверждения email;
+     - Падения WebAuthn в E2E: Chromium на `http://127.0.0.1:5173` отклоняет генерацию ключей для `rp.id: "localhost"`, а `verify_registration` не принимает origin `127.0.0.1`;
+     - Запуск E2E на единственном always-enabled сервере: сценарий `sso.spec.ts` рассчитан на default-off (вход сразу после регистрации без SMTP), а сервер требовал подтверждённого email.
+  5. Зарегистрированы дефекты BUG-015..BUG-017, актуализированы `docs/plan.md` (TASK-044..TASK-047) и `docs/status.md`.
+- **Файлы**: `docs/plan.md`, `docs/status.md`, `docs/worklog.md`.
+- **Следующий шаг**: Выполнение TASK-045 — исправление изоляции профилей бэкенда и устранение 6 сбоев pytest.
+
+### WL-047 — Завершение TASK-045..TASK-047 (Исправление профилей и E2E, GOAL-05)
+- **Исполнитель**: Antigravity. TASK-045, TASK-046, TASK-047. Начало: 2026-09-25T01:23:00+03:00; Фиксация: 2026-09-25T01:38:00+03:00.
+- **Действия**:
+  1. **Ruff format/check** (TASK-045 закрытие): отформатированы 3 файла (`mfa.py`, `test_features_pg.py`, `test_passkey_pg.py`); `ruff check` → 0 ошибок, 58 файлов отформатировано.
+  2. **TASK-045 Backend Profile Isolation** (верификация): `pytest -v --ignore=tests/test_python_sdk.py tests/` → **107 passed, 0 failed** (1:52 мин); `pytest -v <enabled files>` → **17 passed, 0 failed** (54 с).
+  3. **TASK-046 Playwright E2E** (`sso.spec.ts`, `passkey.spec.ts`, `playwright.config.ts`, `prepare_e2e_data.py`):
+     - `playwright.config.ts`: `baseURL → http://localhost:5173`, таймаут 45s/10s.
+     - `sso.spec.ts`: убран `try/catch` и fallback DSN, добавлен `test.use({baseURL})`, `stdio: "inherit"`, надёжный переход на форму входа после регистрации.
+     - `passkey.spec.ts`: убран `try/catch` и fallback DSN, добавлен `stdio: "inherit"`.
+     - `prepare_e2e_data.py`: вызовы `initialize_test_database_marker` и `verify_test_database_marker` перед посевом; проверена работа скрипта.
+  4. **TASK-047 CI workflow** (`.github/workflows/ci.yml`):
+     - Заменён единый enabled E2E запуск на два изолированных блока: Default-off (`FEATURE_*=false`, `REQUIRE_VERIFIED_EMAIL=false`, `OIDC_ISSUER`, `WEBAUTHN_RP_ID=localhost`) → `npx playwright test e2e/sso.spec.ts`; Enabled (`FEATURE_*=true`, `REQUIRE_VERIFIED_EMAIL=false`, `WEBAUTHN_RP_ID=localhost`, `WEBAUTHN_ORIGIN=http://localhost:5173`) → `npx playwright test e2e/passkey.spec.ts`.
+     - Frontend preview: `--host 0.0.0.0 --port 5173`; healthcheck на `http://localhost:5173`.
+     - `PLAYWRIGHT_BASE_URL=http://localhost:5173` для обоих E2E шагов.
+     - Каждый Backend блок стартует с `$! > /tmp/backend.pid` и останавливается после своего набора тестов.
+  5. **SDK**: Собраны `alxprgs_sso-0.2.0.whl` и `.tar.gz`; чистая установка в изолированное venv; `sdk_test_env\Scripts\python.exe -m pytest packages/python-sdk/tests/test_sdk_isolated.py -v` → **3 passed, 0 failed**.
+  6. **Frontend**: `npm run typecheck` → 0 ошибок; `npm run build` → 199 kB JS, 2.51 с.
+  7. **Документация**: Обновлены `docs/status.md`, `docs/acceptance-goal-05.md`, `docs/testing/defects.md` (BUG-015..BUG-017 → Fixed с деталями исправлений).
+- **Файлы изменены**: `backend/app/services/mfa_service.py`, `backend/app/api/mfa.py`, `tests/test_mfa_features.py`, `tests/integration/test_passkey_pg.py`, `tests/integration/test_email_verification_pg.py`, `tests/integration/test_features_pg.py`, `scripts/prepare_e2e_data.py`, `frontend/playwright.config.ts`, `frontend/e2e/sso.spec.ts`, `frontend/e2e/passkey.spec.ts`, `.github/workflows/ci.yml`, `docs/status.md`, `docs/acceptance-goal-05.md`, `docs/testing/defects.md`, `docs/worklog.md`.
+- **Фактические проверки**:
+  - Backend default-off: 107/107 passed (PostgreSQL).
+  - Backend enabled: 17/17 passed (PostgreSQL).
+  - Ruff: 0 errors, 58 files formatted.
+  - Frontend typecheck: 0 errors.
+  - Frontend build: 39 modules, 199 kB, 2.51 с.
+  - SDK build: wheel + sdist OK.
+  - SDK isolated test: 3/3 passed.
+  - prepare_e2e_data.py: 4 пользователя seedeed.
+- **Не проверено**: Playwright E2E браузерные тесты (требуют запущенного backend+frontend; в среде агента без headless Chromium браузер не запускался). Проверка будет произведена GitHub Actions CI после push.
+- **Блокер**: Сетевой доступ к GitHub из среды агента отсутствует. Для завершения GOAL-05 требуется `git push origin main` от владельца.
+- **Следующий шаг**: Владелец выполняет `git push origin main` → GitHub Actions CI выполняет все проверки → при зелёном статусе GOAL-05 считается завершённым.
+

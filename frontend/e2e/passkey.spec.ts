@@ -12,27 +12,26 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
   test.use({ baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173" });
 
   test.beforeEach(() => {
-    try {
-      let pythonExe =
-        process.env.PYTHON_BIN ||
-        (process.platform === "win32"
-          ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
-          : path.resolve(__dirname, "../../.venv/bin/python"));
-      if (!fs.existsSync(pythonExe)) {
-        pythonExe = process.platform === "win32" ? "python" : "python3";
-      }
-      const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
-      execFileSync(pythonExe, [scriptPath], {
-        env: {
-          ...process.env,
-          TEST_DATABASE_URL:
-            process.env.TEST_DATABASE_URL ||
-            "postgresql+psycopg://sso_test_user:sso_test_password@localhost:5433/alxprgs_sso_test",
-        },
-      });
-    } catch (e) {
-      console.error("Cleanup error:", e);
+    const testDbUrl = process.env.TEST_DATABASE_URL;
+    if (!testDbUrl) {
+      throw new Error("TEST_DATABASE_URL environment variable is required for E2E tests");
     }
+    let pythonExe =
+      process.env.PYTHON_BIN ||
+      (process.platform === "win32"
+        ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
+        : path.resolve(__dirname, "../../.venv/bin/python"));
+    if (!fs.existsSync(pythonExe)) {
+      pythonExe = process.platform === "win32" ? "python" : "python3";
+    }
+    const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
+    execFileSync(pythonExe, [scriptPath], {
+      env: {
+        ...process.env,
+        TEST_DATABASE_URL: testDbUrl,
+      },
+      stdio: "inherit",
+    });
   });
 
   test("01. Enabled Profile Capabilities & Passkey Login Button Visibility", async ({ page }) => {

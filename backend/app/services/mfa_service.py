@@ -205,11 +205,16 @@ def _cred_id_to_bytes(cred_id: str) -> bytes:
 class WebAuthnService:
     @staticmethod
     async def get_registration_options(
-        db: AsyncSession, user: User, rp_id: str | None = None
+        db: AsyncSession,
+        user: User,
+        rp_id: str | None = None,
+        settings: Settings | None = None,
     ) -> dict[str, Any]:
         """
         Генерирует challenge и опции для регистрации нового WebAuthn Passkey (W3C WebAuthn Level 3).
         """
+        active_settings = settings or get_settings()
+
         # Получаем уже существующие credentials пользователя
         existing_creds_stmt = select(WebAuthnCredential).where(
             WebAuthnCredential.user_id == user.id
@@ -223,11 +228,11 @@ class WebAuthnService:
             for cred in existing_creds
         ]
 
-        effective_rp_id = rp_id or settings.WEBAUTHN_RP_ID
+        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
 
         options = webauthn.generate_registration_options(
             rp_id=effective_rp_id,
-            rp_name=settings.WEBAUTHN_RP_NAME,
+            rp_name=active_settings.WEBAUTHN_RP_NAME,
             user_id=str(user.id).encode("utf-8"),
             user_name=user.username,
             user_display_name=user.username,
@@ -264,10 +269,13 @@ class WebAuthnService:
         name: str = "Passkey",
         rp_id: str | None = None,
         origin: str | None = None,
+        settings: Settings | None = None,
     ) -> bool:
         """
         Проверяет результат регистрации Passkey и сохраняет открытый ключ (SEC-FLAG-06, G4-PASSKEY).
         """
+        active_settings = settings or get_settings()
+
         stmt = (
             select(WebAuthnChallenge)
             .where(
@@ -285,8 +293,10 @@ class WebAuthnService:
             [origin]
             if origin
             else [
-                settings.WEBAUTHN_ORIGIN,
-                settings.FRONTEND_URL,
+                active_settings.WEBAUTHN_ORIGIN,
+                active_settings.FRONTEND_URL,
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
                 "http://localhost:8000",
@@ -295,7 +305,7 @@ class WebAuthnService:
             ]
         )
 
-        effective_rp_id = rp_id or settings.WEBAUTHN_RP_ID
+        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
 
         try:
             verification = webauthn.verify_registration_response(
@@ -308,7 +318,7 @@ class WebAuthnService:
         except Exception as e:
             # Если rp_id не был явно указан, пробуем fallback между localhost и auth.alxprgs.tech
             fallback_rp_id = (
-                "localhost" if effective_rp_id != "localhost" else settings.WEBAUTHN_RP_ID
+                "localhost" if effective_rp_id != "localhost" else active_settings.WEBAUTHN_RP_ID
             )
             try:
                 verification = webauthn.verify_registration_response(
@@ -348,11 +358,16 @@ class WebAuthnService:
 
     @staticmethod
     async def get_authentication_options(
-        db: AsyncSession, user: User | None = None, rp_id: str | None = None
+        db: AsyncSession,
+        user: User | None = None,
+        rp_id: str | None = None,
+        settings: Settings | None = None,
     ) -> dict[str, Any]:
         """
         Генерирует challenge для входа по Passkey.
         """
+        active_settings = settings or get_settings()
+
         allow_credentials = []
         if user:
             existing_stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
@@ -364,7 +379,7 @@ class WebAuthnService:
                 for c in creds
             ]
 
-        effective_rp_id = rp_id or settings.WEBAUTHN_RP_ID
+        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
 
         options = webauthn.generate_authentication_options(
             rp_id=effective_rp_id,
@@ -396,12 +411,15 @@ class WebAuthnService:
         credential_json: str | dict[str, Any],
         rp_id: str | None = None,
         origin: str | None = None,
+        settings: Settings | None = None,
     ) -> bool:
         """
         Проверка assertion Passkey при входе с поддержкой множественных ключей,
         защитой от Replay и проверкой актуальности удалённых ключей (G4-PASSKEY).
         """
         import json
+
+        active_settings = settings or get_settings()
 
         cred_dict = (
             json.loads(credential_json) if isinstance(credential_json, str) else credential_json
@@ -468,8 +486,10 @@ class WebAuthnService:
             [origin]
             if origin
             else [
-                settings.WEBAUTHN_ORIGIN,
-                settings.FRONTEND_URL,
+                active_settings.WEBAUTHN_ORIGIN,
+                active_settings.FRONTEND_URL,
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
                 "http://localhost:8000",
@@ -478,7 +498,7 @@ class WebAuthnService:
             ]
         )
 
-        effective_rp_id = rp_id or settings.WEBAUTHN_RP_ID
+        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
 
         try:
             verification = webauthn.verify_authentication_response(
@@ -493,7 +513,7 @@ class WebAuthnService:
         except Exception as e:
             # Fallback между localhost и WEBAUTHN_RP_ID
             fallback_rp_id = (
-                "localhost" if effective_rp_id != "localhost" else settings.WEBAUTHN_RP_ID
+                "localhost" if effective_rp_id != "localhost" else active_settings.WEBAUTHN_RP_ID
             )
             try:
                 verification = webauthn.verify_authentication_response(

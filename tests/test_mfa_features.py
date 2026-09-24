@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import uuid
@@ -8,7 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.exceptions import (
     AuthorizationException,
 )
@@ -38,54 +39,71 @@ def test_default_features_all_disabled_in_api():
     Эндпоинты MFA при отключенных флагах возвращают 404 c error=feature_disabled.
     """
     sent_emails_sink.clear()
-    settings = get_settings()
-    assert settings.FEATURE_TOTP_ENABLED is False
-    assert settings.FEATURE_PASSKEY_ENABLED is False
-    assert settings.FEATURE_RECOVERY_CODES_ENABLED is False
-    assert settings.FEATURE_EMAIL_VERIFICATION_ENABLED is False
-    assert settings.REQUIRE_VERIFIED_EMAIL is False
 
-    # 1. TOTP endpoints return 404
-    r1 = client.post("/api/v1/mfa/totp/setup")
-    assert r1.status_code == 404
-    assert r1.json()["error"] == "feature_disabled"
-    assert r1.json()["feature"] == "FEATURE_TOTP_ENABLED"
+    # 1. Проверка объявленных значений по умолчанию в схеме Settings (SEC-FLAG-01)
+    clean_settings = Settings.model_construct()
+    assert clean_settings.FEATURE_TOTP_ENABLED is False
+    assert clean_settings.FEATURE_PASSKEY_ENABLED is False
+    assert clean_settings.FEATURE_RECOVERY_CODES_ENABLED is False
+    assert clean_settings.FEATURE_EMAIL_VERIFICATION_ENABLED is False
+    assert clean_settings.REQUIRE_VERIFIED_EMAIL is False
 
-    r2 = client.post("/api/v1/mfa/totp/confirm", json={"code": "123456"})
-    assert r2.status_code == 404
-    assert r2.json()["error"] == "feature_disabled"
-    assert r2.json()["feature"] == "FEATURE_TOTP_ENABLED"
+    # 2. Изоляция default-off профиля в API независима от окружения хоста
+    def _get_default_off_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_TOTP_ENABLED = False
+        overridden.FEATURE_PASSKEY_ENABLED = False
+        overridden.FEATURE_RECOVERY_CODES_ENABLED = False
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = False
+        overridden.REQUIRE_VERIFIED_EMAIL = False
+        return overridden
 
-    # 2. Recovery codes endpoints return 404
-    r3 = client.post("/api/v1/mfa/recovery-codes/generate")
-    assert r3.status_code == 404
-    assert r3.json()["error"] == "feature_disabled"
-    assert r3.json()["feature"] == "FEATURE_RECOVERY_CODES_ENABLED"
+    app.dependency_overrides[get_settings] = _get_default_off_settings
+    try:
+        # 1. TOTP endpoints return 404
+        r1 = client.post("/api/v1/mfa/totp/setup")
+        assert r1.status_code == 404
+        assert r1.json()["error"] == "feature_disabled"
+        assert r1.json()["feature"] == "FEATURE_TOTP_ENABLED"
 
-    r4 = client.post("/api/v1/mfa/recovery-codes/verify", json={"code": "ABCD1-EFGH2"})
-    assert r4.status_code == 404
-    assert r4.json()["error"] == "feature_disabled"
-    assert r4.json()["feature"] == "FEATURE_RECOVERY_CODES_ENABLED"
+        r2 = client.post("/api/v1/mfa/totp/confirm", json={"code": "123456"})
+        assert r2.status_code == 404
+        assert r2.json()["error"] == "feature_disabled"
+        assert r2.json()["feature"] == "FEATURE_TOTP_ENABLED"
 
-    # 3. Passkey endpoints return 404
-    r5 = client.post("/api/v1/mfa/passkey/register/options")
-    assert r5.status_code == 404
-    assert r5.json()["error"] == "feature_disabled"
-    assert r5.json()["feature"] == "FEATURE_PASSKEY_ENABLED"
+        # 2. Recovery codes endpoints return 404
+        r3 = client.post("/api/v1/mfa/recovery-codes/generate")
+        assert r3.status_code == 404
+        assert r3.json()["error"] == "feature_disabled"
+        assert r3.json()["feature"] == "FEATURE_RECOVERY_CODES_ENABLED"
 
-    r6 = client.post("/api/v1/mfa/passkey/auth/options", json={"username": "user@example.com"})
-    assert r6.status_code == 404
-    assert r6.json()["error"] == "feature_disabled"
-    assert r6.json()["feature"] == "FEATURE_PASSKEY_ENABLED"
+        r4 = client.post("/api/v1/mfa/recovery-codes/verify", json={"code": "ABCD1-EFGH2"})
+        assert r4.status_code == 404
+        assert r4.json()["error"] == "feature_disabled"
+        assert r4.json()["feature"] == "FEATURE_RECOVERY_CODES_ENABLED"
 
-    # 4. Email verification endpoints return 404
-    r7 = client.post("/api/v1/mfa/email/request", json={"email": "user@example.com"})
-    assert r7.status_code == 404
-    assert r7.json()["error"] == "feature_disabled"
-    assert r7.json()["feature"] == "FEATURE_EMAIL_VERIFICATION_ENABLED"
+        # 3. Passkey endpoints return 404
+        r5 = client.post("/api/v1/mfa/passkey/register/options")
+        assert r5.status_code == 404
+        assert r5.json()["error"] == "feature_disabled"
+        assert r5.json()["feature"] == "FEATURE_PASSKEY_ENABLED"
 
-    # Проверка отсутствия отправки писем при disabled
-    assert len(sent_emails_sink) == 0
+        r6 = client.post("/api/v1/mfa/passkey/auth/options", json={"username": "user@example.com"})
+        assert r6.status_code == 404
+        assert r6.json()["error"] == "feature_disabled"
+        assert r6.json()["feature"] == "FEATURE_PASSKEY_ENABLED"
+
+        # 4. Email verification endpoints return 404
+        r7 = client.post("/api/v1/mfa/email/request", json={"email": "user@example.com"})
+        assert r7.status_code == 404
+        assert r7.json()["error"] == "feature_disabled"
+        assert r7.json()["feature"] == "FEATURE_EMAIL_VERIFICATION_ENABLED"
+
+        # Проверка отсутствия отправки писем при disabled
+        assert len(sent_emails_sink) == 0
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.mark.asyncio
