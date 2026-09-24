@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../api/client";
+import { prepareRequestOptions, serializeRequestResponse } from "../utils/webauthn";
 
 interface LoginPageProps {
   onNavigateToRegister?: () => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) => {
-  const { login, capabilities } = useAuth();
+  const { login, capabilities, refreshUser } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +18,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
   const [mfaStep, setMfaStep] = useState(false);
   const [mfaToken, setMfaToken] = useState("");
   const [mfaCode, setMfaCode] = useState("");
+  const [mfaMethods, setMfaMethods] = useState<string[]>([]);
 
   // Поддержка OIDC перенаправления (return_to)
   const urlParams = new URLSearchParams(window.location.search);
@@ -31,6 +34,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
       if ("mfa_required" in res && res.mfa_required) {
         setMfaStep(true);
         setMfaToken(res.mfa_token);
+        setMfaMethods(res.available_methods || []);
       } else {
         if (returnTo) {
           window.location.href = returnTo;
@@ -50,6 +54,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
       return;
     }
     setError("Функция многофакторной аутентификации в текущем профиле отключена.");
+  };
+
+  const handlePasskeyLogin = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const serverOptions = await api.getPasskeyAuthOptions();
+      const requestOptions = prepareRequestOptions(serverOptions);
+      const assertion = await navigator.credentials.get(requestOptions);
+      if (!assertion) {
+        throw new Error("Аутентификатор не вернул подтверждение ключа");
+      }
+      const serialized = serializeRequestResponse(assertion);
+      await api.verifyPasskeyAuth(serialized, mfaToken || undefined);
+      await refreshUser();
+      if (returnTo) {
+        window.location.href = returnTo;
+      }
+    } catch (err: any) {
+      setError(err.message || "Ошибка входа по Passkey");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -115,6 +142,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
                 </button>
               </div>
 
+              {capabilities?.passkey_enabled && (
+                <button
+                  type="button"
+                  onClick={handlePasskeyLogin}
+                  disabled={loading}
+                  className="w-full mt-3 flex justify-center py-2.5 px-4 border border-blue-600 rounded-lg shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  data-testid="passkey-login-button"
+                >
+                  Войти с помощью Passkey (WebAuthn)
+                </button>
+              )}
+
               {/* Ссылка на регистрацию (отображается ТОЛЬКО при открытом режиме, REG-01, REG-03) */}
               {capabilities?.registration_mode === "open" && onNavigateToRegister && (
                 <div className="pt-2 text-center">
@@ -148,12 +187,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
               </div>
 
               <div className="flex space-x-3">
-                <button
-                  type="submit"
-                  className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  Подтвердить
-                </button>
+                {(mfaMethods.includes("totp") || mfaMethods.includes("recovery_code")) && (
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    Подтвердить
+                  </button>
+                )}
+                {mfaMethods.includes("passkey") && (
+                  <button
+                    type="button"
+                    onClick={handlePasskeyLogin}
+                    disabled={loading}
+                    className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                    data-testid="passkey-mfa-button"
+                  >
+                    Подтвердить через Passkey
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setMfaStep(false)}

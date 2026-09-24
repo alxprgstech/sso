@@ -243,7 +243,7 @@ async def test_webauthn_service_options():
     reg_options_json = await WebAuthnService.get_registration_options(mock_db, user)
     assert "challenge" in reg_options_json
     assert "rp" in reg_options_json
-    assert "alxprgs.tech" in reg_options_json
+    assert "alxprgs.tech" in str(reg_options_json)
 
     # 2. Генерация опций аутентификации
     auth_options_json = await WebAuthnService.get_authentication_options(mock_db, user)

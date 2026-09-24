@@ -21,13 +21,13 @@ from app.core.rbac import ROLE_ADMIN, ROLE_USER
 from app.main import app
 from app.models.system import SystemConfiguration
 
-
-def get_test_database_url() -> str:
-    """Возвращает строку подключения к тестовой базе данных PostgreSQL."""
-    return os.environ.get(
-        "DATABASE_URL",
-        "postgresql+psycopg://sso_test_user:sso_test_password@localhost:5433/alxprgs_sso_test",
-    )
+from tests.db_guard import (
+    TestDatabaseSafetyError,
+    get_test_database_url,
+    initialize_test_database_marker,
+    mask_dsn,
+    safe_truncate_test_tables,
+)
 
 
 @pytest.fixture
@@ -59,9 +59,15 @@ def default_db_mock():
 async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
     """
     Создает сессионный движок SQLAlchemy для подключения к PostgreSQL.
-    Если PostgreSQL недоступен, тест падает с понятной ошибкой (QA-02).
+    Если PostgreSQL недоступен или TEST_DATABASE_URL не настроен,
+    тест падает с понятной ошибкой и маскированным DSN (QA-02, G4-DB).
     """
-    db_url = get_test_database_url()
+    try:
+        db_url = get_test_database_url()
+    except TestDatabaseSafetyError as err:
+        pytest.fail(str(err))
+
+    masked_url = mask_dsn(db_url)
     engine = create_async_engine(
         db_url,
         echo=False,
@@ -69,12 +75,17 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
         connect_args={"connect_timeout": 3},
     )
     try:
-        async with engine.connect() as conn:
+        async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
+            # Инициализируем/обновляем маркер владения тестовой базы данных
+            await initialize_test_database_marker(conn)
     except Exception as exc:
+        if isinstance(exc, pytest.fail.Exception):
+            raise
         pytest.fail(
-            f"ОШИБКА QA-02: Тестовая база данных PostgreSQL недоступна по адресу {db_url}. "
-            f"Запустите тестовый контейнер alxprgs-sso-test-db (порт 5433). Исключение: {exc}"
+            f"ОШИБКА QA-02/G4-DB: Тестовая база данных PostgreSQL недоступна по адресу {masked_url}. "
+            f"Убедитесь, что TEST_DATABASE_URL задан корректно и тестовый контейнер alxprgs-sso-test-db "
+            f"(порт 5433) запущен. Исключение: {exc}"
         )
     yield engine
     await engine.dispose()
@@ -84,7 +95,8 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
 async def pg_session(pg_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """
     Создает изолированную сессию PostgreSQL для одного теста.
-    Автоматически очищает таблицы перед тестом и выполняет rollback при ошибках.
+    Автоматически очищает таблицы перед тестом после строгой верификации маркера тестовой БД
+    и выполняет rollback при ошибках.
     """
     session_factory = async_sessionmaker(
         bind=pg_engine,
@@ -95,15 +107,8 @@ async def pg_session(pg_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, Non
     )
 
     async with session_factory() as session:
-        # Очищаем данные из изменяемых таблиц
-        await session.execute(
-            text(
-                "TRUNCATE TABLE audit_events, authorization_codes, refresh_tokens, "
-                "oidc_redirect_uris, oidc_clients, sessions, password_credentials, "
-                "user_roles, users, recovery_codes, email_verification_tokens, "
-                "webauthn_challenges, webauthn_credentials, totp_credentials CASCADE;"
-            )
-        )
+        # Безопасно очищаем данные из изменяемых таблиц с предварительной проверкой маркера
+        await safe_truncate_test_tables(session)
         # Гарантируем наличие базовых ролей
         role_admin = await session.execute(
             text("SELECT id FROM roles WHERE name = :name"), {"name": ROLE_ADMIN}

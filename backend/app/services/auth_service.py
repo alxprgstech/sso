@@ -158,7 +158,8 @@ class AuthService:
                 user_agent=user_agent,
             )
             raise AuthenticationException(
-                "Вход заблокирован: требуется подтверждение адреса электронной почты"
+                "Вход заблокирован: требуется подтверждение адреса электронной почты",
+                error="email_verification_required",
             )
 
         # Успешный вход без MFA (в default-профиле)

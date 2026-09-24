@@ -169,6 +169,47 @@ class ApiClient {
   async getAuditEvents(offset = 0, limit = 50): Promise<AuditEventItem[]> {
     return this.request<AuditEventItem[]>(`/api/v1/admin/audit?offset=${offset}&limit=${limit}`);
   }
+
+  // --- Passkey / WebAuthn API (G4-PASSKEY) ---
+  async getPasskeyRegistrationOptions(): Promise<any> {
+    return this.request<any>("/api/v1/mfa/passkey/register/options", {
+      method: "POST",
+    });
+  }
+
+  async verifyPasskeyRegistration(credential: any, name = "Passkey"): Promise<{ status: string; message: string }> {
+    return this.request<{ status: string; message: string }>("/api/v1/mfa/passkey/register/verify", {
+      method: "POST",
+      body: JSON.stringify({ credential, name }),
+    });
+  }
+
+  async getPasskeyCredentials(): Promise<Array<{ id: string; name: string; sign_count: number }>> {
+    return this.request<Array<{ id: string; name: string; sign_count: number }>>("/api/v1/mfa/passkey/credentials");
+  }
+
+  async deletePasskeyCredential(id: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/api/v1/mfa/passkey/credentials/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getPasskeyAuthOptions(): Promise<any> {
+    return this.request<any>("/api/v1/mfa/passkey/auth/options", {
+      method: "POST",
+    });
+  }
+
+  async verifyPasskeyAuth(credential: any, mfaToken?: string): Promise<LoginResponse> {
+    const res = await this.request<LoginResponse>("/api/v1/mfa/passkey/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({ credential, mfa_token: mfaToken }),
+    });
+    if ("csrf_token" in res) {
+      this.csrfToken = res.csrf_token;
+    }
+    return res;
+  }
 }
 
 export const api = new ApiClient();

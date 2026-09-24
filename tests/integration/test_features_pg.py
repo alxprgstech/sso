@@ -425,29 +425,10 @@ async def test_enabled_profile_email_verification_and_enforcement_pg(
         )
         assert audit_res.scalar_one_or_none() is not None
 
-        # 3. Запрашиваем токен подтверждения email
-        # Временно разрешаем вход или выпускаем токен через службу
-        # Для /api/v1/mfa/email/request требуется аутентификация пользователя
-        # Поэтому временно понизим REQUIRE_VERIFIED_EMAIL, чтобы запросить подтверждение
-        temp_settings = copy.copy(get_settings())
-        temp_settings.FEATURE_EMAIL_VERIFICATION_ENABLED = True
-        temp_settings.REQUIRE_VERIFIED_EMAIL = False
-        app.dependency_overrides[get_settings] = lambda: temp_settings
-
-        login_temp = await pg_client.post(
-            "/api/v1/auth/login",
-            json={"username": "unverified_user", "password": "UnverifiedPassword2026!"},
-        )
-        assert login_temp.status_code == 200
-        csrf_tok = login_temp.json()["csrf_token"]
-
-        # Возвращаем REQUIRE_VERIFIED_EMAIL = True
-        app.dependency_overrides[get_settings] = _get_enabled_settings
-
+        # 3. Запрашиваем токен подтверждения email напрямую БЕЗ входа и БЕЗ ослабления политики (G4-EMAIL)
         sent_emails_sink.clear()
         req_res = await pg_client.post(
             "/api/v1/mfa/email/request",
-            headers={"X-CSRF-Token": csrf_tok},
             json={"email": "unverified@alxprgs.tech"},
         )
         assert req_res.status_code == 200

@@ -1,6 +1,36 @@
 import { test, expect } from "@playwright/test";
+import { execFileSync } from "child_process";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 test.describe("ALXPRGS SSO End-to-End Suite", () => {
+  test.beforeAll(() => {
+    try {
+      let pythonExe =
+        process.env.PYTHON_BIN ||
+        (process.platform === "win32"
+          ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
+          : path.resolve(__dirname, "../../.venv/bin/python"));
+      if (!fs.existsSync(pythonExe)) {
+        pythonExe = process.platform === "win32" ? "python" : "python3";
+      }
+      const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
+      execFileSync(pythonExe, [scriptPath], {
+        env: {
+          ...process.env,
+          TEST_DATABASE_URL:
+            process.env.TEST_DATABASE_URL ||
+            "postgresql+psycopg://sso_test_user:sso_test_password@localhost:5433/alxprgs_sso_test",
+        },
+      });
+    } catch (e) {
+      console.error("E2E setup error:", e);
+    }
+  });
   test("01. Default Profile: Capabilities & Security Invariants UI", async ({ page }) => {
     // 1. Открываем главную страницу входа
     await page.goto("/");
@@ -42,9 +72,10 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     // Переключаемся на вкладку "Конфигурация"
     await page.click('button:has-text("Конфигурация")');
     await expect(page.getByText("Управление политикой самостоятельной регистрации")).toBeVisible();
+    await expect(page.getByText("Закрыта (closed)")).toBeVisible();
 
     // Выбираем открытый режим
-    await page.click('input[value="open"]');
+    await page.locator('input[value="open"]').check();
 
     // Вводим пароль администратора для подтверждения (re-authentication)
     await page.fill('input[placeholder*="Введите ваш пароль"]', "ComposeAdminPass2026!");
@@ -130,9 +161,11 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     // Переходим в админку -> Конфигурация
     await page.click('button:has-text("Администрирование")');
     await page.click('button:has-text("Конфигурация")');
+    await expect(page.getByText("Управление политикой самостоятельной регистрации")).toBeVisible();
+    await expect(page.getByText("Открыта (open)")).toBeVisible();
 
     // Возвращаем режим closed
-    await page.click('input[value="closed"]');
+    await page.locator('input[value="closed"]').check();
     await page.fill('input[placeholder*="Введите ваш пароль"]', "ComposeAdminPass2026!");
     await page.click('button:has-text("Применить режим регистрации")');
 

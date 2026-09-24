@@ -85,6 +85,23 @@ async def get_current_user(
     return user
 
 
+async def get_optional_current_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> User | None:
+    """Возвращает текущего аутентифицированного пользователя, либо None при отсутствии валидной сессии."""
+    cookie_name = get_cookie_name(settings, request)
+    raw_token = request.cookies.get(cookie_name)
+    if not raw_token:
+        return None
+    try:
+        session = await get_current_session(request, db, settings)
+        return await get_current_user(session, db)
+    except Exception:
+        return None
+
+
 async def require_admin_user(
     current_user: User = Depends(get_current_user),
 ) -> User:

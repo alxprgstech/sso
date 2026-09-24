@@ -20,6 +20,8 @@
 | **BUG-007** | Модель `SystemConfiguration` наследует `created_at` от `Base`, но в миграции 0002 эта колонка отсутствовала, вызывая ошибку `UndefinedColumn` при любых SQL-запросах к `system_configuration` | Critical | Resolved | QA-02, QA-03, QA-04 |
 | **BUG-008** | В `backend/Dockerfile` отсутствовало копирование `README.md`, требуемого `pyproject.toml` | High | Resolved | QA-03, QA-04 |
 | **BUG-009** | Несоответствие контракта параметров в `updateRegistrationMode` на фронтенде | Medium | Resolved | QA-05, REG-02 |
+| **BUG-010** | `tests/conftest.py` выполняет TRUNCATE CASCADE на `DATABASE_URL` без проверки `TEST_DATABASE_URL` и маркера владения | Critical | Resolved | G4-DB, QA-02 |
+
 
 ---
 
@@ -160,3 +162,128 @@
   3. В `frontend/src/context/AuthContext.tsx` добавлен метод `refreshCapabilities`, вызываемый при смене режима и выходе из системы для актуализации состояния флагов в SPA.
   4. Фронтенд пересобран в Docker Compose, сценарий подтверждён тестом `test:e2e`.
 
+---
+
+### BUG-010: tests/conftest.py выполняет TRUNCATE CASCADE на DATABASE_URL без проверки TEST_DATABASE_URL и маркера владения
+- **Требование**: G4-DB, QA-02, AGENTS.md Разделы 1, 3.
+- **Серьёзность**: Critical.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. Задать в окружении боевую строку подключения `DATABASE_URL=postgresql+psycopg://sso_user:...@localhost:5432/sso_db`.
+  2. Запустить `pytest tests/integration/test_postgres_connection.py`.
+  3. Фикстура `pg_session` выполняет `TRUNCATE TABLE users, sessions, ... CASCADE;` на указанной базе данных, безвозвратно удаляя рабочие данные.
+- **Ожидаемое поведение**:
+  1. Тестовый набор должен требовать переменную `TEST_DATABASE_URL` и категорически запрещать fallback на `DATABASE_URL`. При отсутствии `TEST_DATABASE_URL` выполнение должно немедленно прерываться до открытия соединений или выполнения запросов.
+  2. Пароли в DSN должны маскироваться во всех логах и текстах исключений.
+  3. Перед любыми операциями очистки (`TRUNCATE`, `DROP`) должна выполняться строгая валидация базы данных: наличие маркерной таблицы / записи владения тестовой средой (`test_database_marker`), подтверждающей принадлежность базы именно тестовому запуску. При отсутствии маркера любые деструктивные запросы блокируются.
+- **Фактическое поведение**: `get_test_database_url()` считывал `os.environ.get("DATABASE_URL", ...)`, пароли выводились в открытом виде при ошибках подключения, очистка выполнялась безусловно.
+- **Исправление**:
+  1. Разработан модуль `tests/db_guard.py` с функцией `get_test_database_url()`, которая читает исключительно `TEST_DATABASE_URL` без fallback на `DATABASE_URL`, маскирует пароли через `mask_dsn()`, проверяет имя базы на запрещённые списки (`sso_db`, `postgres`, `prod`) и маркер `test`.
+  2. Реализована функция `verify_test_database_marker` и `safe_truncate_test_tables`, которая перед выполнением TRUNCATE проверяет наличие маркерной таблицы `test_database_marker` со значением `is_safe_to_truncate=True` и `environment='alxprgs_sso_isolated_test'`.
+  3. В `tests/conftest.py` фикстуры `pg_engine` и `pg_session` переведены на использование защитного модуля.
+  4. Разработан регрессионный тестовый модуль `tests/test_database_guard.py` (14 тестов, все PASSED): проверены маскирование DSN, запрет fallback на `DATABASE_URL`, запрет запрещенных имен баз, отказ при отсутствии маркера с подтверждением сохранения данных в контрольной таблице, позитивный прогон в изолированном контуре. Проверена сохранность всех 6 пользователей в боевой БД `sso_db`.
+
+---
+
+### BUG-011: Неполнота сквозного жизненного цикла email verification и необходимость временного ослабления политик
+- **Требование**: G4-EMAIL, SEC-FLAG-07, REG-09.
+- **Серьёзность**: High.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. В `tests/integration/test_features_pg.py` метод `test_enabled_profile_email_verification_and_enforcement_pg` содержал временное ослабление политики (`overridden.REQUIRE_VERIFIED_EMAIL = False`), чтобы неподтверждённый пользователь мог войти и получить сессию для запроса ссылки подтверждения.
+  2. Без сессии эндпоинт `/api/v1/mfa/email/request` требовал обязательной авторизации через `get_current_user`, что блокировало подтверждение email для обычного пользователя без вмешательства администратора.
+  3. Отсутствовала проверка SMTP-доставки, устойчивости к сбоям SMTP с фиксацией аудита `email_delivery_failed`, аудита `email_verification_replay_detected` и `email_verification_expired`, а также rate-limit на отправку писем и защита от перебора учетных записей.
+- **Ожидаемое поведение**:
+  1. Неподтверждённый пользователь при `REQUIRE_VERIFIED_EMAIL=true` блокируется на входе с ошибкой `email_verification_required` (HTTP 401).
+  2. Неподтверждённый пользователь может запросить ссылку подтверждения через `/api/v1/mfa/email/request` без сессии, указав email.
+  3. Эндпоинт защищён от перебора (всегда возвращает 200 OK при корректном формате), а также от спама (rate limit на IP и email).
+  4. Токены подтверждения одноразовые с атомарным погашением в транзакции PostgreSQL; повторное использование (replay) и истечение срока фиксируются в журнале аудита.
+  5. При сбое SMTP ошибка протоколируется в аудите, но не роняет процесс; при работающем SMTP письмо реально отправляется.
+- **Исправление**:
+  1. Обновлена схема ошибок аутентификации в `backend/app/core/exceptions.py` и `backend/app/services/auth_service.py` с возвратом `error="email_verification_required"`.
+  2. В `backend/app/api/deps.py` добавлен `get_optional_current_user`.
+  3. В `backend/app/core/rate_limit.py` добавлен лимитер `check_email_request_rate_limit`.
+  4. В `backend/app/services/mfa_service.py` `EmailVerificationService` расширен поддержкой реальной отправки через SMTP с тайм-аутом в отдельном потоке, логированием `email_delivery_failed`, аудитом `email_verification_replay_detected` и `email_verification_expired`.
+  5. В `backend/app/api/mfa.py` эндпоинт `/api/v1/mfa/email/request` переведён на поддержку как авторизованных пользователей, так и неавторизованных неподтверждённых аккаунтов с защитой от перебора.
+  6. В `tests/integration/test_features_pg.py` убран временный обход политики; разработан `tests/integration/test_email_verification_pg.py` с 4 подробными тестами (полный сквозной путь, SMTP mock + failure resilience, replay + expiration + rate limit, default-off). Все тесты пройдены (100% pass).
+
+---
+
+### BUG-012: Отсутствие реального браузерного тестирования Passkey (WebAuthn), потеря traces в Playwright и неполнота WebAuthn жизненного цикла
+- **Требование**: G4-PASSKEY, QA-11, TEST-UI-01, SEC-FLAG-04.
+- **Серьёзность**: High.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. В `frontend/playwright.config.ts` задан `trace: "on-first-retry"` при `retries: 0`, что приводило к потере trace-артефактов при любом падении тестов в CI/локально.
+  2. В `frontend/src/pages/DashboardPage.tsx` отсутствовал интерактивный интерфейс управления Passkey (регистрация через `navigator.credentials.create`, листинг зарегистрированных ключей, удаление ключей).
+  3. В `frontend/src/pages/LoginPage.tsx` отсутствовал сценарий входа по Passkey через WebAuthn API браузера и поддержка Passkey на шаге MFA.
+  4. В `backend/app/services/mfa_service.py`:
+     - `credential_id` декодировался через `.decode("utf-8", errors="ignore")`, что приводило к повреждению случайных бинарных последовательностей WebAuthn credential ID;
+     - При верификации входа брался первый попавшийся ключ `creds[0]`, что делало невозможным использование нескольких ключей (Multi-device / multiple credentials);
+     - Поиск challenge для входа был завязан строго на `user_id == user.id`, что препятствовало сопоставлению выданного challenge при входе без предварительной сессии.
+  5. Отсутствовал сквозной браузерный E2E-тест с виртуальным аутентификатором WebAuthn (Playwright CDP session).
+- **Ожидаемое поведение**:
+  1. `trace: "retain-on-failure"` гарантирует сохранение архива trace при падении любого теста.
+  2. В UI доступны регистрация, отображение и удаление Passkeys в Dashboard, а также вход по Passkey на странице входа и на шаге MFA.
+  3. Бэкенд корректно хранит Base64URL-кодированные `credential_id`, поддерживает выбор точного ключа по `rawId` из assertion, проверяет challenge, RP ID, origin и удаление ключей.
+  4. Playwright E2E-тест с виртуальным аутентификатором Chrome DevTools Protocol (`WebAuthn.enable`, `WebAuthn.addVirtualAuthenticator`) проверяет регистрацию двух ключей, вход по Passkey, удаление одного из ключей, проверку неработоспособности удалённого ключа и негативные сценарии (неверный challenge, неверный origin) без mock-заглушек бэкенда.
+- **Исправление**:
+  1. В `frontend/playwright.config.ts` установлен `trace: "retain-on-failure"`.
+  2. В `backend/app/services/mfa_service.py` реализована поддержка безопасного кодирования Base64URL для `credential_id` (`_cred_id_to_bytes`), сопоставление ключей по `credential_id` из assertion среди всех ключей пользователя или всей базы при passwordless auth, атомарное погашение challenge при верификации, методы `list_credentials` и `delete_passkey`.
+  3. В `backend/app/api/mfa.py` эндпоинты Passkey расширены поддержкой passwordless auth (поиск пользователя по ID ключа), верификации MFA шага, листинга `/credentials` (GET) и удаления `/credentials/{credential_id}` (DELETE).
+  4. В `frontend/src/utils/webauthn.ts` реализованы утилиты конвертации WebAuthn бинарных буферов и Base64URL.
+  5. В `frontend/src/api/client.ts`, `frontend/src/pages/DashboardPage.tsx` и `frontend/src/pages/LoginPage.tsx` реализован полноценный интерфейс регистрации, листинга и удаления ключей, а также входа по Passkey на главной странице и на шаге MFA.
+  6. В `tests/integration/test_passkey_pg.py` реализованы 4 интеграционных теста на реальном PostgreSQL (изоляция default-off с HTTP 404, сохранение options/challenge, регистрация множественных ключей и удаление, отрицательные криптографические проверки WebAuthn без моков). Все 4 теста пройдены успешно (100% pass).
+  7. В `frontend/e2e/passkey.spec.ts` реализованы 4 сквозных Playwright E2E-теста с виртуальным аутентификатором Chrome DevTools Protocol (`WebAuthn.enable`, `WebAuthn.addVirtualAuthenticator`), проверяющие видимость capabilities, регистрацию нескольких ключей на разных устройствах, беспарольный вход и отказ удалённого ключа. Все 4 теста пройдены успешно (100% pass).
+
+---
+
+### BUG-013: Отсутствие проверки доверенных прокси (IP spoofing rate limit bypass) и отсутствие межпроцессной валидации лимитов на независимых процессах
+- **Требование**: G4-LIMITS, QA-09, SEC Section 4(4).
+- **Серьёзность**: High.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. Функция `get_client_ip` в `backend/app/core/rate_limit.py` извлекала заголовок `X-Forwarded-For` без предварительной валидации доверенных прокси (`trusted proxies`). Недоверенный клиент мог слать произвольные значения заголовков `X-Forwarded-For` или `X-Real-IP`, подменять свой IP и неограниченно отправлять запросы в обход лимитера (rate limiting bypass via IP spoofing).
+  2. В `tests/integration/test_concurrency_pg.py` тест распределённых лимитов выполнял последовательные запросы к одному ASGI-приложению через один экземпляр TestClient в памяти одного процесса, что не проверяло фактическое межпроцессное взаимодействие независимых процессов через PostgreSQL.
+  3. При сбое сессии базы данных лимитеры не обеспечивали строгое поведение `fail-closed` (HTTP 503), допуская потенциальный пропуск нелимитированного трафика при сбоях СУБД.
+- **Ожидаемое поведение**:
+  1. `get_client_ip` принимает forwarding-заголовки (`X-Forwarded-For`, `X-Real-IP`) исключительно тогда, когда непосредственный сетевой пир (`client.host`) входит в список доверенных прокси (`TRUSTED_PROXIES`). Для недоверенных источников любые forwarding-заголовки игнорируются, а IP берётся строго из сокета.
+  2. Межпроцессное ограничение проверяется на как минимум двух независимых процессах ОС (Uvicorn), подключенных к общей PostgreSQL.
+  3. При сбое PostgreSQL лимитер переходит в режим `fail-closed` (HTTP 503 Service Unavailable).
+- **Исправление**:
+  1. В `backend/app/config.py` добавлена конфигурация `TRUSTED_PROXIES` со списком доверенных IP/CIDR и валидатором форматов IPv4/IPv6/сетей.
+  2. В `backend/app/core/rate_limit.py` реализована функция `is_trusted_proxy` и обновлена `get_client_ip`: при недоверенном пире заголовок `X-Forwarded-For` отбрасывается.
+  3. В `check_registration_rate_limit` и `check_email_request_rate_limit` реализован режим `fail-closed`: при исключениях базы данных возвращается `HTTP 503 Service Unavailable` с детализацией `audit_storage_unavailable`.
+  4. Создан `tests/integration/test_distributed_rate_limiting_pg.py`:
+     - `test_trusted_proxy_validation_and_spoofing_defense`: модульная проверка доверенных/недоверенных IP и CIDR;
+     - `test_spoofed_headers_cannot_bypass_rate_limit_pg`: тест на PostgreSQL, доказывающий, что подделка заголовков не позволяет обойти блокировку HTTP 429;
+     - `test_inter_process_distributed_rate_limiting_real_processes_pg`: запуск двух реальных независимых процессов Uvicorn (порты 8011 и 8012), использующих общую PostgreSQL. 5 запросов к Процессу 1 исчерпывают лимит; 6-й запрос к Процессу 2 немедленно отклоняется с кодом HTTP 429 (`rate_limit_exceeded`);
+     - `test_fail_closed_on_database_failure`: подтверждение возврата HTTP 503 при разрыве соединения с базой.
+     Все 4 теста успешно пройдены (100% pass).
+
+---
+
+### BUG-014: Ошибки конфигурации GitHub Actions CI: сбой сбора тестов SDK в бэкенд-джобе, отсутствие миграций, отсутствие переменной TEST_DATABASE_URL и роль 'root' в PostgreSQL healthcheck
+- **Требование**: G4-CI, QA-14, Section 2 GOAL-03, Section 3 GOAL-04.
+- **Серьёзность**: Critical.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. В подтверждённом baseline CI run [36027756634](https://github.com/alxprgstech/sso/actions/runs/36027756634) на коммите `2c1de5b668482d2bc11707fe565e3d1ab8711f4c` джоба `backend-lint-and-test` завершалась сбоем на этапе сбора тестов pytest с ошибкой `ModuleNotFoundError: No module named 'alxprgs_sso'` при импорте `tests/test_python_sdk.py`, так как SDK не был установлен в виртуальное окружение бэкенда.
+  2. Сервисный контейнер `postgres:16-alpine` в логах фиксировал ошибку `role "root" does not exist`, так как healthcheck выполнялся командой `pg_isready` без указания пользователя.
+  3. В джобе тестирования бэкенда отсутствовал шаг применения миграций `alembic upgrade head`, из-за чего на чистой базе сервиса отсутствовали необходимые таблицы (`roles`, `system_configuration`, `users`).
+  4. В CI шагах запуска pytest передавался `DATABASE_URL`, но отсутствовала обязательная переменная `TEST_DATABASE_URL`, что в соответствии с G4-DB приводило бы к блокировке `TestDatabaseSafetyError`.
+  5. Отсутствовала CI-джоба для автоматического прогона сквозных браузерных E2E-тестов Playwright с автоматической подготовкой синтетических учетных записей.
+- **Ожидаемое поведение**:
+  1. Pytest в бэкенд-джобе не падает при отсутствии установленного SDK (`tests/test_python_sdk.py` пропускается или игнорируется, так как SDK изолированно тестируется в `sdk-build-and-test`).
+  2. Healthcheck сервиса PostgreSQL выполняется от имени пользователя `sso_user`.
+  3. Перед запуском тестов к базе данных автоматически применяются миграции `alembic upgrade head`.
+  4. Задана обязательная переменная `TEST_DATABASE_URL`.
+  5. Реализован скрипт генерации синтетических учетных записей `scripts/prepare_e2e_data.py` и добавлена CI-джоба `playwright-e2e`.
+- **Исправление**:
+  1. В `tests/test_python_sdk.py` добавлен безопасный импорт с вызовом `pytest.skip(..., allow_module_level=True)` при отсутствии пакета `alxprgs_sso`.
+  2. В `.github/workflows/ci.yml` шаг запуска тестов бэкенда дополнен флагом `--ignore=tests/test_python_sdk.py`.
+  3. Сервисный контейнер `postgres:16-alpine` обновлен опцией `--health-cmd "pg_isready -U sso_user -d alxprgs_sso_test"`.
+  4. В `.github/workflows/ci.yml` добавлен шаг выполнения миграций `cd backend && alembic upgrade head` перед запуском тестов.
+  5. В переменные окружения CI тестов добавлен `TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test`.
+  6. Разработан скрипт `scripts/prepare_e2e_data.py`, атомарно создающий в тестовой базе администратора `compose_admin` и синтетических пользователей Passkey (`e2e_passkey_multi_user`, `e2e_passkey_login_user`, `e2e_passkey_delete_user`) с очисткой устаревших учетных данных.
+  7. В `.github/workflows/ci.yml` добавлена джоба `playwright-e2e` для автоматического запуска полного набора браузерных тестов в среде GitHub Actions.

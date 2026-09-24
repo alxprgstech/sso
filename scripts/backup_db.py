@@ -27,12 +27,22 @@ def calculate_sha256(file_path: Path) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Backup ALXPRGS SSO Database")
     parser.add_argument("--output-dir", default="backups", help="Directory to save backup files")
-    parser.add_argument("--docker", action="store_true", help="Execute pg_dump inside running docker container")
+    parser.add_argument(
+        "--docker", action="store_true", help="Execute pg_dump inside running docker container"
+    )
     parser.add_argument("--container", default="alxprgs-sso-db", help="Docker container name")
-    parser.add_argument("--host", default=os.getenv("POSTGRES_HOST", "localhost"), help="PostgreSQL host")
-    parser.add_argument("--port", default=os.getenv("POSTGRES_PORT", "5432"), help="PostgreSQL port")
-    parser.add_argument("--user", default=os.getenv("POSTGRES_USER", "sso_user"), help="PostgreSQL user")
-    parser.add_argument("--db", default=os.getenv("POSTGRES_DB", "sso_db"), help="PostgreSQL database name")
+    parser.add_argument(
+        "--host", default=os.getenv("POSTGRES_HOST", "localhost"), help="PostgreSQL host"
+    )
+    parser.add_argument(
+        "--port", default=os.getenv("POSTGRES_PORT", "5432"), help="PostgreSQL port"
+    )
+    parser.add_argument(
+        "--user", default=os.getenv("POSTGRES_USER", "sso_user"), help="PostgreSQL user"
+    )
+    parser.add_argument(
+        "--db", default=os.getenv("POSTGRES_DB", "sso_db"), help="PostgreSQL database name"
+    )
 
     args = parser.parse_args()
 
@@ -48,12 +58,21 @@ def main():
         if args.docker:
             # Check docker command
             cmd = [
-                "docker", "exec", "-t", args.container,
-                "pg_dump", "-U", args.user, "-d", args.db, "--clean", "--if-exists"
+                "docker",
+                "exec",
+                "-t",
+                args.container,
+                "pg_dump",
+                "-U",
+                args.user,
+                "-d",
+                args.db,
+                "--clean",
+                "--if-exists",
             ]
             print(f"[*] Executing via Docker container '{args.container}'...")
             with open(backup_file, "wb") as f:
-                res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
+                subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
         else:
             # Check pg_dump locally
             pg_dump_path = shutil.which("pg_dump")
@@ -61,24 +80,38 @@ def main():
                 # If pg_dump not found locally, try docker container as fallback
                 print("[!] 'pg_dump' not found in PATH, attempting docker fallback...")
                 cmd = [
-                    "docker", "exec", "-i", args.container,
-                    "pg_dump", "-U", args.user, "-d", args.db, "--clean", "--if-exists"
+                    "docker",
+                    "exec",
+                    "-i",
+                    args.container,
+                    "pg_dump",
+                    "-U",
+                    args.user,
+                    "-d",
+                    args.db,
+                    "--clean",
+                    "--if-exists",
                 ]
                 with open(backup_file, "wb") as f:
-                    res = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
+                    subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
             else:
                 env = os.environ.copy()
                 if "POSTGRES_PASSWORD" in os.environ:
                     env["PGPASSWORD"] = os.environ["POSTGRES_PASSWORD"]
                 cmd = [
                     pg_dump_path,
-                    "-h", args.host,
-                    "-p", str(args.port),
-                    "-U", args.user,
-                    "-d", args.db,
+                    "-h",
+                    args.host,
+                    "-p",
+                    str(args.port),
+                    "-U",
+                    args.user,
+                    "-d",
+                    args.db,
                     "--clean",
                     "--if-exists",
-                    "-f", str(backup_file)
+                    "-f",
+                    str(backup_file),
                 ]
                 print(f"[*] Executing pg_dump on {args.host}:{args.port}...")
                 subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)

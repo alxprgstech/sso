@@ -106,7 +106,9 @@ def update_package_json_version(file_path: Path, new_semver_version: str) -> boo
     data = json.loads(file_path.read_text(encoding="utf-8"))
     if data.get("version") != new_semver_version:
         data["version"] = new_semver_version
-        file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        file_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         return True
     return False
 
@@ -122,7 +124,9 @@ def update_changelog(new_version: str) -> None:
         return
 
     unreleased_pattern = r"(## \[Unreleased\]\n)"
-    replacement = f"\\1\n## [{new_version}] - {today}\n\n### Изменено\n- Выпуск версии {new_version}.\n"
+    replacement = (
+        f"\\1\n## [{new_version}] - {today}\n\n### Изменено\n- Выпуск версии {new_version}.\n"
+    )
     new_content = re.sub(unreleased_pattern, replacement, content)
     CHANGELOG_FILE.write_text(new_content, encoding="utf-8")
 
@@ -160,13 +164,17 @@ def check_consistency() -> bool:
     semver_version = read_root_version()
     pep440_version = semver_to_pep440(semver_version)
     all_ok = True
-    print(f"Проверка согласованности версий (root SemVer={semver_version}, PEP440={pep440_version}):")
+    print(
+        f"Проверка согласованности версий (root SemVer={semver_version}, PEP440={pep440_version}):"
+    )
 
     if BACKEND_PYPROJECT.exists():
         content = BACKEND_PYPROJECT.read_text(encoding="utf-8")
         match = re.search(r'(?m)^version\s*=\s*["\']([^"\']+)["\']', content)
         if not match or match.group(1) != pep440_version:
-            print(f"  [FAIL] {BACKEND_PYPROJECT}: ожидается '{pep440_version}', найдено '{match.group(1) if match else 'None'}'")
+            print(
+                f"  [FAIL] {BACKEND_PYPROJECT}: ожидается '{pep440_version}', найдено '{match.group(1) if match else 'None'}'"
+            )
             all_ok = False
         else:
             print(f"  [OK] {BACKEND_PYPROJECT}")
@@ -175,7 +183,9 @@ def check_consistency() -> bool:
         content = SDK_PYPROJECT.read_text(encoding="utf-8")
         match = re.search(r'(?m)^version\s*=\s*["\']([^"\']+)["\']', content)
         if not match or match.group(1) != pep440_version:
-            print(f"  [FAIL] {SDK_PYPROJECT}: ожидается '{pep440_version}', найдено '{match.group(1) if match else 'None'}'")
+            print(
+                f"  [FAIL] {SDK_PYPROJECT}: ожидается '{pep440_version}', найдено '{match.group(1) if match else 'None'}'"
+            )
             all_ok = False
         else:
             print(f"  [OK] {SDK_PYPROJECT}")
@@ -183,7 +193,9 @@ def check_consistency() -> bool:
     if FRONTEND_PACKAGE_JSON.exists():
         data = json.loads(FRONTEND_PACKAGE_JSON.read_text(encoding="utf-8"))
         if data.get("version") != semver_version:
-            print(f"  [FAIL] {FRONTEND_PACKAGE_JSON}: ожидается '{semver_version}', найдено '{data.get('version')}'")
+            print(
+                f"  [FAIL] {FRONTEND_PACKAGE_JSON}: ожидается '{semver_version}', найдено '{data.get('version')}'"
+            )
             all_ok = False
         else:
             print(f"  [OK] {FRONTEND_PACKAGE_JSON}")
@@ -235,7 +247,7 @@ def main() -> None:
     set_parser = subparsers.add_parser("set", help="Установить точную версию")
     set_parser.add_argument("version", help="Новая версия SemVer (например, 0.2.0 или 1.0.0-rc.1)")
 
-    sync_parser = subparsers.add_parser("sync", help="Синхронизировать все компоненты с файлом VERSION")
+    subparsers.add_parser("sync", help="Синхронизировать все компоненты с файлом VERSION")
 
     args = parser.parse_args()
 

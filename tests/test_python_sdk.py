@@ -6,13 +6,21 @@ from unittest.mock import patch
 
 import jwt
 import pytest
-from alxprgs_sso import (
-    InvalidTokenError,
-    SSOClient,
-    TokenExpiredError,
-    UserClaims,
-)
-from alxprgs_sso.fastapi import SSOFastAPISecurity
+
+try:
+    from alxprgs_sso import (
+        InvalidTokenError,
+        SSOClient,
+        TokenExpiredError,
+        UserClaims,
+    )
+    from alxprgs_sso.fastapi import SSOFastAPISecurity
+except ImportError:
+    pytest.skip(
+        "Python SDK 'alxprgs_sso' is not installed in the current environment; "
+        "SDK tests are executed in the isolated wheel environment (sdk-build-and-test).",
+        allow_module_level=True,
+    )
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient

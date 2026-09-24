@@ -35,8 +35,9 @@ app = FastAPI(title="Resource Server")
 sso_sec = SSOFastAPISecurity(
     server_url="https://auth.alxprgs.tech",
     audience="my_service_api",
-    expected_issuer="https://auth.alxprgs.tech"
+    expected_issuer="https://auth.alxprgs.tech",
 )
+
 
 # Защищенный маршрут, доступный любому аутентифицированному пользователю
 @app.get("/api/v1/profile")
@@ -47,6 +48,7 @@ async def get_profile(user: UserClaims = Depends(sso_sec.get_current_user)):
         "email": user.email,
         "roles": user.roles,
     }
+
 
 # Маршрут с ролевым контролем доступа (RBAC)
 @app.post("/api/v1/admin/manage")
@@ -70,26 +72,28 @@ client = SSOClient(
     redirect_uri="https://portal.alxprgs.tech/callback",
 )
 
+
 @app.get("/login")
 def login(request: Request):
     # Генерация авторизационного URL с PKCE S256
     auth_data = client.generate_authorization_url(state="random_state")
-    
+
     # Сохраняем auth_data["code_verifier"] в сессии пользователя!
     request.session["pkce_verifier"] = auth_data["code_verifier"]
-    
+
     return RedirectResponse(auth_data["url"])
+
 
 @app.get("/callback")
 async def callback(request: Request, code: str, state: str):
     verifier = request.session.get("pkce_verifier")
-    
+
     # Обмен кода на токены с валидацией PKCE
     tokens = await client.exchange_code_for_tokens(code=code, code_verifier=verifier)
-    
+
     # Валидация access токена по удаленному JWKS
     claims = await client.validate_access_token(tokens.access_token)
-    
+
     return {"message": "Успешный вход в SSO", "username": claims.preferred_username}
 ```
 

@@ -72,7 +72,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U sso_user -d alxprgs_sso_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -97,8 +97,17 @@ jobs:
           ruff check backend/ tests/
           ruff format --check backend/ tests/
 
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
+        run: |
+          cd backend && alembic upgrade head
+
       - name: Run Backend Tests on PostgreSQL (Default-off profile)
         env:
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
@@ -110,10 +119,11 @@ jobs:
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
         run: |
-          pytest -v tests/
+          pytest -v --ignore=tests/test_python_sdk.py tests/
 
       - name: Run MFA & Feature Flags Tests (Enabled profile)
         env:
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
@@ -124,7 +134,7 @@ jobs:
           REQUIRE_VERIFIED_EMAIL: "true"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
         run: |
-          pytest -v tests/test_mfa_features.py
+          pytest -v tests/test_mfa_features.py tests/integration/test_email_verification_pg.py tests/integration/test_passkey_pg.py tests/integration/test_distributed_rate_limiting_pg.py
 
   sdk-build-and-test:
     name: SDK Package Build & Clean Install
@@ -174,3 +184,121 @@ jobs:
         run: |
           npm run typecheck
           npm run build
+
+  playwright-e2e:
+    name: Playwright E2E Browser Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sso_user
+          POSTGRES_PASSWORD: sso_test_password
+          POSTGRES_DB: alxprgs_sso_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sso_user -d alxprgs_sso_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]"
+
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
+        run: |
+          cd backend && alembic upgrade head
+
+      - name: Seed Synthetic E2E Test Accounts
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+        run: |
+          python scripts/prepare_e2e_data.py
+
+      - name: Install frontend dependencies and Playwright Chromium
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Start Backend Server (Enabled Profile)
+        env:
+          DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
+          FEATURE_TOTP_ENABLED: "true"
+          FEATURE_PASSKEY_ENABLED: "true"
+          FEATURE_RECOVERY_CODES_ENABLED: "true"
+          FEATURE_EMAIL_VERIFICATION_ENABLED: "true"
+          REQUIRE_VERIFIED_EMAIL: "true"
+          TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+          JWT_PRIVATE_KEY_PEM: ""
+          ISSUER: "https://auth.alxprgs.tech"
+          PORT: "8000"
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          for i in $(seq 1 30); do
+            if curl -s http://127.0.0.1:8000/health/live | grep -q "ok"; then
+              echo "Backend is live!"
+              break
+            fi
+            echo "Waiting for backend..."
+            sleep 1
+          done
+
+      - name: Start Frontend Preview Server
+        working-directory: frontend
+        run: |
+          npm run build
+          npm run preview -- --host 127.0.0.1 --port 5173 &
+          for i in $(seq 1 30); do
+            if curl -s http://127.0.0.1:5173/ | grep -q "html"; then
+              echo "Frontend preview is live!"
+              break
+            fi
+            echo "Waiting for frontend..."
+            sleep 1
+          done
+
+      - name: Run Playwright E2E Tests
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5173"
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+        run: |
+          npm run test:e2e
+
+      - name: Upload Playwright Artifacts on Failure
+        if: failure()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 14

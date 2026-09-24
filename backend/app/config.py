@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
-from pydantic import model_validator
+from typing import Any, Literal
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     BASE_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:5173"
+    TRUSTED_PROXIES: list[str] | str = ["127.0.0.1", "::1"]
 
     # OIDC параметры
     OIDC_ISSUER: str = "https://auth.alxprgs.tech"
@@ -69,6 +70,22 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "no-reply@alxprgs.tech"
     SMTP_USE_TLS: bool = False
+
+    @field_validator("TRUSTED_PROXIES", mode="after")
+    @classmethod
+    def parse_trusted_proxies(cls, val: Any) -> list[str]:
+        if isinstance(val, str):
+            if val.startswith("[") and val.endswith("]"):
+                import json
+
+                try:
+                    return json.loads(val)
+                except Exception:
+                    pass
+            return [x.strip() for x in val.split(",") if x.strip()]
+        if isinstance(val, list):
+            return val
+        return ["127.0.0.1", "::1"]
 
     @model_validator(mode="after")
     def validate_feature_invariants(self) -> Settings:

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
-from fastapi import FastAPI, Depends, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+
 from alxprgs_sso import SSOClient, UserClaims
 from alxprgs_sso.fastapi import SSOFastAPISecurity
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 SSO_SERVER_URL = os.getenv("SSO_SERVER_URL", "http://localhost:8000")
 CLIENT_ID = os.getenv("CLIENT_ID", "client_analytics_app")

@@ -13,9 +13,10 @@ Usage:
 import argparse
 import secrets
 from pathlib import Path
+
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.fernet import Fernet
 
 
 def generate_rsa_keypair(bits: int = 2048) -> tuple[bytes, bytes]:
@@ -36,9 +37,15 @@ def generate_rsa_keypair(bits: int = 2048) -> tuple[bytes, bytes]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Rotate or generate ALXPRGS SSO encryption and signing keys")
-    parser.add_argument("--output-dir", default=None, help="Directory to save generated RSA PEM files")
-    parser.add_argument("--bits", type=int, default=2048, choices=[2048, 4096], help="RSA key size in bits")
+    parser = argparse.ArgumentParser(
+        description="Rotate or generate ALXPRGS SSO encryption and signing keys"
+    )
+    parser.add_argument(
+        "--output-dir", default=None, help="Directory to save generated RSA PEM files"
+    )
+    parser.add_argument(
+        "--bits", type=int, default=2048, choices=[2048, 4096], help="RSA key size in bits"
+    )
 
     args = parser.parse_args()
 
@@ -66,7 +73,9 @@ def main():
     secret_key = secrets.token_hex(32)
     print(f"[+] SECRET_KEY (Hex):           {secret_key}")
 
-    print("\n[!] Keep private and encryption keys secret. Store securely in production environments.")
+    print(
+        "\n[!] Keep private and encryption keys secret. Store securely in production environments."
+    )
 
 
 if __name__ == "__main__":

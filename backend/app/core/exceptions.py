@@ -20,10 +20,14 @@ class FeatureDisabledException(HTTPException):
 
 
 class AuthenticationException(HTTPException):
-    def __init__(self, detail: str = "Неверный логин или пароль") -> None:
+    def __init__(
+        self,
+        detail: str = "Неверный логин или пароль",
+        error: str = "invalid_credentials",
+    ) -> None:
         super().__init__(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": "invalid_credentials", "detail": detail},
+            detail={"error": error, "detail": detail},
         )
 
 
