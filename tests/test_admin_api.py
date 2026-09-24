@@ -1,22 +1,22 @@
 import os
 import sys
 import uuid
-import pytest
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from fastapi.testclient import TestClient
-from app.main import app
-from app.models.user import User, Role, PasswordCredential
-from app.models.session import Session
-from app.models.oidc import OIDCClient, OIDCRedirectUri
-from app.models.audit import AuditEvent
-from app.api.deps import get_current_user, get_current_session, require_admin_user, get_db, verify_csrf
+from app.api.deps import (
+    get_current_user,
+)
 from app.core.exceptions import AuthorizationException
-from app.services.admin_service import AdminService
 from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin
+from app.main import app
+from app.models.oidc import OIDCClient, OIDCRedirectUri
+from app.models.user import Role, User
+from app.services.admin_service import AdminService
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -69,8 +69,8 @@ async def test_last_admin_protection():
 
     # Моделируем, что в базе ровно 1 активный администратор
     mock_db.execute.side_effect = [
-        MagicMock(scalar_one_or_none=MagicMock(return_value=1)),        # count = 1
-        MagicMock(scalar_one_or_none=MagicMock(return_value=admin_id)), # this user is the admin
+        MagicMock(scalar_one_or_none=MagicMock(return_value=1)),  # count = 1
+        MagicMock(scalar_one_or_none=MagicMock(return_value=admin_id)),  # this user is the admin
     ]
 
     with pytest.raises(AuthorizationException) as exc_info:
@@ -86,15 +86,19 @@ async def test_admin_service_create_and_update_user():
     mock_db.execute.side_effect = [
         MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # unique check
         MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # select Role
-        MagicMock(scalar_one_or_none=MagicMock(return_value=User(
-            id=uuid.uuid4(),
-            username="newuser",
-            email="new@alxprgs.tech",
-            is_active=True,
-            is_superuser=False,
-            email_verified=False,
-            roles=[Role(name="user")],
-        ))),  # get_user_by_id return
+        MagicMock(
+            scalar_one_or_none=MagicMock(
+                return_value=User(
+                    id=uuid.uuid4(),
+                    username="newuser",
+                    email="new@alxprgs.tech",
+                    is_active=True,
+                    is_superuser=False,
+                    email_verified=False,
+                    roles=[Role(name="user")],
+                )
+            )
+        ),  # get_user_by_id return
     ]
 
     created = await AdminService.create_user(
@@ -144,7 +148,9 @@ async def test_admin_client_secret_shown_once():
     assert client_obj.client_id == "client_12345"
 
     # При ротации секрет генерируется заново
-    mock_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=created_client))
+    mock_db.execute.return_value = MagicMock(
+        scalar_one_or_none=MagicMock(return_value=created_client)
+    )
     _, rotated_secret = await AdminService.rotate_client_secret(mock_db, "client_12345")
     assert rotated_secret is not None
     assert rotated_secret.startswith("sec_")

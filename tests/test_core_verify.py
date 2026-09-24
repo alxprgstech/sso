@@ -1,14 +1,17 @@
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.config import get_settings
-from app.database import Base
-from app.models import User, Role, Session, OIDCClient, TOTPCredential
-from app.core.security import hash_password, verify_password, create_jwt, decode_jwt, get_jwks, verify_pkce
-from app.core.exceptions import FeatureDisabledException
-from app.core.rbac import ROLE_ADMIN, ROLE_USER
-from app.services.audit_service import AuditService
+from app.core.security import (
+    create_jwt,
+    decode_jwt,
+    get_jwks,
+    hash_password,
+    verify_password,
+    verify_pkce,
+)
 
 
 def test_core_security() -> None:

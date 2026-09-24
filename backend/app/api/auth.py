@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import (
-    generate_csrf_token,
     get_cookie_name,
     get_current_session,
     get_current_user,
@@ -16,29 +15,99 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
+from app.core.rate_limit import get_client_ip
 from app.schemas.auth import (
     CapabilitiesResponse,
     ChangePasswordRequest,
     LoginRequest,
     MFAStepRequiredResponse,
+    RegisterRequest,
+    RegisterResponse,
     SessionInfoResponse,
     UserProfileResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
+from app.services.system_service import SystemService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 
 @router.get("/capabilities", response_model=CapabilitiesResponse)
-async def get_capabilities(settings: Settings = Depends(get_settings)) -> CapabilitiesResponse:
-    """Безопасная витрина возможностей сервера (SEC-FLAG-01)."""
+async def get_capabilities(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> CapabilitiesResponse:
+    """Безопасная витрина возможностей сервера (SEC-FLAG-01, REG-03)."""
+    try:
+        reg_mode = await SystemService.get_registration_mode(db)
+    except Exception:
+        reg_mode = "closed"
+
     return CapabilitiesResponse(
         totp_enabled=settings.FEATURE_TOTP_ENABLED,
         passkey_enabled=settings.FEATURE_PASSKEY_ENABLED,
         recovery_codes_enabled=settings.FEATURE_RECOVERY_CODES_ENABLED,
         email_verification_enabled=settings.FEATURE_EMAIL_VERIFICATION_ENABLED,
         require_verified_email=settings.REQUIRE_VERIFIED_EMAIL,
+        registration_mode=reg_mode,
+    )
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+async def register(
+    payload: RegisterRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RegisterResponse:
+    """
+    Самостоятельная регистрация обычного пользователя (REG-01..REG-09).
+    """
+    # Защита от межсайтовой подделки / недоверенного Origin (REG-07)
+    origin = request.headers.get("Origin")
+    if origin:
+        from urllib.parse import urlparse
+
+        origin_host = urlparse(origin).netloc.split(":")[0].lower()
+        allowed_hosts = {
+            "localhost",
+            "127.0.0.1",
+            "auth.alxprgs.tech",
+            "alxprgs.tech",
+            urlparse(settings.BASE_URL).netloc.split(":")[0].lower(),
+            urlparse(settings.FRONTEND_URL).netloc.split(":")[0].lower(),
+        }
+        if origin_host not in allowed_hosts:
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "invalid_origin",
+                    "detail": "Запрос отклонен: недоверенный Origin",
+                },
+            )
+
+    ip = get_client_ip(request)
+    ua = request.headers.get("User-Agent")
+
+    user = await AuthService.register_user(
+        db=db,
+        username=payload.username,
+        email=payload.email,
+        password=payload.password,
+        ip_address=ip,
+        user_agent=ua,
+        settings=settings,
+    )
+
+    return RegisterResponse(
+        status="ok",
+        message="Учётная запись успешно создана. Теперь вы можете войти.",
+        user_id=user.id,
+        username=user.username,
+        email=user.email,
     )
 
 
@@ -59,6 +128,7 @@ async def login(
         password=payload.password,
         ip_address=ip,
         user_agent=ua,
+        settings=settings,
     )
 
     if mfa_required and mfa_token:
@@ -108,7 +178,7 @@ async def login(
     }
 
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[Depends(verify_csrf)])
 async def logout(
     request: Request,
     response: Response,
@@ -181,7 +251,9 @@ async def list_sessions(
     current_session: Session = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ) -> list[SessionInfoResponse]:
-    stmt = select(Session).where(Session.user_id == user.id).order_by(Session.last_activity_at.desc())
+    stmt = (
+        select(Session).where(Session.user_id == user.id).order_by(Session.last_activity_at.desc())
+    )
     sessions = (await db.execute(stmt)).scalars().all()
 
     return [

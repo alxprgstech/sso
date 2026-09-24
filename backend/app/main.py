@@ -6,11 +6,10 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -85,6 +84,7 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
 
 # --- Обработчики исключений безопасности ---
 
+
 @app.exception_handler(FeatureDisabledException)
 async def feature_disabled_exception_handler(request: Request, exc: FeatureDisabledException):
     return JSONResponse(
@@ -119,6 +119,7 @@ async def oauth_error_exception_handler(request: Request, exc: OAuthErrorExcepti
 
 # --- Системные эндпоинты Health / Readiness (Section 4.6) ---
 
+
 @app.get("/health/live", tags=["Health"])
 async def health_live() -> dict[str, str]:
     return {"status": "ok"}
@@ -140,6 +141,7 @@ async def health_ready(db: AsyncSession = Depends(get_db)) -> JSONResponse:
 
 
 # --- OpenID Connect Discovery & JWKS (SSO-01, SSO-06) ---
+
 
 @app.get("/.well-known/openid-configuration", tags=["OIDC"])
 async def oidc_configuration() -> dict[str, Any]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 import uuid
 from datetime import datetime, timezone
-from fastapi import Cookie, Depends, Header, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
@@ -130,6 +130,7 @@ def require_feature(flag_name: str):
     Зависимость FastAPI для проверки состояния флагов возможностей (SEC-FLAG-02).
     При выключенном флаге запрос немедленно прерывается со статусом 404 feature_disabled.
     """
+
     def _dependency(settings: Settings = Depends(get_settings)):
         enabled = getattr(settings, flag_name, False)
         if not enabled:
@@ -137,4 +138,5 @@ def require_feature(flag_name: str):
                 f"Функционал '{flag_name}' отключен конфигурацией сервера",
                 feature=flag_name,
             )
+
     return _dependency

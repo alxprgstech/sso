@@ -1,23 +1,21 @@
-import base64
-import hashlib
 import os
 import sys
 import uuid
+from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlparse
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, os.path.abspath("backend"))
 sys.path.insert(0, os.path.abspath("packages/python-sdk"))
 
-from fastapi.testclient import TestClient
-from app.main import app as sso_app
-from app.models.user import User, Role
-from app.models.oidc import OIDCClient, OIDCRedirectUri
-from app.services.oidc_service import OIDCService
+from alxprgs_sso import InvalidTokenError, SSOClient
 from app.config import get_settings
 from app.core.security import get_jwks
-from alxprgs_sso import SSOClient, UserClaims, InvalidTokenError
+from app.models.oidc import OIDCClient, OIDCRedirectUri
+from app.models.user import Role, User
+from app.services.oidc_service import OIDCService
+from fastapi.testclient import TestClient
 
 import examples.client1.app as client1_module
 import examples.client2.app as client2_module
@@ -88,7 +86,9 @@ async def test_seamless_sso_between_two_clients():
         client_type="public",
         is_active=True,
     )
-    oidc_client_1.redirect_uris = [OIDCRedirectUri(client_id=oidc_client_1.id, uri=client1_redirect)]
+    oidc_client_1.redirect_uris = [
+        OIDCRedirectUri(client_id=oidc_client_1.id, uri=client1_redirect)
+    ]
 
     client2_id = "client_docs_app"
     client2_redirect = "http://localhost:8002/callback"
@@ -99,13 +99,19 @@ async def test_seamless_sso_between_two_clients():
         client_type="public",
         is_active=True,
     )
-    oidc_client_2.redirect_uris = [OIDCRedirectUri(client_id=oidc_client_2.id, uri=client2_redirect)]
+    oidc_client_2.redirect_uris = [
+        OIDCRedirectUri(client_id=oidc_client_2.id, uri=client2_redirect)
+    ]
 
     mock_db = AsyncMock()
 
     # 3. Инициализируем SDK для обоих клиентов
-    sdk1 = SSOClient(server_url=settings.BASE_URL, client_id=client1_id, expected_issuer=settings.OIDC_ISSUER)
-    sdk2 = SSOClient(server_url=settings.BASE_URL, client_id=client2_id, expected_issuer=settings.OIDC_ISSUER)
+    sdk1 = SSOClient(
+        server_url=settings.BASE_URL, client_id=client1_id, expected_issuer=settings.OIDC_ISSUER
+    )
+    sdk2 = SSOClient(
+        server_url=settings.BASE_URL, client_id=client2_id, expected_issuer=settings.OIDC_ISSUER
+    )
     server_jwks = get_jwks()
 
     # ---- ШАГ А: Вход в Client 1 через SSO ----

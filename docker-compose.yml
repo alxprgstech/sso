@@ -4,49 +4,52 @@ services:
   db:
     image: postgres:16-alpine
     container_name: alxprgs-sso-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: sso_user
-      POSTGRES_PASSWORD: sso_secure_password
-      POSTGRES_DB: sso_db
+      POSTGRES_USER: ${POSTGRES_USER:-sso_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sso_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sso_db}
     volumes:
       - sso_db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sso_user -d sso_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sso_user} -d ${POSTGRES_DB:-sso_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - sso_network
+    # Порт БД не публикуется на хосте для защиты данных (SETUP-08)
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: alxprgs-sso-backend
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://sso_user:sso_secure_password@db:5432/sso_db
-      SECRET_KEY: ${SECRET_KEY:-insecure_dev_secret_key_change_in_production_32chars}
-      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
-      BASE_URL: http://localhost:8000
-      OIDC_ISSUER: https://auth.alxprgs.tech
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sso_user}:${POSTGRES_PASSWORD:-sso_secure_password}@db:5432/${POSTGRES_DB:-sso_db}
+      DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER:-sso_user}:${POSTGRES_PASSWORD:-sso_secure_password}@db:5432/${POSTGRES_DB:-sso_db}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=}
+      JWT_PRIVATE_KEY_PEM: ${JWT_PRIVATE_KEY_PEM:-}
+      JWT_KEY_ID: ${JWT_KEY_ID:-default-rsa-key-1}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      OIDC_ISSUER: ${OIDC_ISSUER:-https://auth.alxprgs.tech}
       FEATURE_TOTP_ENABLED: "false"
       FEATURE_PASSKEY_ENABLED: "false"
       FEATURE_RECOVERY_CODES_ENABLED: "false"
       FEATURE_EMAIL_VERIFICATION_ENABLED: "false"
       REQUIRE_VERIFIED_EMAIL: "false"
       LOG_LEVEL: INFO
-    ports:
-      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 6
     networks:
       - sso_network
 
@@ -55,16 +58,18 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: alxprgs-sso-frontend
+    restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "3000:80"
+      # Публикация строго на loopback (SETUP-08)
+      - "127.0.0.1:3000:80"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
-      interval: 10s
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 5
     networks:
       - sso_network
 

@@ -1,7 +1,11 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
-export const LoginPage: React.FC = () => {
+interface LoginPageProps {
+  onNavigateToRegister?: () => void;
+}
+
+export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) => {
   const { login, capabilities } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -110,6 +114,20 @@ export const LoginPage: React.FC = () => {
                   {loading ? "Выполняется вход..." : "Войти"}
                 </button>
               </div>
+
+              {/* Ссылка на регистрацию (отображается ТОЛЬКО при открытом режиме, REG-01, REG-03) */}
+              {capabilities?.registration_mode === "open" && onNavigateToRegister && (
+                <div className="pt-2 text-center">
+                  <span className="text-sm text-gray-600">Нет учётной записи? </span>
+                  <button
+                    type="button"
+                    onClick={onNavigateToRegister}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none underline"
+                  >
+                    Зарегистрироваться
+                  </button>
+                </div>
+              )}
             </form>
           ) : (
             <form onSubmit={handleMfaSubmit} className="space-y-5">
@@ -154,6 +172,12 @@ export const LoginPage: React.FC = () => {
               <div className="flex justify-between">
                 <span>Парольный вход:</span>
                 <span className="text-green-600 font-medium">Активен (Argon2id)</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Регистрация пользователей:</span>
+                <span className={capabilities.registration_mode === "open" ? "text-green-600 font-medium" : "text-gray-400"}>
+                  {capabilities.registration_mode === "open" ? "Открыта" : "Закрыта (по умолчанию)"}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>TOTP аутентификатор:</span>

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import uuid
 from typing import Any
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import (
     get_cookie_name,
-    get_current_session,
     get_current_user,
     require_feature,
     verify_csrf,
@@ -14,15 +12,12 @@ from app.api.deps import (
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException
 from app.database import get_db
-from app.models.session import Session
 from app.models.user import User
 from app.schemas.auth import UserProfileResponse
 from app.schemas.mfa import (
     EmailVerificationConfirmRequest,
     EmailVerificationRequest,
-    PasskeyAuthenticationOptionsResponse,
     PasskeyAuthenticationVerifyRequest,
-    PasskeyRegistrationOptionsResponse,
     PasskeyRegistrationVerifyRequest,
     RecoveryCodesResponse,
     RecoveryCodeVerifyRequest,
@@ -142,7 +137,9 @@ recovery_router = APIRouter(
 )
 
 
-@recovery_router.post("/generate", response_model=RecoveryCodesResponse, dependencies=[Depends(verify_csrf)])
+@recovery_router.post(
+    "/generate", response_model=RecoveryCodesResponse, dependencies=[Depends(verify_csrf)]
+)
 async def generate_recovery_codes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -301,7 +298,9 @@ async def confirm_email_verification(
 ) -> dict[str, str]:
     success = await EmailVerificationService.confirm_email(db, payload.token)
     if not success:
-        raise AuthenticationException("Токен подтверждения недействителен или срок его действия истёк")
+        raise AuthenticationException(
+            "Токен подтверждения недействителен или срок его действия истёк"
+        )
     return {"status": "ok", "message": "Адрес электронной почты успешно подтверждён"}
 
 

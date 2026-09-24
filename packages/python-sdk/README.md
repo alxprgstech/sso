@@ -42,6 +42,7 @@ sso_client = SSOClient(
 )
 security = SSOFastAPISecurity(sso_client)
 
+
 @app.get("/api/protected")
 async def protected_route(user: UserClaims = Depends(security.get_current_user)):
     return {
@@ -49,6 +50,7 @@ async def protected_route(user: UserClaims = Depends(security.get_current_user))
         "user_id": user.sub,
         "roles": user.roles,
     }
+
 
 @app.get("/api/admin-only")
 async def admin_route(user: UserClaims = Depends(security.require_role("admin"))):

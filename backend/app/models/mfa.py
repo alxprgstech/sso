@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class TOTPCredential(Base):
@@ -53,8 +57,12 @@ class WebAuthnChallenge(Base):
         nullable=True,
     )
     challenge: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    purpose: Mapped[str] = mapped_column(String(32), nullable=False)  # 'registration' | 'authentication'
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    purpose: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # 'registration' | 'authentication'
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
 
 
 class RecoveryCode(Base):
@@ -85,6 +93,8 @@ class EmailVerificationToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, nullable=False
+    )
 
     user: Mapped[User] = relationship("User")

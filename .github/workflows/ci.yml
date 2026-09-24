@@ -99,8 +99,9 @@ jobs:
 
       - name: Run Backend Tests on PostgreSQL (Default-off profile)
         env:
-          DATABASE_URL: postgresql+asyncpg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
-          DATABASE_URL_SYNC: postgresql://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
           FEATURE_TOTP_ENABLED: "false"
           FEATURE_PASSKEY_ENABLED: "false"
           FEATURE_RECOVERY_CODES_ENABLED: "false"
@@ -109,12 +110,13 @@ jobs:
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
         run: |
-          pytest -v tests/unit tests/integration tests/security
+          pytest -v tests/
 
       - name: Run MFA & Feature Flags Tests (Enabled profile)
         env:
-          DATABASE_URL: postgresql+asyncpg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
-          DATABASE_URL_SYNC: postgresql://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
           FEATURE_TOTP_ENABLED: "true"
           FEATURE_PASSKEY_ENABLED: "true"
           FEATURE_RECOVERY_CODES_ENABLED: "true"
@@ -122,7 +124,7 @@ jobs:
           REQUIRE_VERIFIED_EMAIL: "true"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
         run: |
-          pytest -v tests/mfa
+          pytest -v tests/test_mfa_features.py
 
   sdk-build-and-test:
     name: SDK Package Build & Clean Install
@@ -145,8 +147,8 @@ jobs:
       - name: Test clean installation in isolated venv
         run: |
           python -m venv test_env
-          ./test_env/bin/pip install dist/sdk/*.whl pytest httpx fastapi
-          ./test_env/bin/pytest tests/sdk
+          ./test_env/bin/pip install dist/sdk/*.whl pytest httpx fastapi cryptography
+          ./test_env/bin/pytest packages/python-sdk/tests/test_sdk_isolated.py -v
 
   frontend-build:
     name: Frontend Build & Typecheck

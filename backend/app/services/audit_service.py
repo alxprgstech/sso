@@ -24,9 +24,17 @@ class AuditService:
         safe_details = {}
         if details:
             for k, v in details.items():
-                if any(secret_term in k.lower() for secret_term in [
-                    "password", "secret", "token", "code", "private_key", "cookie"
-                ]):
+                if any(
+                    secret_term in k.lower()
+                    for secret_term in [
+                        "password",
+                        "secret",
+                        "token",
+                        "code",
+                        "private_key",
+                        "cookie",
+                    ]
+                ):
                     safe_details[k] = "[REDACTED]"
                 else:
                     safe_details[k] = v

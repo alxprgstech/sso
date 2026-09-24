@@ -14,8 +14,13 @@ from app.schemas.admin import (
     AdminUserCreateRequest,
     AdminUserResponse,
     AdminUserUpdateRequest,
+    RegistrationModeUpdateRequest,
+    SystemStatusResponse,
 )
 from app.services.admin_service import AdminService
+from app.services.system_service import SystemService
+from app.core.rate_limit import get_client_ip
+from fastapi import Request
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin Panel"])
 
@@ -23,6 +28,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["Admin Panel"])
 # ==============================================================================
 # 1. ПОЛЬЗОВАТЕЛИ (USR-01..03, USR-07, USR-08)
 # ==============================================================================
+
 
 @router.get("/users", response_model=list[AdminUserResponse])
 async def list_users(
@@ -49,7 +55,12 @@ async def list_users(
     ]
 
 
-@router.post("/users", response_model=AdminUserResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(verify_csrf)])
+@router.post(
+    "/users",
+    response_model=AdminUserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(verify_csrf)],
+)
 async def create_user(
     payload: AdminUserCreateRequest,
     admin: User = Depends(require_admin_user),
@@ -99,7 +110,9 @@ async def get_user(
     )
 
 
-@router.patch("/users/{user_id}", response_model=AdminUserResponse, dependencies=[Depends(verify_csrf)])
+@router.patch(
+    "/users/{user_id}", response_model=AdminUserResponse, dependencies=[Depends(verify_csrf)]
+)
 async def update_user(
     user_id: uuid.UUID,
     payload: AdminUserUpdateRequest,
@@ -143,6 +156,7 @@ async def revoke_user_sessions(
 # 2. OIDC-КЛИЕНТЫ (USR-09, SSO-02)
 # ==============================================================================
 
+
 @router.get("/clients", response_model=list[AdminClientResponse])
 async def list_clients(
     offset: int = Query(0, ge=0),
@@ -166,7 +180,12 @@ async def list_clients(
     ]
 
 
-@router.post("/clients", response_model=AdminClientResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(verify_csrf)])
+@router.post(
+    "/clients",
+    response_model=AdminClientResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(verify_csrf)],
+)
 async def create_client(
     payload: AdminClientCreateRequest,
     admin: User = Depends(require_admin_user),
@@ -191,7 +210,11 @@ async def create_client(
     )
 
 
-@router.post("/clients/{client_id}/rotate-secret", response_model=AdminClientResponse, dependencies=[Depends(verify_csrf)])
+@router.post(
+    "/clients/{client_id}/rotate-secret",
+    response_model=AdminClientResponse,
+    dependencies=[Depends(verify_csrf)],
+)
 async def rotate_client_secret(
     client_id: str,
     admin: User = Depends(require_admin_user),
@@ -230,6 +253,7 @@ async def delete_client(
 # 3. АУДИТ (AUDIT-01..03)
 # ==============================================================================
 
+
 @router.get("/audit", response_model=list[AdminAuditEventResponse])
 async def list_audit(
     offset: int = Query(0, ge=0),
@@ -258,3 +282,56 @@ async def list_audit(
         )
         for e in events
     ]
+
+
+# ==============================================================================
+# 4. СОСТОЯНИЕ СИСТЕМЫ И РЕЖИМ РЕГИСТРАЦИИ (REG-02, SETUP-05)
+# ==============================================================================
+
+
+@router.get("/system/status", response_model=SystemStatusResponse)
+async def get_system_status(
+    admin: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> SystemStatusResponse:
+    """Получение текущего среза состояния системы и режима регистрации (REG-02)."""
+    config = await SystemService.get_or_create_configuration(db)
+    return SystemStatusResponse(
+        bootstrap_completed=config.bootstrap_completed,
+        bootstrap_completed_at=config.bootstrap_completed_at,
+        registration_mode=config.registration_mode,
+        updated_at=config.updated_at,
+    )
+
+
+@router.post(
+    "/system/registration-mode",
+    response_model=SystemStatusResponse,
+    dependencies=[Depends(verify_csrf)],
+)
+async def update_registration_mode(
+    payload: RegistrationModeUpdateRequest,
+    request: Request,
+    admin: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> SystemStatusResponse:
+    """
+    Переключение режима регистрации (closed / open) с обязательной повторной аутентификацией пароля (REG-02).
+    """
+    ip = get_client_ip(request)
+    ua = request.headers.get("User-Agent")
+
+    config = await SystemService.update_registration_mode(
+        db=db,
+        admin_user=admin,
+        admin_password=payload.current_admin_password,
+        new_mode=payload.mode,
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return SystemStatusResponse(
+        bootstrap_completed=config.bootstrap_completed,
+        bootstrap_completed_at=config.bootstrap_completed_at,
+        registration_mode=config.registration_mode,
+        updated_at=config.updated_at,
+    )

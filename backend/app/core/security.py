@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import os
 import secrets
 import time
@@ -10,8 +9,8 @@ from typing import Any
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 import jwt
 from app.config import get_settings
 
@@ -58,6 +57,7 @@ def generate_random_token(bytes_count: int = 32) -> str:
 
 
 # --- Шифрование TOTP секретов через Fernet (AES-128-CBC + HMAC-SHA256) ---
+
 
 def _get_fernet() -> Fernet:
     key = settings.TOTP_ENCRYPTION_KEY.encode("utf-8")

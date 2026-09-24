@@ -31,13 +31,13 @@ flowchart TB
     end
 
     subgraph SSOSystem ["ALXPRGS SSO Core"]
-        Frontend["Frontend SPA (React + TypeScript)\n/login, /admin, /profile"]
+        Frontend["Frontend SPA (React + TypeScript)\n/login, /register, /admin, /profile"]
         BackendAPI["FastAPI Backend\nAPI Transport Layer"]
         
         subgraph AppLayers ["Слои Backend"]
             Transport["API Endpoints & Routers\n(/oauth, /api/v1/auth, /api/v1/admin)"]
-            Services["Application Services\n(AuthService, OIDCService, MFAService,\nAuditService, TokenService)"]
-            Domain["Domain Logic & Security Invariants\n(Argon2id, PKCE S256, Feature Flags,\nRBAC Policy)"]
+            Services["Application Services\n(AuthService, SystemService, OIDCService,\nMFAService, AuditService, TokenService)"]
+            Domain["Domain Logic & Security Invariants\n(Argon2id, PKCE S256, Feature Flags,\nRBAC Policy, Registration Policy)"]
             DataLayer["Data Access & Repositories\n(SQLAlchemy 2.0 Async / Alembic)"]
         end
     end

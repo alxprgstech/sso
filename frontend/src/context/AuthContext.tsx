@@ -9,6 +9,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<LoginResponse>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  refreshCapabilities: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +18,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(null);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const refreshCapabilities = async () => {
+    try {
+      const caps = await api.getCapabilities();
+      setCapabilities(caps);
+    } catch (err) {
+      console.error("Не удалось получить возможности сервера:", err);
+    }
+  };
 
   const refreshUser = async () => {
     try {
@@ -30,13 +40,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      try {
-        const caps = await api.getCapabilities();
-        setCapabilities(caps);
-      } catch (err) {
-        console.error("Не удалось получить возможности сервера:", err);
-      }
-
+      await refreshCapabilities();
       await refreshUser();
       setIsLoading(false);
     };
@@ -57,11 +61,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await api.logout();
     } finally {
       setUser(null);
+      await refreshCapabilities();
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, capabilities, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, capabilities, isLoading, login, logout, refreshUser, refreshCapabilities }}>
       {children}
     </AuthContext.Provider>
   );

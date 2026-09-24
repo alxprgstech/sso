@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON, ForeignKey, String
+
+if TYPE_CHECKING:
+    from app.models.user import User
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base

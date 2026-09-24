@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import secrets
 import string
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import pyotp
@@ -14,7 +13,7 @@ from webauthn.helpers.structs import (
     ResidentKeyRequirement,
     UserVerificationRequirement,
 )
-from app.config import Settings, get_settings
+from app.config import get_settings
 from app.core.exceptions import AuthenticationException, AuthorizationException
 from app.core.security import (
     decrypt_totp_secret,
@@ -202,7 +201,9 @@ class WebAuthnService:
         Генерирует challenge и опции для регистрации нового WebAuthn Passkey (W3C WebAuthn Level 3).
         """
         # Получаем уже существующие credentials пользователя
-        existing_creds_stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
+        existing_creds_stmt = select(WebAuthnCredential).where(
+            WebAuthnCredential.user_id == user.id
+        )
         existing_creds = (await db.execute(existing_creds_stmt)).scalars().all()
 
         exclude_credentials = [
@@ -226,7 +227,11 @@ class WebAuthnService:
             exclude_credentials=exclude_credentials,
         )
 
-        challenge_str = webauthn.helpers.bytes_to_base64url(options.challenge) if isinstance(options.challenge, bytes) else options.challenge
+        challenge_str = (
+            webauthn.helpers.bytes_to_base64url(options.challenge)
+            if isinstance(options.challenge, bytes)
+            else options.challenge
+        )
         now = datetime.now(timezone.utc)
         challenge_record = WebAuthnChallenge(
             user_id=user.id,
@@ -294,7 +299,9 @@ class WebAuthnService:
         return True
 
     @staticmethod
-    async def get_authentication_options(db: AsyncSession, user: User | None = None) -> dict[str, Any]:
+    async def get_authentication_options(
+        db: AsyncSession, user: User | None = None
+    ) -> dict[str, Any]:
         """
         Генерирует challenge для входа по Passkey.
         """
@@ -303,7 +310,9 @@ class WebAuthnService:
             existing_stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
             creds = (await db.execute(existing_stmt)).scalars().all()
             allow_credentials = [
-                webauthn.helpers.structs.PublicKeyCredentialDescriptor(id=c.credential_id.encode("utf-8"))
+                webauthn.helpers.structs.PublicKeyCredentialDescriptor(
+                    id=c.credential_id.encode("utf-8")
+                )
                 for c in creds
             ]
 
@@ -313,7 +322,11 @@ class WebAuthnService:
             user_verification=UserVerificationRequirement.PREFERRED,
         )
 
-        challenge_str = webauthn.helpers.bytes_to_base64url(options.challenge) if isinstance(options.challenge, bytes) else options.challenge
+        challenge_str = (
+            webauthn.helpers.bytes_to_base64url(options.challenge)
+            if isinstance(options.challenge, bytes)
+            else options.challenge
+        )
         now = datetime.now(timezone.utc)
         challenge_record = WebAuthnChallenge(
             user_id=user.id if user else None,
@@ -388,7 +401,10 @@ class WebAuthnService:
         await db.commit()
         if (res.rowcount or 0) > 0:
             await AuditService.log_event(
-                db, event_type="passkey_deleted", user_id=user.id, details={"credential_id": credential_id}
+                db,
+                event_type="passkey_deleted",
+                user_id=user.id,
+                details={"credential_id": credential_id},
             )
             return True
         return False
@@ -416,12 +432,14 @@ class EmailVerificationService:
         await db.commit()
 
         # Запись в локальный почтовый сборщик (mock sink, без реальных внешних отправок)
-        sent_emails_sink.append({
-            "to": email,
-            "subject": "Подтверждение адреса электронной почты ALXPRGS SSO",
-            "token": raw_token,
-            "timestamp": now.isoformat(),
-        })
+        sent_emails_sink.append(
+            {
+                "to": email,
+                "subject": "Подтверждение адреса электронной почты ALXPRGS SSO",
+                "token": raw_token,
+                "timestamp": now.isoformat(),
+            }
+        )
 
         await AuditService.log_event(
             db, event_type="email_verification_requested", user_id=user.id, details={"email": email}

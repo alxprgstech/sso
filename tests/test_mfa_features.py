@@ -1,27 +1,32 @@
 import os
 import sys
 import uuid
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from fastapi.testclient import TestClient
-from app.main import app
 from app.config import get_settings
-from app.models.user import User, PasswordCredential
-from app.models.session import Session
-from app.models.mfa import TOTPCredential, RecoveryCode, WebAuthnCredential, WebAuthnChallenge, EmailVerificationToken
+from app.core.exceptions import (
+    AuthorizationException,
+)
+from app.core.security import encrypt_totp_secret, hash_token
+from app.main import app
+from app.models.mfa import (
+    EmailVerificationToken,
+    TOTPCredential,
+)
+from app.models.user import User
 from app.services.mfa_service import (
-    TOTPService,
-    RecoveryCodesService,
-    WebAuthnService,
     EmailVerificationService,
+    RecoveryCodesService,
+    TOTPService,
+    WebAuthnService,
     sent_emails_sink,
 )
-from app.core.exceptions import AuthenticationException, AuthorizationException, FeatureDisabledException
-from app.core.security import encrypt_totp_secret, decrypt_totp_secret, hash_token
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -32,6 +37,7 @@ def test_default_features_all_disabled_in_api():
     Все 4 флага отключены по умолчанию.
     Эндпоинты MFA при отключенных флагах возвращают 404 c error=feature_disabled.
     """
+    sent_emails_sink.clear()
     settings = get_settings()
     assert settings.FEATURE_TOTP_ENABLED is False
     assert settings.FEATURE_PASSKEY_ENABLED is False
@@ -102,6 +108,7 @@ async def test_totp_service_lifecycle():
 
     # 2. Подтверждение с верным кодом
     import pyotp
+
     totp_calc = pyotp.TOTP(raw_secret)
     valid_code = totp_calc.now()
 
@@ -208,7 +215,7 @@ async def test_email_verification_service():
 
     mock_db.execute.side_effect = [
         MagicMock(scalar_one_or_none=MagicMock(return_value=token_record)),  # select token
-        MagicMock(scalar_one=MagicMock(return_value=user)),                  # select user
+        MagicMock(scalar_one=MagicMock(return_value=user)),  # select user
     ]
 
     # 3. Подтверждение токена
@@ -228,7 +235,9 @@ async def test_webauthn_service_options():
         is_active=True,
     )
     mock_db = AsyncMock()
-    mock_db.execute.return_value = MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
+    mock_db.execute.return_value = MagicMock(
+        scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+    )
 
     # 1. Генерация опций регистрации
     reg_options_json = await WebAuthnService.get_registration_options(mock_db, user)

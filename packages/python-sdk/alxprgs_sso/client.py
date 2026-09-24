@@ -5,7 +5,7 @@ import hashlib
 import secrets
 import time
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 import httpx
 import jwt
@@ -239,7 +239,9 @@ class SSOClient:
                 err_body = resp.text
                 try:
                     err_json = resp.json()
-                    err_desc = err_json.get("error_description") or err_json.get("error") or err_body
+                    err_desc = (
+                        err_json.get("error_description") or err_json.get("error") or err_body
+                    )
                 except Exception:
                     err_desc = err_body
                 raise SSOError(f"Ошибка обмена кода авторизации: {err_desc}")

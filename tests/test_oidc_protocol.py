@@ -1,17 +1,17 @@
-import sys
 import os
+import sys
 import uuid
+
 import pytest
-from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from fastapi.testclient import TestClient
+from app.core.exceptions import OAuthErrorException
+from app.core.security import create_jwt, verify_pkce
 from app.main import app
-from app.core.security import create_jwt, decode_jwt, verify_pkce, hash_token
 from app.models.oidc import OIDCClient, OIDCRedirectUri
 from app.services.oidc_service import OIDCService
-from app.core.exceptions import OAuthErrorException
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -70,6 +70,7 @@ def test_id_token_rejected_as_access_token():
 def test_oauth_authorize_endpoint_redirects_unauthenticated():
     """Обращение к /oauth/authorize с неизвестным клиентом возвращает 401 invalid_client."""
     from unittest.mock import AsyncMock, MagicMock
+
     from app.database import get_db
 
     async def mock_get_db():

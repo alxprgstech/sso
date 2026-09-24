@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alxprgs-sso"
-version = "0.1.0"
+version = "0.2.0"
 description = "Client SDK and FastAPI integration library for ALXPRGS SSO (alxprgs.tech)"
 readme = "README.md"
 requires-python = ">=3.11"

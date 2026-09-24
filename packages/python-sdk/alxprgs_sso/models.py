@@ -7,6 +7,7 @@ class UserClaims(BaseModel):
     """
     Типизированный объект данных пользователя из декодированного Access/ID токена.
     """
+
     model_config = ConfigDict(extra="ignore")
 
     sub: str
@@ -20,6 +21,7 @@ class TokenResponse(BaseModel):
     """
     Стандартный ответ эндпоинта /oauth/token.
     """
+
     model_config = ConfigDict(extra="ignore")
 
     access_token: str

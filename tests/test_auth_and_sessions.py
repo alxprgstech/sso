@@ -1,16 +1,13 @@
-import sys
 import os
+import sys
 import uuid
-import pytest
-from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from fastapi.testclient import TestClient
-from app.main import app
 from app.api.deps import generate_csrf_token
 from app.config import get_settings
-from app.core.security import hash_password, verify_password
+from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

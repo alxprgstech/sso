@@ -1,4 +1,4 @@
-import { Capabilities, LoginResponse, UserProfile, SessionInfo, AdminUser, AdminClient, AuditEventItem } from "../types/api";
+import { Capabilities, LoginResponse, UserProfile, SessionInfo, AdminUser, AdminClient, AuditEventItem, RegisterRequest, RegisterResponse, SystemStatus } from "../types/api";
 
 class ApiClient {
   private csrfToken: string | null = null;
@@ -145,6 +145,24 @@ class ApiClient {
   async deleteClient(clientId: string): Promise<void> {
     await this.request(`/api/v1/admin/clients/${clientId}`, {
       method: "DELETE",
+    });
+  }
+
+  async register(data: RegisterRequest): Promise<RegisterResponse> {
+    return this.request<RegisterResponse>("/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.request<SystemStatus>("/api/v1/admin/system/status");
+  }
+
+  async updateRegistrationMode(mode: string, current_admin_password: string): Promise<SystemStatus> {
+    return this.request<SystemStatus>("/api/v1/admin/system/registration-mode", {
+      method: "POST",
+      body: JSON.stringify({ mode, current_admin_password }),
     });
   }
 

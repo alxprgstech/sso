@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 from fastapi import HTTPException, status
 
 
@@ -12,7 +11,11 @@ class FeatureDisabledException(HTTPException):
     ) -> None:
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "feature_disabled", "detail": message, **({"feature": feature} if feature else {})},
+            detail={
+                "error": "feature_disabled",
+                "detail": message,
+                **({"feature": feature} if feature else {}),
+            },
         )
 
 
@@ -34,6 +37,7 @@ class AuthorizationException(HTTPException):
 
 class OAuthErrorException(HTTPException):
     """Стандартные ошибки протокола OAuth 2.0 / OIDC (RFC 6749 раздел 5.2)."""
+
     def __init__(
         self,
         error: str,

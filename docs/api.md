@@ -132,11 +132,41 @@
   "passkey_enabled": false,
   "recovery_codes_enabled": false,
   "email_verification_enabled": false,
-  "require_verified_email": false
+  "require_verified_email": false,
+  "registration_mode": "closed"
 }
 ```
 
-### 2.2. Вход по паролю
+### 2.2. Самостоятельная регистрация пользователя (REG-01..REG-09)
+- **Метод**: `POST /api/v1/auth/register`
+- **Заголовки**: `Origin` (валидируется), `Content-Type: application/json`
+- **Ограничения**: Доступен только при `registration_mode == "open"`. Защищен межпроцессным rate limiting (макс. 5 запросов/мин с IP).
+- **Тело запроса**:
+```json
+{
+  "username": "alex_ivanov",
+  "email": "alex@alxprgs.tech",
+  "password": "SecurePassword123!",
+  "confirm_password": "SecurePassword123!"
+}
+```
+- **Ответ 201 Created**:
+```json
+{
+  "status": "ok",
+  "message": "Пользователь успешно зарегистрирован",
+  "user_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "username": "alex_ivanov",
+  "email": "alex@alxprgs.tech",
+  "email_verification_required": false
+}
+```
+- **Ошибки**:
+  - `403 Forbidden`: `{"detail": "Самостоятельная регистрация пользователей в настоящий момент закрыта"}` (если режим `closed`);
+  - `409 Conflict`: `{"detail": {"error": "user_already_exists", "detail": "Пользователь с указанными учётными данными уже существует"}}` (без раскрытия совпавшего поля);
+  - `429 Too Many Requests`: `{"detail": {"error": "rate_limit_exceeded"}}`.
+
+### 2.3. Вход по паролю
 - **Метод**: `POST /api/v1/auth/login`
 - **Тело запроса**:
 ```json

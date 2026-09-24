@@ -2,23 +2,60 @@ import base64
 import hashlib
 import time
 import uuid
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import jwt
+import pytest
 from alxprgs_sso import (
-    SSOClient,
-    UserClaims,
-    TokenResponse,
-    SSOError,
-    TokenExpiredError,
     InvalidTokenError,
+    SSOClient,
+    TokenExpiredError,
+    UserClaims,
 )
 from alxprgs_sso.fastapi import SSOFastAPISecurity
-from fastapi import FastAPI, Depends
+from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-# Используем функции генерации тестовых ключей сервера
-from app.core.security import create_jwt, get_jwks, get_rsa_private_key
+
+def _int_to_base64url(val: int) -> str:
+    byte_length = (val.bit_length() + 7) // 8
+    val_bytes = val.to_bytes(byte_length, "big")
+    return base64.urlsafe_b64encode(val_bytes).decode("ascii").rstrip("=")
+
+
+def _generate_test_jwks_and_key():
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_numbers = private_key.public_key().public_numbers()
+    kid = "sdk-test-key-01"
+
+    jwks = {
+        "keys": [
+            {
+                "kty": "RSA",
+                "kid": kid,
+                "use": "sig",
+                "alg": "RS256",
+                "n": _int_to_base64url(public_numbers.n),
+                "e": _int_to_base64url(public_numbers.e),
+            }
+        ]
+    }
+    return private_key, jwks, kid
+
+
+def _create_signed_jwt(
+    payload: dict,
+    private_key: rsa.RSAPrivateKey,
+    kid: str,
+    expires_in_seconds: int = 300,
+) -> str:
+    now = int(time.time())
+    p = payload.copy()
+    p["iat"] = now
+    p["exp"] = now + expires_in_seconds
+    p["iss"] = "https://auth.alxprgs.tech"
+    return jwt.encode(p, private_key, algorithm="RS256", headers={"kid": kid})
 
 
 def test_sdk_pkce_authorization_url_generation():
@@ -40,9 +77,11 @@ def test_sdk_pkce_authorization_url_generation():
     assert f"state={state}" in auth_url
 
     # Математическая проверка RFC 7636 S256: BASE64URL(SHA256(ASCII(code_verifier)))
-    expected_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode("ascii")).digest()
-    ).decode("ascii").rstrip("=")
+    expected_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode("ascii")).digest())
+        .decode("ascii")
+        .rstrip("=")
+    )
     assert f"code_challenge={expected_challenge}" in auth_url
 
 
@@ -50,15 +89,14 @@ def test_sdk_token_validation_with_jwks():
     """
     Тестирование валидации Access Token по JWKS (SDK-02, SSO-03).
     """
+    private_key, server_jwks, kid = _generate_test_jwks_and_key()
     client = SSOClient(server_url="https://auth.alxprgs.tech", client_id="test_client_id")
 
-    # Мокаем получение JWKS от сервера
-    server_jwks = get_jwks()
     with patch.object(client, "get_jwks", return_value=server_jwks):
         user_id = str(uuid.uuid4())
 
         # 1. Корректный Access Token
-        access_token = create_jwt(
+        access_token = _create_signed_jwt(
             {
                 "sub": user_id,
                 "preferred_username": "sdk_user",
@@ -68,6 +106,8 @@ def test_sdk_token_validation_with_jwks():
                 "token_use": "access_token",
                 "aud": "test_client_id",
             },
+            private_key=private_key,
+            kid=kid,
             expires_in_seconds=300,
         )
 
@@ -80,26 +120,30 @@ def test_sdk_token_validation_with_jwks():
         assert "analytics" in claims.roles
 
         # 2. Истёкший токен (TokenExpiredError)
-        expired_token = create_jwt(
+        expired_token = _create_signed_jwt(
             {
                 "sub": user_id,
                 "preferred_username": "sdk_user",
                 "token_use": "access_token",
                 "aud": "test_client_id",
             },
+            private_key=private_key,
+            kid=kid,
             expires_in_seconds=-60,
         )
         with pytest.raises(TokenExpiredError):
             client.verify_access_token(expired_token)
 
         # 3. Инвариант SSO-03: ID Token отклоняется при попытке использовать его как Access Token
-        id_token = create_jwt(
+        id_token = _create_signed_jwt(
             {
                 "sub": user_id,
                 "preferred_username": "sdk_user",
                 "token_use": "id_token",
                 "aud": "test_client_id",
             },
+            private_key=private_key,
+            kid=kid,
             expires_in_seconds=300,
         )
         with pytest.raises(InvalidTokenError) as exc_info:
@@ -155,11 +199,15 @@ def test_sdk_fastapi_security_dependency():
         assert r_user.json()["username"] == "developer"
 
         # 3. Обычный пользователь на admin-only эндпоинте -> 403 Forbidden
-        r_forbidden = http_client.get("/admin-only", headers={"Authorization": "Bearer mock_valid_token"})
+        r_forbidden = http_client.get(
+            "/admin-only", headers={"Authorization": "Bearer mock_valid_token"}
+        )
         assert r_forbidden.status_code == 403
 
         # 4. Администратор на admin-only эндпоинте -> 200 OK
         mock_verify.return_value = admin_claims
-        r_admin = http_client.get("/admin-only", headers={"Authorization": "Bearer mock_admin_token"})
+        r_admin = http_client.get(
+            "/admin-only", headers={"Authorization": "Bearer mock_admin_token"}
+        )
         assert r_admin.status_code == 200
         assert r_admin.json()["admin"] == "sysadmin"

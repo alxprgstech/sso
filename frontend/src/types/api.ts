@@ -4,6 +4,31 @@ export interface Capabilities {
   recovery_codes_enabled: boolean;
   email_verification_enabled: boolean;
   require_verified_email: boolean;
+  registration_mode: "closed" | "open" | string;
+}
+
+export interface SystemStatus {
+  bootstrap_completed: boolean;
+  bootstrap_completed_at: string | null;
+  registration_mode: "closed" | "open" | string;
+  total_users: number;
+  total_active_admins: number;
+}
+
+export interface RegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+  confirm_password: string;
+}
+
+export interface RegisterResponse {
+  status: string;
+  message: string;
+  user_id: string;
+  username: string;
+  email: string;
+  email_verification_required: boolean;
 }
 
 export interface UserProfile {

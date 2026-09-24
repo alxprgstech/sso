@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from typing import Literal
 from pydantic import model_validator
@@ -34,7 +33,9 @@ class Settings(BaseSettings):
     DATABASE_URL_SYNC: str = "postgresql+psycopg://sso_user:sso_password@localhost:5432/alxprgs_sso"
 
     # Сессии и CSRF
-    SESSION_SECRET_KEY: str = "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
+    SESSION_SECRET_KEY: str = (
+        "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
+    )
     SESSION_COOKIE_NAME: str = "__Host-alx_session"
     CSRF_HEADER_NAME: str = "X-CSRF-Token"
 

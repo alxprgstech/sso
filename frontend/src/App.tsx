@@ -2,12 +2,16 @@ import React, { useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Navbar } from "./components/Navbar";
 import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AdminPage } from "./pages/AdminPage";
 
 const MainContent: React.FC = () => {
   const { user, isLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState<"dashboard" | "admin" | "login">("dashboard");
+  const [authView, setAuthView] = useState<"login" | "register">(
+    window.location.pathname === "/register" ? "register" : "login"
+  );
 
   if (isLoading) {
     return (
@@ -18,7 +22,24 @@ const MainContent: React.FC = () => {
   }
 
   if (!user) {
-    return <LoginPage />;
+    if (authView === "register") {
+      return (
+        <RegisterPage
+          onNavigateToLogin={() => {
+            window.history.pushState({}, "", "/login");
+            setAuthView("login");
+          }}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        onNavigateToRegister={() => {
+          window.history.pushState({}, "", "/register");
+          setAuthView("register");
+        }}
+      />
+    );
   }
 
   const isAdmin = user.is_superuser || user.roles.includes("admin");

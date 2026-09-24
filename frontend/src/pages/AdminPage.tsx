@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { AdminClient, AdminUser, AuditEventItem } from "../types/api";
+import { useAuth } from "../context/AuthContext";
+import { AdminClient, AdminUser, AuditEventItem, SystemStatus } from "../types/api";
 
 export const AdminPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"users" | "clients" | "audit">("users");
+  const { refreshCapabilities } = useAuth();
+  const [activeTab, setActiveTab] = useState<"users" | "clients" | "audit" | "system">("users");
 
   // --- 1. Пользователи ---
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -33,6 +35,14 @@ export const AdminPage: React.FC = () => {
   // --- 3. Аудит ---
   const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  // --- 4. Конфигурация системы и режим регистрации ---
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [systemLoading, setSystemLoading] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<"closed" | "open">("closed");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [modeUpdateMsg, setModeUpdateMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [modeUpdating, setModeUpdating] = useState(false);
 
   // Загрузчики данных
   const loadUsers = async () => {
@@ -71,10 +81,24 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const loadSystemStatus = async () => {
+    setSystemLoading(true);
+    try {
+      const data = await api.getSystemStatus();
+      setSystemStatus(data);
+      setSelectedMode(data.registration_mode as "closed" | "open");
+    } catch (err: any) {
+      alert(err.message || "Ошибка загрузки состояния системы");
+    } finally {
+      setSystemLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "users") loadUsers();
     if (activeTab === "clients") loadClients();
     if (activeTab === "audit") loadAudit();
+    if (activeTab === "system") loadSystemStatus();
   }, [activeTab]);
 
   // Обработчики пользователей
@@ -171,6 +195,39 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  // Обработчик переключения режима регистрации (REG-02)
+  const handleUpdateRegistrationMode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminPassword) {
+      setModeUpdateMsg({
+        type: "error",
+        text: "Для смены режима регистрации введите пароль администратора (требование безопасности REG-02).",
+      });
+      return;
+    }
+
+    setModeUpdating(true);
+    setModeUpdateMsg(null);
+
+    try {
+      const updated = await api.updateRegistrationMode(selectedMode, adminPassword);
+      setSystemStatus(updated);
+      await refreshCapabilities();
+      setAdminPassword("");
+      setModeUpdateMsg({
+        type: "success",
+        text: `Режим регистрации успешно изменён на "${updated.registration_mode}". Изменение действует для всех процессов без перезапуска.`,
+      });
+    } catch (err: any) {
+      setModeUpdateMsg({
+        type: "error",
+        text: (typeof err.message === "string" ? err.message : JSON.stringify(err.message)) || "Ошибка обновления режима регистрации",
+      });
+    } finally {
+      setModeUpdating(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <div className="flex justify-between items-center border-b pb-4">
@@ -204,6 +261,14 @@ export const AdminPage: React.FC = () => {
             }`}
           >
             Журнал аудита
+          </button>
+          <button
+            onClick={() => setActiveTab("system")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "system" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Конфигурация
           </button>
         </div>
       </div>
@@ -413,6 +478,178 @@ export const AdminPage: React.FC = () => {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. ВКЛАДКА КОНФИГУРАЦИЯ СИСТЕМЫ */}
+      {/* ========================================================================= */}
+      {activeTab === "system" && (
+        <div className="space-y-6">
+          {/* Блок статуса системы */}
+          <div className="bg-white shadow rounded-xl p-6 border border-gray-100 space-y-4">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h2 className="text-lg font-bold text-gray-900">Состояние системы ALXPRGS SSO</h2>
+              <button
+                onClick={loadSystemStatus}
+                disabled={systemLoading}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                {systemLoading ? "Обновление..." : "Обновить статус"}
+              </button>
+            </div>
+
+            {systemStatus && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+                    Режим регистрации
+                  </div>
+                  <div className="mt-1 text-lg font-bold">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                        systemStatus.registration_mode === "open"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-amber-100 text-amber-800"
+                      }`}
+                    >
+                      {systemStatus.registration_mode === "open" ? "Открыта (open)" : "Закрыта (closed)"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+                    Первичный запуск (Bootstrap)
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-gray-900">
+                    {systemStatus.bootstrap_completed ? "Завершён" : "Не завершён"}
+                  </div>
+                  {systemStatus.bootstrap_completed_at && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {new Date(systemStatus.bootstrap_completed_at).toLocaleString("ru-RU")}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+                    Всего пользователей
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-gray-900">
+                    {systemStatus.total_users}
+                  </div>
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">
+                    Активных администраторов
+                  </div>
+                  <div className="mt-1 text-2xl font-bold text-blue-600">
+                    {systemStatus.total_active_admins}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Блок управления режимом регистрации */}
+          <div className="bg-white shadow rounded-xl p-6 border border-gray-100 space-y-4">
+            <h2 className="text-lg font-bold text-gray-900">
+              Управление политикой самостоятельной регистрации (REG-02)
+            </h2>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Переключение режима регулирует доступность публичной формы регистрации для новых пользователей.
+              Изменение сохраняется централизованно в PostgreSQL, моментально действует для всех экземпляров
+              и регистрируется в журнале аудита безопасности.
+            </p>
+
+            {modeUpdateMsg && (
+              <div
+                className={`p-4 rounded-lg text-sm border-l-4 ${
+                  modeUpdateMsg.type === "success"
+                    ? "bg-green-50 border-green-500 text-green-800"
+                    : "bg-red-50 border-red-500 text-red-800"
+                }`}
+              >
+                {modeUpdateMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateRegistrationMode} className="space-y-4 max-w-xl">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Выберите желаемый режим регистрации:
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="registration_mode"
+                      value="closed"
+                      checked={selectedMode === "closed"}
+                      onChange={() => setSelectedMode("closed")}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        Закрытый режим (closed) — рекомендуется
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Самостоятельная регистрация заблокирована на уровне API. Пользователей создаёт администратор.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="registration_mode"
+                      value="open"
+                      checked={selectedMode === "open"}
+                      onChange={() => setSelectedMode("open")}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        Открытый режим (open)
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Свободная регистрация обычных пользователей с защитой от флуда и коллизий.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Текущий пароль администратора (re-authentication)
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="Введите ваш пароль для подтверждения смены режима"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  В соответствии с инвариантом REG-02 операция защищена повторной аутентификацией администратора.
+                </p>
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={modeUpdating}
+                  className="py-2.5 px-5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  {modeUpdating ? "Применение изменения..." : "Применить режим регистрации"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

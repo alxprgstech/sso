@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import secrets
-import string
 import uuid
-from typing import Any
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.core.exceptions import AuthenticationException, AuthorizationException
+from app.core.exceptions import AuthorizationException
 from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin
-from app.core.security import generate_random_token, hash_password, hash_token
+from app.core.security import generate_random_token, hash_password
 from app.models.audit import AuditEvent
 from app.models.oidc import OIDCClient, OIDCRedirectUri
 from app.models.session import Session
@@ -141,7 +138,11 @@ class AdminService:
         # Защита от блокировки или снятия прав последнего администратора (USR-08)
         is_admin_now = user.is_superuser or any(r.name == ROLE_ADMIN for r in user.roles)
         if is_admin_now:
-            if is_active is False or is_superuser is False or (roles is not None and ROLE_ADMIN not in roles):
+            if (
+                is_active is False
+                or is_superuser is False
+                or (roles is not None and ROLE_ADMIN not in roles)
+            ):
                 await ensure_not_last_admin(db, user.id)
 
         if email is not None:

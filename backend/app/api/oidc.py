@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import base64
 import urllib.parse
-from typing import Any
 from fastapi import APIRouter, Depends, Form, Header, Query, Request, Response, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_cookie_name
@@ -34,7 +33,9 @@ def _extract_client_credentials(
             cid, csec = decoded.split(":", 1)
             return cid, csec
         except Exception:
-            raise OAuthErrorException("invalid_client", "Некорректный заголовок Basic авторизации", 401)
+            raise OAuthErrorException(
+                "invalid_client", "Некорректный заголовок Basic авторизации", 401
+            )
     if not client_id:
         raise OAuthErrorException("invalid_client", "Отсутствует client_id", 401)
     return client_id, client_secret
@@ -60,10 +61,14 @@ async def authorize(
     Поддерживает бесшовный Single Sign-On, если пользователь уже аутентифицирован.
     """
     if response_type != "code":
-        raise OAuthErrorException("unsupported_response_type", "Поддерживается только response_type=code", 400)
+        raise OAuthErrorException(
+            "unsupported_response_type", "Поддерживается только response_type=code", 400
+        )
 
     # 1. Валидация клиента и точного redirect_uri
-    client = await OIDCService.get_and_validate_client(db, client_id=client_id, require_secret=False)
+    client = await OIDCService.get_and_validate_client(
+        db, client_id=client_id, require_secret=False
+    )
     OIDCService.validate_redirect_uri(client, redirect_uri)
 
     # 2. Проверка активной сессии пользователя в SSO
@@ -181,7 +186,9 @@ async def userinfo(
     Принимает только Bearer Access Token.
     """
     if not authorization or not authorization.startswith("Bearer "):
-        raise OAuthErrorException("invalid_token", "Требуется заголовок Authorization: Bearer <token>", 401)
+        raise OAuthErrorException(
+            "invalid_token", "Требуется заголовок Authorization: Bearer <token>", 401
+        )
 
     access_token = authorization.split(" ", 1)[1]
     return await OIDCService.get_userinfo(db, access_token)

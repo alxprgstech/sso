@@ -1,25 +1,25 @@
-import sys
 import os
+import sys
 import uuid
-import hmac
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from fastapi.testclient import TestClient
-from app.main import app
+from app.api.deps import generate_csrf_token, verify_csrf
 from app.config import get_settings
-from app.core.security import hash_password, create_jwt, hash_token, generate_random_token
-from app.core.exceptions import OAuthErrorException, AuthenticationException
-from app.models.user import User
+from app.core.exceptions import AuthenticationException, OAuthErrorException
+from app.core.security import hash_password, hash_token
+from app.main import app
+from app.models.oidc import AuthorizationCode, OIDCClient, RefreshToken
 from app.models.session import Session
-from app.models.oidc import OIDCClient, AuthorizationCode, RefreshToken
-from app.services.oidc_service import OIDCService
+from app.models.user import User
 from app.services.auth_service import AuthService
-from app.api.deps import verify_csrf, generate_csrf_token
+from app.services.oidc_service import OIDCService
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 settings = get_settings()
@@ -242,7 +242,9 @@ async def test_blocked_user_cannot_authenticate():
     mock_res_user.scalar_one_or_none.return_value = blocked_user
 
     mock_res_pwd = MagicMock()
-    mock_res_pwd.scalar_one_or_none.return_value = MagicMock(password_hash=hash_password("password123"))
+    mock_res_pwd.scalar_one_or_none.return_value = MagicMock(
+        password_hash=hash_password("password123")
+    )
 
     exec_mock = AsyncMock()
     exec_mock.side_effect = [mock_res_user, mock_res_pwd]
@@ -308,7 +310,9 @@ def test_deferred_features_return_404_when_disabled():
     for method, path, payload in endpoints:
         res = client.post(path, json=payload or {})
         assert res.status_code == 404, f"Endpoint {path} did not return 404"
-        assert res.json()["error"] == "feature_disabled", f"Endpoint {path} didn't return feature_disabled"
+        assert res.json()["error"] == "feature_disabled", (
+            f"Endpoint {path} didn't return feature_disabled"
+        )
 
 
 @pytest.mark.asyncio

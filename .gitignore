@@ -33,6 +33,10 @@ htmlcov/
 .tox/
 .nox/
 coverage.xml
+frontend/playwright-report/
+frontend/test-results/
+.venv-sdk-test/
+backups/
 
 # Node / Frontend
 node_modules/

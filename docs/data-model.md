@@ -182,4 +182,13 @@ erDiagram
    - В базе данных хранятся криптографические хеши (`SHA-256`) кодов и токенов обновления. При получении токена от клиента он хешируется и сверяется с базой.
    - Погашение authorization code происходит атомарным запросом `UPDATE authorization_codes SET is_used = true WHERE code_hash = :hash AND is_used = false AND expires_at > NOW()`.
    - Семейство refresh токенов (`family_id`): при попытке обменять уже отозванный или погашенный токен из семейства все токены с данным `family_id` немедленно отзываются (`is_revoked = true`).
-6. **Все даты**: Хранятся строго в `timestamp with time zone` (UTC).
+6. **Конфигурация системы (`SYSTEM_CONFIGURATIONS`)** (GOAL-02):
+   - Таблица-синглтон (`id = 1` через `CHECK (id = 1)`):
+     - `id`: integer PK (строго 1);
+     - `registration_mode`: varchar (`closed` по умолчанию, `open`);
+     - `is_bootstrapped`: boolean (`false` до завершения первого запуска, `true` после);
+     - `bootstrapped_at`: timestamp_tz (UTC время завершения bootstrap);
+     - `updated_at`: timestamp_tz.
+   - Читается и обновляется централизованно всеми экземплярами backend без необходимости перезапуска процессов.
+   - Защита от конкурентной инициализации реализуется блокировкой строки `SELECT ... FOR UPDATE`.
+7. **Все даты**: Хранятся строго в `timestamp with time zone` (UTC).

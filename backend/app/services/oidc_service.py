@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.config import Settings, get_settings
+from app.config import get_settings
 from app.core.exceptions import OAuthErrorException
 from app.core.security import (
     create_jwt,
@@ -19,9 +18,9 @@ from app.core.security import (
 from app.models.oidc import (
     AuthorizationCode,
     OIDCClient,
-    OIDCRedirectUri,
     RefreshToken,
 )
+from app.models.session import Session
 from app.models.user import User
 from app.schemas.oidc import TokenResponse, UserInfoResponse
 from app.services.audit_service import AuditService
@@ -81,7 +80,9 @@ class OIDCService:
         TTL = 60 секунд.
         """
         if code_challenge_method != "S256":
-            raise OAuthErrorException("invalid_request", "Поддерживается только метод PKCE S256", 400)
+            raise OAuthErrorException(
+                "invalid_request", "Поддерживается только метод PKCE S256", 400
+            )
 
         raw_code = generate_random_token(32)
         code_hash = hash_token(raw_code)
@@ -160,11 +161,17 @@ class OIDCService:
             raise OAuthErrorException("invalid_grant", "Срок действия кода авторизации истёк", 400)
 
         if auth_code_obj.redirect_uri != redirect_uri:
-            raise OAuthErrorException("invalid_grant", "Параметр redirect_uri не совпадает с исходным запросом", 400)
+            raise OAuthErrorException(
+                "invalid_grant", "Параметр redirect_uri не совпадает с исходным запросом", 400
+            )
 
         # Проверка PKCE S256
-        if not verify_pkce(code_verifier, auth_code_obj.code_challenge, auth_code_obj.code_challenge_method):
-            raise OAuthErrorException("invalid_grant", "Неверный параметр code_verifier для PKCE", 400)
+        if not verify_pkce(
+            code_verifier, auth_code_obj.code_challenge, auth_code_obj.code_challenge_method
+        ):
+            raise OAuthErrorException(
+                "invalid_grant", "Неверный параметр code_verifier для PKCE", 400
+            )
 
         # Атомарно помечаем код как использованный
         auth_code_obj.is_used = True
@@ -175,7 +182,9 @@ class OIDCService:
         user = (await db.execute(user_stmt)).scalar_one()
 
         if not user.is_active:
-            raise OAuthErrorException("invalid_grant", "Учётная запись пользователя заблокирована", 400)
+            raise OAuthErrorException(
+                "invalid_grant", "Учётная запись пользователя заблокирована", 400
+            )
 
         return await OIDCService._generate_tokens_for_user(
             db=db,
@@ -207,10 +216,14 @@ class OIDCService:
         token_hash = hash_token(raw_refresh_token)
         now = datetime.now(timezone.utc)
 
-        stmt = select(RefreshToken).where(
-            RefreshToken.token_hash == token_hash,
-            RefreshToken.client_id == client.id,
-        ).with_for_update()
+        stmt = (
+            select(RefreshToken)
+            .where(
+                RefreshToken.token_hash == token_hash,
+                RefreshToken.client_id == client.id,
+            )
+            .with_for_update()
+        )
         rt_obj = (await db.execute(stmt)).scalar_one_or_none()
 
         if not rt_obj:
@@ -250,7 +263,9 @@ class OIDCService:
         user = (await db.execute(user_stmt)).scalar_one()
 
         if not user.is_active:
-            raise OAuthErrorException("invalid_grant", "Учётная запись пользователя заблокирована", 400)
+            raise OAuthErrorException(
+                "invalid_grant", "Учётная запись пользователя заблокирована", 400
+            )
 
         # Выпускаем новую пару токенов с сохранением family_id
         return await OIDCService._generate_tokens_for_user(
@@ -289,7 +304,9 @@ class OIDCService:
             "token_use": "access_token",
             "jti": str(uuid.uuid4()),
         }
-        access_token = create_jwt(access_payload, expires_in_seconds=settings.ACCESS_TOKEN_TTL_SECONDS)
+        access_token = create_jwt(
+            access_payload, expires_in_seconds=settings.ACCESS_TOKEN_TTL_SECONDS
+        )
 
         # 2. ID Token (JWT RS256, если запрошен scope openid)
         id_token = None
@@ -352,7 +369,9 @@ class OIDCService:
         try:
             payload = decode_jwt(access_token)
         except Exception:
-            raise OAuthErrorException("invalid_token", "Токен недействителен или срок его действия истёк", 401)
+            raise OAuthErrorException(
+                "invalid_token", "Токен недействителен или срок его действия истёк", 401
+            )
 
         # Проверка SSO-03: Не принимать ID token как access token
         if payload.get("token_use") != "access_token":
@@ -366,7 +385,9 @@ class OIDCService:
         user = (await db.execute(stmt)).scalar_one_or_none()
 
         if not user or not user.is_active:
-            raise OAuthErrorException("invalid_token", "Пользователь заблокирован или не найден", 401)
+            raise OAuthErrorException(
+                "invalid_token", "Пользователь заблокирован или не найден", 401
+            )
 
         return UserInfoResponse(
             sub=str(user.id),

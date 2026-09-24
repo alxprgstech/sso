@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from typing import Callable
-from fastapi import Depends, Header, HTTPException, status
+
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from alxprgs_sso.client import SSOClient
-from alxprgs_sso.exceptions import InsufficientPermissionsError, SSOError
+from alxprgs_sso.exceptions import SSOError
 from alxprgs_sso.models import UserClaims
 
 http_bearer = HTTPBearer(auto_error=False)
@@ -41,13 +42,14 @@ class SSOFastAPISecurity:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=str(e),
-                headers={"WWW-Authenticate": "Bearer error=\"invalid_token\""},
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
             )
 
     def require_role(self, role: str) -> Callable[[UserClaims], UserClaims]:
         """
         Зависимость FastAPI для проверки наличия необходимой роли (серверный RBAC).
         """
+
         def _role_checker(user: UserClaims = Depends(self.get_current_user)) -> UserClaims:
             if role not in user.roles and "admin" not in user.roles:
                 raise HTTPException(
