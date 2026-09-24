@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-cd-template:
+    name: Verify Inactive CD Template
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Check CD template is commented out and outside workflows
+        run: |
+          if [ -f ".github/workflows/cd.yml" ]; then
+            echo "ERROR: Active CD workflow .github/workflows/cd.yml must NOT exist!"
+            exit 1
+          fi
+          if [ ! -f "deploy/github-actions/cd.yml.example" ]; then
+            echo "ERROR: deploy/github-actions/cd.yml.example not found!"
+            exit 1
+          fi
+          # Проверяем, что каждая непустая строка начинается с '#'
+          non_commented=$(grep -v '^#' deploy/github-actions/cd.yml.example | grep -v '^[[:space:]]*$' || true)
+          if [ -n "$non_commented" ]; then
+            echo "ERROR: deploy/github-actions/cd.yml.example contains uncommented lines:"
+            echo "$non_commented"
+            exit 1
+          fi
+          echo "CD template is properly commented and isolated."
+
+  version-consistency:
+    name: Verify Version Consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+
+      - name: Check version consistency
+        run: python scripts/bump_version.py check
+
+  backend-lint-and-test:
+    name: Backend Tests & PostgreSQL Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sso_user
+          POSTGRES_PASSWORD: sso_test_password
+          POSTGRES_DB: alxprgs_sso_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]"
+
+      - name: Run Ruff Lint and Format check
+        run: |
+          ruff check backend/ tests/
+          ruff format --check backend/ tests/
+
+      - name: Run Backend Tests on PostgreSQL (Default-off profile)
+        env:
+          DATABASE_URL: postgresql+asyncpg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL_SYNC: postgresql://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          FEATURE_TOTP_ENABLED: "false"
+          FEATURE_PASSKEY_ENABLED: "false"
+          FEATURE_RECOVERY_CODES_ENABLED: "false"
+          FEATURE_EMAIL_VERIFICATION_ENABLED: "false"
+          REQUIRE_VERIFIED_EMAIL: "false"
+          TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+          JWT_PRIVATE_KEY_PEM: ""
+        run: |
+          pytest -v tests/unit tests/integration tests/security
+
+      - name: Run MFA & Feature Flags Tests (Enabled profile)
+        env:
+          DATABASE_URL: postgresql+asyncpg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL_SYNC: postgresql://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          FEATURE_TOTP_ENABLED: "true"
+          FEATURE_PASSKEY_ENABLED: "true"
+          FEATURE_RECOVERY_CODES_ENABLED: "true"
+          FEATURE_EMAIL_VERIFICATION_ENABLED: "true"
+          REQUIRE_VERIFIED_EMAIL: "true"
+          TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+        run: |
+          pytest -v tests/mfa
+
+  sdk-build-and-test:
+    name: SDK Package Build & Clean Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+
+      - name: Build SDK Wheel and Sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build packages/python-sdk --outdir dist/sdk
+
+      - name: Test clean installation in isolated venv
+        run: |
+          python -m venv test_env
+          ./test_env/bin/pip install dist/sdk/*.whl pytest httpx fastapi
+          ./test_env/bin/pytest tests/sdk
+
+  frontend-build:
+    name: Frontend Build & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Frontend Typecheck and Build
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run build

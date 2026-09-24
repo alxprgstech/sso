@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alxprgs-sso"
+version = "0.1.0"
+description = "Client SDK and FastAPI integration library for ALXPRGS SSO (alxprgs.tech)"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "ALXPRGS SSO Team", email = "admin@alxprgs.tech" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+]
+dependencies = [
+    "httpx>=0.27.0",
+    "pyjwt[crypto]>=2.8.0",
+    "pydantic>=2.7.0",
+]
+
+[project.optional-dependencies]
+fastapi = [
+    "fastapi>=0.111.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["alxprgs_sso*"]

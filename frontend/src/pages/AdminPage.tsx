@@ -1,0 +1,574 @@
+import React, { useEffect, useState } from "react";
+import { api } from "../api/client";
+import { AdminClient, AdminUser, AuditEventItem } from "../types/api";
+
+export const AdminPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<"users" | "clients" | "audit">("users");
+
+  // --- 1. Пользователи ---
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [search, setSearch] = useState("");
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  // Форма создания пользователя
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newIsAdmin, setNewIsAdmin] = useState(false);
+
+  // --- 2. OIDC Клиенты ---
+  const [clients, setClients] = useState<AdminClient[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+
+  // Создание клиента
+  const [showCreateClientModal, setShowCreateClientModal] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientType, setNewClientType] = useState("confidential");
+  const [newRedirectUris, setNewRedirectUris] = useState("");
+
+  // Модальное окно разового показа секрета (USR-09)
+  const [secretModal, setSecretModal] = useState<{ clientId: string; secret: string } | null>(null);
+
+  // --- 3. Аудит ---
+  const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  // Загрузчики данных
+  const loadUsers = async () => {
+    setUsersLoading(true);
+    try {
+      const data = await api.getAdminUsers(0, 50, search || undefined);
+      setUsers(data);
+    } catch (err: any) {
+      alert(err.message || "Ошибка загрузки пользователей");
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const loadClients = async () => {
+    setClientsLoading(true);
+    try {
+      const data = await api.getAdminClients();
+      setClients(data);
+    } catch (err: any) {
+      alert(err.message || "Ошибка загрузки клиентов");
+    } finally {
+      setClientsLoading(false);
+    }
+  };
+
+  const loadAudit = async () => {
+    setAuditLoading(true);
+    try {
+      const data = await api.getAuditEvents(0, 50);
+      setAuditEvents(data);
+    } catch (err: any) {
+      alert(err.message || "Ошибка загрузки аудита");
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "users") loadUsers();
+    if (activeTab === "clients") loadClients();
+    if (activeTab === "audit") loadAudit();
+  }, [activeTab]);
+
+  // Обработчики пользователей
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.createAdminUser({
+        username: newUsername,
+        email: newEmail,
+        password: newPassword,
+        roles: newIsAdmin ? ["admin", "user"] : ["user"],
+        is_superuser: newIsAdmin,
+      });
+      setShowCreateUserModal(false);
+      setNewUsername("");
+      setNewEmail("");
+      setNewPassword("");
+      setNewIsAdmin(false);
+      await loadUsers();
+    } catch (err: any) {
+      alert(err.message || "Ошибка создания пользователя");
+    }
+  };
+
+  const handleToggleBlock = async (u: AdminUser) => {
+    const actionName = u.is_active ? "заблокировать" : "разблокировать";
+    if (!confirm(`Вы действительно хотите ${actionName} пользователя ${u.username}?`)) return;
+    try {
+      await api.updateAdminUser(u.id, { is_active: !u.is_active });
+      await loadUsers();
+    } catch (err: any) {
+      alert(err.message || "Ошибка изменения статуса");
+    }
+  };
+
+  const handleRevokeUserSessions = async (userId: string) => {
+    try {
+      const res = await api.revokeUserSessions(userId);
+      alert(`Отозвано активных сессий: ${res.revoked_count}`);
+    } catch (err: any) {
+      alert(err.message || "Ошибка отзыва сессий");
+    }
+  };
+
+  // Обработчики клиентов
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const uris = newRedirectUris
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (uris.length === 0) {
+      alert("Укажите хотя бы один Redirect URI");
+      return;
+    }
+    try {
+      const res = await api.createAdminClient({
+        client_name: newClientName,
+        client_type: newClientType,
+        redirect_uris: uris,
+      });
+      setShowCreateClientModal(false);
+      setNewClientName("");
+      setNewRedirectUris("");
+      await loadClients();
+
+      if (res.client_secret) {
+        setSecretModal({ clientId: res.client_id, secret: res.client_secret });
+      }
+    } catch (err: any) {
+      alert(err.message || "Ошибка создания клиента");
+    }
+  };
+
+  const handleRotateSecret = async (clientId: string) => {
+    if (!confirm(`Выпустить новый секрет для клиента ${clientId}? Старый секрет станет недействителен.`)) return;
+    try {
+      const res = await api.rotateClientSecret(clientId);
+      if (res.client_secret) {
+        setSecretModal({ clientId: res.client_id, secret: res.client_secret });
+      }
+    } catch (err: any) {
+      alert(err.message || "Ошибка ротации секрета");
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    if (!confirm(`Удалить OIDC клиента ${clientId}?`)) return;
+    try {
+      await api.deleteClient(clientId);
+      await loadClients();
+    } catch (err: any) {
+      alert(err.message || "Ошибка удаления клиента");
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="flex justify-between items-center border-b pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Административная панель</h1>
+          <p className="text-sm text-gray-500">Управление пользователями, OIDC-клиентами и аудит безопасности</p>
+        </div>
+
+        {/* Табы */}
+        <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "users" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Пользователи
+          </button>
+          <button
+            onClick={() => setActiveTab("clients")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "clients" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            OIDC Клиенты
+          </button>
+          <button
+            onClick={() => setActiveTab("audit")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === "audit" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Журнал аудита
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 1. ВКЛАДКА ПОЛЬЗОВАТЕЛИ */}
+      {/* ========================================================================= */}
+      {activeTab === "users" && (
+        <div className="bg-white shadow rounded-xl p-6 border border-gray-100 space-y-4">
+          <div className="flex justify-between items-center">
+            <div className="w-72">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && loadUsers()}
+                placeholder="Поиск по логину или email..."
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <button
+              onClick={() => setShowCreateUserModal(true)}
+              className="py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            >
+              + Добавить пользователя
+            </button>
+          </div>
+
+          {usersLoading ? (
+            <div className="py-8 text-center text-sm text-gray-500">Загрузка пользователей...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Пользователь</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Email</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Роли</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Статус</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-500">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{u.username}</td>
+                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex space-x-1">
+                          {u.roles.map((r) => (
+                            <span key={r} className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+                              {r}
+                            </span>
+                          ))}
+                          {u.is_superuser && (
+                            <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800 font-semibold">
+                              Admin
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                            u.is_active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {u.is_active ? "Активен" : "Заблокирован"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right space-x-2">
+                        <button
+                          onClick={() => handleToggleBlock(u)}
+                          className={`text-xs font-medium ${
+                            u.is_active ? "text-red-600 hover:text-red-800" : "text-green-600 hover:text-green-800"
+                          }`}
+                        >
+                          {u.is_active ? "Заблокировать" : "Разблокировать"}
+                        </button>
+                        <button
+                          onClick={() => handleRevokeUserSessions(u.id)}
+                          className="text-xs text-gray-600 hover:text-gray-900 font-medium"
+                        >
+                          Отозвать сессии
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. ВКЛАДКА OIDC КЛИЕНТЫ */}
+      {/* ========================================================================= */}
+      {activeTab === "clients" && (
+        <div className="bg-white shadow rounded-xl p-6 border border-gray-100 space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Зарегистрированные OIDC приложения</h2>
+              <p className="text-xs text-gray-500">Клиенты Single Sign-On (Authorization Code + PKCE)</p>
+            </div>
+            <button
+              onClick={() => setShowCreateClientModal(true)}
+              className="py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            >
+              + Зарегистрировать клиента
+            </button>
+          </div>
+
+          {clientsLoading ? (
+            <div className="py-8 text-center text-sm text-gray-500">Загрузка клиентов...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Название</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Client ID</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Тип</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Разрешенные Redirect URIs</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-500">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {clients.map((c) => (
+                    <tr key={c.id}>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{c.client_name}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-blue-600">{c.client_id}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 uppercase font-medium">
+                          {c.client_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600">
+                        <ul className="list-disc list-inside">
+                          {c.redirect_uris.map((uri) => (
+                            <li key={uri} className="font-mono">{uri}</li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td className="px-4 py-3 text-right space-x-2">
+                        {c.client_type === "confidential" && (
+                          <button
+                            onClick={() => handleRotateSecret(c.client_id)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            Сменить секрет
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteClient(c.client_id)}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium"
+                        >
+                          Удалить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. ВКЛАДКА АУДИТ */}
+      {/* ========================================================================= */}
+      {activeTab === "audit" && (
+        <div className="bg-white shadow rounded-xl p-6 border border-gray-100 space-y-4">
+          <h2 className="text-lg font-bold text-gray-900">Журнал событий безопасности (Audit Log)</h2>
+          {auditLoading ? (
+            <div className="py-8 text-center text-sm text-gray-500">Загрузка журнала аудита...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Дата и время</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Тип события</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">IP адрес</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-500">Детали</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {auditEvents.map((e) => (
+                    <tr key={e.id}>
+                      <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">
+                        {new Date(e.created_at).toLocaleString("ru-RU")}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-medium">
+                          {e.event_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 font-mono text-xs text-gray-500">{e.ip_address || "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-gray-600 truncate max-w-xs">
+                        {JSON.stringify(e.details)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Модальное окно разового показа секрета клиента (USR-09) */}
+      {secretModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-gray-100">
+            <div className="flex items-center space-x-3 text-amber-600">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="text-lg font-bold text-gray-900">Секрет клиента OIDC (Client Secret)</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              Секрет генерируется и отображается <strong>только один раз</strong>. Скопируйте и сохраните его в безопасном
+              хранилище. В базе данных хранится только необратимый хэш.
+            </p>
+            <div className="bg-gray-100 p-3 rounded-lg border font-mono text-sm break-all select-all text-blue-900">
+              {secretModal.secret}
+            </div>
+            <button
+              onClick={() => setSecretModal(null)}
+              className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            >
+              Я сохранил секрет, закрыть
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно создания пользователя */}
+      {showCreateUserModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100">
+            <h3 className="text-lg font-bold text-gray-900">Новый пользователь</h3>
+            <form onSubmit={handleCreateUser} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700">Имя пользователя (username)</label>
+                <input
+                  type="text"
+                  required
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700">Пароль</label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div className="flex items-center space-x-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="isAdmin"
+                  checked={newIsAdmin}
+                  onChange={(e) => setNewIsAdmin(e.target.checked)}
+                  className="rounded text-blue-600"
+                />
+                <label htmlFor="isAdmin" className="text-xs font-medium text-gray-700">
+                  Назначить администратором (роль admin + superuser)
+                </label>
+              </div>
+              <div className="flex space-x-3 pt-3">
+                <button
+                  type="submit"
+                  className="w-full py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  Создать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateUserModal(false)}
+                  className="w-full py-2 px-4 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно создания OIDC клиента */}
+      {showCreateClientModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100">
+            <h3 className="text-lg font-bold text-gray-900">Регистрация OIDC-клиента</h3>
+            <form onSubmit={handleCreateClient} className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700">Название приложения</label>
+                <input
+                  type="text"
+                  required
+                  value={newClientName}
+                  onChange={(e) => setNewClientName(e.target.value)}
+                  placeholder="Портал аналитики"
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700">Тип клиента</label>
+                <select
+                  value={newClientType}
+                  onChange={(e) => setNewClientType(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm"
+                >
+                  <option value="confidential">Confidential (с секретом: бэкенд, веб-приложение)</option>
+                  <option value="public">Public (без секрета: SPA, мобильное приложение)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700">
+                  Разрешенные Redirect URIs (по одному на строку)
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={newRedirectUris}
+                  onChange={(e) => setNewRedirectUris(e.target.value)}
+                  placeholder="https://app.alxprgs.tech/callback"
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                />
+              </div>
+              <div className="flex space-x-3 pt-3">
+                <button
+                  type="submit"
+                  className="w-full py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  Зарегистрировать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateClientModal(false)}
+                  className="w-full py-2 px-4 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
+                >
+                  Отмена
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

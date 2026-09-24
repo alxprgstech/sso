@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: alxprgs-sso-db
+    environment:
+      POSTGRES_USER: sso_user
+      POSTGRES_PASSWORD: sso_secure_password
+      POSTGRES_DB: sso_db
+    volumes:
+      - sso_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sso_user -d sso_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sso_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: alxprgs-sso-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://sso_user:sso_secure_password@db:5432/sso_db
+      SECRET_KEY: ${SECRET_KEY:-insecure_dev_secret_key_change_in_production_32chars}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      BASE_URL: http://localhost:8000
+      OIDC_ISSUER: https://auth.alxprgs.tech
+      FEATURE_TOTP_ENABLED: "false"
+      FEATURE_PASSKEY_ENABLED: "false"
+      FEATURE_RECOVERY_CODES_ENABLED: "false"
+      FEATURE_EMAIL_VERIFICATION_ENABLED: "false"
+      REQUIRE_VERIFIED_EMAIL: "false"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sso_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: alxprgs-sso-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sso_network
+
+volumes:
+  sso_db_data:
+
+networks:
+  sso_network:
+    driver: bridge

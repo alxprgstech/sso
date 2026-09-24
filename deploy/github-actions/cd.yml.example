@@ -1,0 +1,116 @@
+# ==============================================================================
+# ПРИМЕР ШАБЛОНА НЕПРЕРЫВНОГО РАЗВЁРТЫВАНИЯ (CD) ALXPRGS SSO
+# ВНИМАНИЕ: Все строки данного файла намеренно закомментированы (CD-01, CD-03).
+# Файл находится вне каталога .github/workflows/, чтобы исключить случайный запуск.
+# Развёртывание активируется только по прямому поручению владельца после подготовки
+# целевой инфраструктуры и защищённого production окружения.
+# ==============================================================================
+#
+# name: Continuous Deployment (Production)
+#
+# on:
+#   release:
+#     types: [published]
+#   workflow_dispatch:
+#     inputs:
+#       release_tag:
+#         description: "Тег релиза для развёртывания (например, v0.1.0)"
+#         required: true
+#         type: string
+#       target_env:
+#         description: "Целевое окружение (staging / production)"
+#         required: true
+#         default: "staging"
+#
+# permissions:
+#   contents: read
+#
+# jobs:
+#   deploy:
+#     name: Deploy Verified Release Artifact
+#     runs-on: ubuntu-latest
+#     environment:
+#       name: production
+#       url: https://auth.alxprgs.tech
+#     timeout-minutes: 30
+#
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+#
+#       - name: Download and Verify Release Artifacts
+#         env:
+#           TAG: ${{ github.event.inputs.release_tag || github.event.release.tag_name }}
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         run: |
+#           # 1. Скачивание release-артефактов по точной версии
+#           mkdir -p deploy/artifacts
+#           gh release download "$TAG" --dir deploy/artifacts
+#           cd deploy/artifacts
+#
+#           # 2. Строгая проверка контрольных сумм SHA-256
+#           sha256sum -c SHA256SUMS.txt
+#           echo "Контрольные суммы артефактов успешно подтверждены."
+#
+#       - name: Create Pre-Deployment Database Backup
+#         env:
+#           DB_HOST: ${{ secrets.PROD_DB_HOST }}
+#           DB_USER: ${{ secrets.PROD_DB_USER }}
+#           DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+#           DB_NAME: ${{ secrets.PROD_DB_NAME }}
+#         run: |
+#           # Резервное копирование PostgreSQL перед накатом миграций
+#           BACKUP_FILE="backup_pre_deploy_${TAG}_$(date +%Y%m%d_%H%M%S).sql.gz"
+#           PGPASSWORD="$DB_PASSWORD" pg_dump -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" | gzip > "$BACKUP_FILE"
+#           echo "Резервная копия создана: $BACKUP_FILE"
+#
+#       - name: Apply Database Migrations (Alembic)
+#         env:
+#           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+#         run: |
+#           # Накат миграций схемы БД
+#           pip install alembic psycopg2-binary
+#           cd backend
+#           alembic upgrade head
+#           echo "Миграции базы данных успешно применены."
+#
+#       - name: Deploy Backend Application Container
+#         env:
+#           DEPLOY_HOST: ${{ secrets.PROD_HOST }}
+#           DEPLOY_USER: ${{ secrets.PROD_USER }}
+#           DEPLOY_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+#         run: |
+#           # Обновление контейнера бэкенда на целевом сервере
+#           # docker compose -f deploy/docker-compose.prod.yml pull
+#           # docker compose -f deploy/docker-compose.prod.yml up -d --no-deps backend
+#           echo "Контейнер бэкенда обновлён."
+#
+#       - name: Deploy Frontend Static Assets
+#         run: |
+#           # Распаковка frontend билда в директорию веб-сервера / Nginx
+#           # tar -xzf deploy/artifacts/alxprgs-sso-frontend-*.tar.gz -C /var/www/auth.alxprgs.tech/
+#           echo "Статические файлы фронтенда обновлены."
+#
+#       - name: Health Check & Readiness Probe
+#         run: |
+#           # Проверка доступности endpoints здоровья сервиса
+#           for i in {1..12}; do
+#             STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://auth.alxprgs.tech/health/ready || true)
+#             if [ "$STATUS" = "200" ]; then
+#               echo "Система успешно прошла проверку готовности (HTTP 200 OK)."
+#               exit 0
+#             fi
+#             echo "Ожидание готовности сервиса... попытка $i/12"
+#             sleep 5
+#           done
+#           echo "ОШИБКА: Health check не пройден! Инициируется процедура отката."
+#           exit 1
+#
+#       - name: Rollback Procedure (On Failure)
+#         if: failure()
+#         run: |
+#           # Процедура автоматического отката при сбое:
+#           # 1. Возврат предыдущей версии контейнера бэкенда
+#           # 2. Возврат предыдущей версии статических файлов фронтенда
+#           # 3. Восстановление резервной копии базы данных (если миграция была несовместимой)
+#           echo "Выполнен откат к предыдущей стабильной версии."
