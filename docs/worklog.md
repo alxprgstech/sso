@@ -1701,4 +1701,55 @@
 - **Блокеры и нерешённые вопросы**: Сетевой доступ к GitHub из локальной среды ограничен (прокси прерывает соединение); финальный коммит подготовлен локально, для удаленного CI требуется отправка владельцем.
 - **Следующий шаг**: Передача итогового отчета владельцу репозитория.
 
+---
+
+### Запись WL-064 — Уточнение строгих критериев soak, переоценка артефактов и исправление статуса приёмки (TASK-062)
+- **Дата и время**: 2026-09-25T10:05:00+03:00
+- **Исполнитель**: Antigravity
+- **ID задачи / требований**: TASK-062, TASK-066 / G7-SOAK, G7-CRITERIA, G7-FINAL, DOC-TRACK-01..07
+- **Начало**: 2026-09-25T09:47:00+03:00; **завершение**: 2026-09-25T10:05:00+03:00.
+- **Выполненные действия**:
+  1. **Формальное исправление прежнего утверждения о завершении цели**:
+     - В соответствии с AGENTS.md (раздел 2, «Дополняй журнал, не переписывай историю задним числом; исправления оформляй отдельной записью») и разделом 8 GOAL-07, статус G7-FINAL и всей цели GOAL-07 не может считаться завершенным (`done` / `100% PASSED`), пока не выполнен успешный удаленный запуск GitHub Actions CI на итоговом SHA в ветке `main`. Прежнее утверждение в WL-063 о завершении цели скорректировано: локальная часть верифицирована, но итоговый статус переведен в `in_progress (blocked on remote CI push)`.
+  2. **Уточнение критериев soak (`evaluate_soak_criteria`) в `scripts/run_overnight_stability.py`**:
+     - Длительность рабочей нагрузки: строго `duration_achieved_sec >= target_duration_sec` (для 20 минут — не менее 1200.0с чистой нагрузки; время запуска серверов и очистки окружения исключено из замера; 1199с приводит к отказу).
+     - Выполнение всех запланированных браузерных smoke-проверок: строгое требование выполнения всех запланированных интервалов (для 1200с с шагом 300с должны выполниться все 3 запланированных прогона; пропуск хотя бы одного smoke-теста приводит к отказу).
+     - Верификация принадлежности измеряемого PID: добавлена функция `verify_server_worker_pid(pid, port)`, проверяющая владение слушающим сокетом на порту 8000 и принадлежность процесса интерпретатору Python/uvicorn. Чужой PID даже с большим RSS приводит к отказу (`pid_verified=False`).
+     - Соединения PostgreSQL: обосновано отсутствие допуска `baseline + 1` и введено строгое требование возврата к baseline (`pg_final <= pg_baseline`). Любое неучтенное соединение (`pg_final > pg_baseline`) трактуется как утечка пула и приводит к отказу.
+  3. **Добавление регрессионных тестов в `tests/test_overnight_runner_criteria.py`**:
+     - `test_criteria_rejects_duration_under_1200s`: отказ при 1199с вместо 1200с;
+     - `test_criteria_rejects_missed_scheduled_browser_smoke`: отказ при 2 smoke-прогонах вместо 3;
+     - `test_criteria_rejects_foreign_or_unverified_pid`: отказ при чужом PID с большим RSS (150 MB);
+     - `test_criteria_rejects_unexplained_extra_pg_connection`: отказ при лишнем соединении PG (baseline + 1);
+     - Всего в модуле теперь 14 модульных тестов (все 14 passed).
+  4. **Переоценка сохраненных артефактов 20-минутного прогона (`campaign_soak_20m_corrected`)**:
+     - Длительность чистой нагрузки: 1211.9с >= 1200.0с (startup ~3с и cleanup ~4с исключены, общее время прогона 1218.6с).
+     - Запланированные браузерные проверки: 3 из 3 выполнены (304.3с, 617.8с, 926.7с), все со статусом `[SOAK-BROWSER-OK]`.
+     - Измеряемый PID: верифицирован uvicorn worker на порту 8000 (Working Set 99.0 -> 99.77 МБ).
+     - Соединения PostgreSQL: baseline = 1, final = 1 (строгий возврат к baseline, 0 утечек).
+     - Непредвиденные ошибки: 0, p50=11.0ms, p95=144.1ms.
+     - Сохраненные данные признаны полностью валидными и удовлетворяющими новым строгим критериям; повторный запуск этапа не потребовался.
+  5. **Актуализация документации приёмки**:
+     - В `docs/acceptance-goal-07.md`: исправлена базовая версия продукта на `0.2.0` (SemVer), скорректирован путь к артефакту G7-BOOT на `artifacts/overnight/20260925_022748/summary.json`, зафиксирован dirty-state: clean, убраны преждевременные утверждения «100% PASSED», добавлена матрица раздела 8 GOAL-07.
+     - В `docs/status.md` и `docs/plan.md`: статус G7-FINAL и общей цели зафиксирован как `in_progress (blocked on remote CI push)`.
+- **Затронутые файлы**:
+  - `scripts/run_overnight_stability.py`
+  - `tests/test_overnight_runner_criteria.py`
+  - `docs/acceptance-goal-07.md`
+  - `docs/status.md`
+  - `docs/plan.md`
+  - `docs/worklog.md`
+- **Фактическая проверка**:
+  - `.venv\Scripts\pytest.exe tests/test_overnight_runner_criteria.py -v`: 14 passed in 0.10s.
+  - `.venv\Scripts\pytest.exe tests/test_server_lifecycle.py -v`: 7 passed in 12.23s.
+  - `.venv\Scripts\pytest.exe tests/integration/test_concurrency_pg.py -v` (с `TEST_DATABASE_URL`): 5 passed in 4.97s (DB guard verified).
+  - `python scripts/bump_version.py check`: SemVer 0.2.0 согласован во всех 4 файлах.
+  - `.venv\Scripts\ruff.exe check scripts tests backend`: all checks passed.
+  - `.venv\Scripts\ruff.exe format --check scripts tests backend`: 68 files formatted.
+  - `deploy/github-actions/cd.yml.example`: 116 строк, 0 незакомментированных.
+- **Результат**: Расхождения устранены, критерии ужесточены и подтверждены 14 тестами. Локальная приёмка выполнена. Статус G7-FINAL переведен в `blocked / in_progress` до удаленного CI run.
+- **Блокеры и нерешённые вопросы**: Сетевой push в удаленный GitHub репозиторий блокируется средой агента (`Proxy CONNECT aborted`). Ожидается push владельцем.
+- **Следующий шаг**: Фиксация коммита в git, документирование ошибки push и передача SHA владельцу.
+
+
 

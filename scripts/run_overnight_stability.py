@@ -145,6 +145,42 @@ except ImportError:
         return None
 
 
+def verify_server_worker_pid(pid: int, port: int = 8000) -> bool:
+    """Проверяет принадлежность PID запущенному тестовому серверу бэкенда:
+    1. Процесс должен быть активен и слушать указанный порт (8000).
+    2. Процесс должен идентифицироваться как процесс Python / uvicorn."""
+    if pid <= 0:
+        return False
+    listening = get_pid_listening_on_port(port)
+    if listening != pid:
+        return False
+    if sys.platform == "win32":
+        try:
+            res = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            out = res.stdout.lower()
+            if "python" in out:
+                return True
+        except Exception:
+            pass
+    elif sys.platform.startswith("linux"):
+        try:
+            cmdline_path = Path(f"/proc/{pid}/cmdline")
+            if cmdline_path.exists():
+                cmdline = cmdline_path.read_text().lower()
+                if "python" in cmdline or "uvicorn" in cmdline:
+                    return True
+        except Exception:
+            pass
+    else:
+        return True
+    return False
+
+
 def evaluate_soak_criteria(
     duration_achieved_sec: float,
     target_duration_sec: float,
@@ -157,15 +193,16 @@ def evaluate_soak_criteria(
     pg_final: int,
     backend_port_busy: bool,
     frontend_port_busy: bool,
+    pid_verified: bool = True,
+    expected_browser_smoke_runs: int | None = None,
 ) -> list[str]:
     """Строгая валидация критериев успешности этапа soak (GOAL-07)."""
     failure_reasons: list[str] = []
 
-    # 1. Досрочное завершение (<95% целевого времени)
-    min_duration = target_duration_sec * 0.95
-    if duration_achieved_sec < min_duration:
+    # 1. Досрочное завершение или недостаточная длительность нагрузки (< target_duration_sec)
+    if duration_achieved_sec < target_duration_sec:
         failure_reasons.append(
-            f"Early termination: duration {duration_achieved_sec:.1f}s < {min_duration:.1f}s (95% threshold)"
+            f"Early termination or insufficient load duration: achieved {duration_achieved_sec:.1f}s < required {target_duration_sec:.1f}s"
         )
 
     # 2. Недостаточное число точек телеметрии (<90% ожидаемого)
@@ -183,14 +220,24 @@ def evaluate_soak_criteria(
     if browser_smoke_failed > 0:
         failure_reasons.append(f"Browser smoke test failures: {browser_smoke_failed}")
 
-    # 5. Отсутствие выполнения браузерного теста при длительности >= 5 минут
+    # 5. Выполнение всех запланированных браузерных smoke-проверок
+    if expected_browser_smoke_runs is None:
+        if target_duration_sec >= 300.0:
+            expected_browser_smoke_runs = int((target_duration_sec - 0.1) // 300.0)
+        else:
+            expected_browser_smoke_runs = 0
+
     if target_duration_sec >= 300.0 and browser_smoke_runs == 0:
         failure_reasons.append("Browser smoke tests were never executed during >=5min soak run")
-
-    # 6. Невосстановление пула соединений PostgreSQL (cool-down проверка)
-    if pg_final > pg_baseline + 1:
+    elif browser_smoke_runs < expected_browser_smoke_runs:
         failure_reasons.append(
-            f"PostgreSQL connection pool not recovered: baseline={pg_baseline}, final={pg_final}"
+            f"Scheduled browser smoke tests missed: executed {browser_smoke_runs} < expected {expected_browser_smoke_runs}"
+        )
+
+    # 6. Невосстановление пула соединений PostgreSQL (строгий возврат к baseline)
+    if pg_final > pg_baseline:
+        failure_reasons.append(
+            f"PostgreSQL connection pool not recovered (leak detected: baseline={pg_baseline}, final={pg_final}, must return to baseline)"
         )
 
     # 7. Утечка портов после завершения этапа
@@ -199,7 +246,13 @@ def evaluate_soak_criteria(
             f"Port leak detected: backend_busy={backend_port_busy}, frontend_busy={frontend_port_busy}"
         )
 
-    # 8. Валидация показаний телеметрии: RSS заведомо ненулевой и реалистичный (> 10 МБ)
+    # 8. Проверка принадлежности измеряемого PID тестовому серверу
+    if not pid_verified:
+        failure_reasons.append(
+            "Monitored backend PID is foreign or unverified (does not belong to test server worker on port 8000)"
+        )
+
+    # 9. Валидация показаний телеметрии: RSS заведомо ненулевой и реалистичный (> 10 МБ)
     if not telemetry_records:
         failure_reasons.append("No telemetry records collected")
     else:
@@ -684,6 +737,14 @@ def run_soak_stage(
 
     print(f"[SOAK-INFO] Серверы запущены: Backend Worker PID {be_pid}, Frontend PID {fe_pid}")
 
+    pid_verified = verify_server_worker_pid(be_pid, BACKEND_PORT)
+    if not pid_verified:
+        print(
+            f"[SOAK-WARN] PID {be_pid} не подтвержден как backend worker на порту {BACKEND_PORT}!"
+        )
+    else:
+        print(f"[SOAK-INFO] PID {be_pid} подтвержден как backend worker на порту {BACKEND_PORT}")
+
     client = SimpleHttpClient(f"http://127.0.0.1:{BACKEND_PORT}")
 
     # Метрики
@@ -697,18 +758,19 @@ def run_soak_stage(
     browser_smoke_failed = 0
     latencies: list[float] = []
 
-    start_time = time.time()
     target_duration_sec = duration_minutes * 60.0
-    last_browser_smoke_time = start_time
-
     npx_cmd = "npx.cmd" if sys.platform == "win32" else "npx"
+
+    load_start_time = time.time()
+    last_browser_smoke_time = load_start_time
+    load_end_time = load_start_time
 
     try:
         sample_num = 0
-        while time.time() - start_time < target_duration_sec:
+        while time.time() - load_start_time < target_duration_sec:
             sample_num += 1
             now = time.time()
-            elapsed_sec = round(now - start_time, 1)
+            elapsed_sec = round(now - load_start_time, 1)
 
             # 1. Рабочая нагрузка и измерение задержек
             # 1.1. Health live & ready
@@ -886,8 +948,10 @@ def run_soak_stage(
 
             # Ожидание следующего сэмпла
             time.sleep(sample_interval_sec)
-
+        load_end_time = time.time()
     finally:
+        if load_end_time == load_start_time:
+            load_end_time = time.time()
         print("[SOAK-CLEANUP] Остановка серверов и сбор финального состояния...")
         subprocess.run(
             [
@@ -945,7 +1009,7 @@ def run_soak_stage(
     final_rss = be_rss_values[-1] if be_rss_values else 0.0
     max_rss = max(be_rss_values) if be_rss_values else 0.0
 
-    duration_achieved_sec = round(time.time() - start_time, 1)
+    duration_achieved_sec = round(load_end_time - load_start_time, 1)
     expected_samples = int(target_duration_sec / sample_interval_sec)
 
     failure_reasons = evaluate_soak_criteria(
@@ -960,6 +1024,7 @@ def run_soak_stage(
         pg_final=pg_final,
         backend_port_busy=be_busy,
         frontend_port_busy=fe_busy,
+        pid_verified=pid_verified,
     )
 
     passed = len(failure_reasons) == 0
@@ -985,6 +1050,7 @@ def run_soak_stage(
         "backend_initial_rss_mb": initial_rss,
         "backend_final_rss_mb": final_rss,
         "backend_max_rss_mb": max_rss,
+        "pid_verified": pid_verified,
         "pg_baseline_connections": pg_baseline,
         "pg_final_connections": pg_final,
     }

@@ -212,6 +212,79 @@ def test_criteria_rejects_low_or_zero_backend_rss():
     assert any("Backend RSS suspiciously low" in r for r in reasons_low)
 
 
+def test_criteria_rejects_duration_under_1200s():
+    """Фактическая длительность нагрузки 1199с вместо требуемых 1200с должна приводить к отказу."""
+    reasons = evaluate_soak_criteria(
+        duration_achieved_sec=1199.0,
+        target_duration_sec=1200.0,
+        telemetry_records=_make_valid_telemetry(40),
+        expected_samples=40,
+        unexpected_errors=0,
+        browser_smoke_runs=3,
+        browser_smoke_failed=0,
+        pg_baseline=2,
+        pg_final=2,
+        backend_port_busy=False,
+        frontend_port_busy=False,
+    )
+    assert any("Early termination or insufficient load duration" in r for r in reasons)
+
+
+def test_criteria_rejects_missed_scheduled_browser_smoke():
+    """Пропуск хотя бы одного запланированного браузерного теста (2 вместо 3 при 1200с) должен приводить к отказу."""
+    reasons = evaluate_soak_criteria(
+        duration_achieved_sec=1200.0,
+        target_duration_sec=1200.0,
+        telemetry_records=_make_valid_telemetry(40),
+        expected_samples=40,
+        unexpected_errors=0,
+        browser_smoke_runs=2,  # 2 вместо ожидаемых 3
+        browser_smoke_failed=0,
+        pg_baseline=2,
+        pg_final=2,
+        backend_port_busy=False,
+        frontend_port_busy=False,
+    )
+    assert any("Scheduled browser smoke tests missed" in r for r in reasons)
+
+
+def test_criteria_rejects_foreign_or_unverified_pid():
+    """Чужой или неподтвержденный PID (не принадлежащий тест-серверу) даже с высоким RSS должен приводить к отказу."""
+    reasons = evaluate_soak_criteria(
+        duration_achieved_sec=1200.0,
+        target_duration_sec=1200.0,
+        telemetry_records=_make_valid_telemetry(40, be_rss=150.0),  # Высокий RSS, но чужой процесс
+        expected_samples=40,
+        unexpected_errors=0,
+        browser_smoke_runs=3,
+        browser_smoke_failed=0,
+        pg_baseline=2,
+        pg_final=2,
+        backend_port_busy=False,
+        frontend_port_busy=False,
+        pid_verified=False,
+    )
+    assert any("foreign or unverified" in r.lower() for r in reasons)
+
+
+def test_criteria_rejects_unexplained_extra_pg_connection():
+    """Любое неучтенное соединение PostgreSQL после cool-down (baseline + 1) должно приводить к отказу."""
+    reasons = evaluate_soak_criteria(
+        duration_achieved_sec=1200.0,
+        target_duration_sec=1200.0,
+        telemetry_records=_make_valid_telemetry(40),
+        expected_samples=40,
+        unexpected_errors=0,
+        browser_smoke_runs=3,
+        browser_smoke_failed=0,
+        pg_baseline=2,
+        pg_final=3,  # Лишнее соединение baseline + 1
+        backend_port_busy=False,
+        frontend_port_busy=False,
+    )
+    assert any("leak detected" in r for r in reasons)
+
+
 def test_race_attempts_parameter_semantics():
     """Проверка семантики параметра attempts: N попыток на КАЖДЫЙ сценарий матрицы."""
     mock_pytest_out = (
