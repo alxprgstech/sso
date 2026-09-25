@@ -239,7 +239,7 @@ class WebAuthnService:
             attestation=webauthn.helpers.structs.AttestationConveyancePreference.NONE,
             authenticator_selection=AuthenticatorSelectionCriteria(
                 resident_key=ResidentKeyRequirement.PREFERRED,
-                user_verification=UserVerificationRequirement.PREFERRED,
+                user_verification=UserVerificationRequirement.REQUIRED,
             ),
             exclude_credentials=exclude_credentials,
         )
@@ -272,7 +272,8 @@ class WebAuthnService:
         settings: Settings | None = None,
     ) -> bool:
         """
-        Проверяет результат регистрации Passkey и сохраняет открытый ключ (SEC-FLAG-06, G4-PASSKEY).
+        Проверяет результат регистрации Passkey и сохраняет открытый ключ (SEC-FLAG-06, G4-PASSKEY, G6-WEBAUTHN).
+        Параметры доверия (RP ID, origin, user verification) поступают строго из конфигурации сервера.
         """
         active_settings = settings or get_settings()
 
@@ -285,27 +286,12 @@ class WebAuthnService:
             )
             .order_by(WebAuthnChallenge.created_at.desc())
         )
-        challenge_record = (await db.execute(stmt)).scalar_one_or_none()
+        challenge_record = (await db.execute(stmt)).scalars().first()
         if not challenge_record:
             raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
 
-        expected_origins = (
-            [origin]
-            if origin
-            else [
-                active_settings.WEBAUTHN_ORIGIN,
-                active_settings.FRONTEND_URL,
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
-                "https://auth.alxprgs.tech",
-            ]
-        )
-
         effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
+        expected_origins = [origin] if origin else [active_settings.WEBAUTHN_ORIGIN]
 
         try:
             verification = webauthn.verify_registration_response(
@@ -313,25 +299,10 @@ class WebAuthnService:
                 expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_record.challenge),
                 expected_rp_id=effective_rp_id,
                 expected_origin=expected_origins,
-                require_user_verification=False,
+                require_user_verification=True,
             )
         except Exception as e:
-            # Если rp_id не был явно указан, пробуем fallback между localhost и auth.alxprgs.tech
-            fallback_rp_id = (
-                "localhost" if effective_rp_id != "localhost" else active_settings.WEBAUTHN_RP_ID
-            )
-            try:
-                verification = webauthn.verify_registration_response(
-                    credential=credential_json,
-                    expected_challenge=webauthn.helpers.base64url_to_bytes(
-                        challenge_record.challenge
-                    ),
-                    expected_rp_id=fallback_rp_id,
-                    expected_origin=expected_origins,
-                    require_user_verification=False,
-                )
-            except Exception:
-                raise AuthenticationException(f"Ошибка проверки регистрации WebAuthn: {e}")
+            raise AuthenticationException(f"Ошибка проверки регистрации WebAuthn: {e}")
 
         # Сохранение credential в безопасном представлении Base64URL
         cred_id_str = webauthn.helpers.bytes_to_base64url(verification.credential_id)
@@ -384,7 +355,7 @@ class WebAuthnService:
         options = webauthn.generate_authentication_options(
             rp_id=effective_rp_id,
             allow_credentials=allow_credentials or None,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
         )
 
         challenge_str = (
@@ -415,7 +386,8 @@ class WebAuthnService:
     ) -> bool:
         """
         Проверка assertion Passkey при входе с поддержкой множественных ключей,
-        защитой от Replay и проверкой актуальности удалённых ключей (G4-PASSKEY).
+        защитой от Replay и проверкой актуальности удалённых ключей (G4-PASSKEY, G6-WEBAUTHN).
+        Параметры доверия (RP ID, origin, user verification) поступают строго из конфигурации сервера.
         """
         import json
 
@@ -462,7 +434,7 @@ class WebAuthnService:
                         WebAuthnChallenge.purpose == "authentication",
                         WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
                     )
-                    challenge_record = (await db.execute(stmt)).scalar_one_or_none()
+                    challenge_record = (await db.execute(stmt)).scalars().first()
         except Exception:
             pass
 
@@ -477,28 +449,13 @@ class WebAuthnService:
                 )
                 .order_by(WebAuthnChallenge.created_at.desc())
             )
-            challenge_record = (await db.execute(stmt)).scalar_one_or_none()
+            challenge_record = (await db.execute(stmt)).scalars().first()
 
         if not challenge_record:
             raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
 
-        expected_origins = (
-            [origin]
-            if origin
-            else [
-                active_settings.WEBAUTHN_ORIGIN,
-                active_settings.FRONTEND_URL,
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
-                "https://auth.alxprgs.tech",
-            ]
-        )
-
         effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
+        expected_origins = [origin] if origin else [active_settings.WEBAUTHN_ORIGIN]
 
         try:
             verification = webauthn.verify_authentication_response(
@@ -508,27 +465,10 @@ class WebAuthnService:
                 expected_origin=expected_origins,
                 credential_public_key=bytes.fromhex(target_cred.public_key),
                 credential_current_sign_count=target_cred.sign_count,
-                require_user_verification=False,
+                require_user_verification=True,
             )
         except Exception as e:
-            # Fallback между localhost и WEBAUTHN_RP_ID
-            fallback_rp_id = (
-                "localhost" if effective_rp_id != "localhost" else active_settings.WEBAUTHN_RP_ID
-            )
-            try:
-                verification = webauthn.verify_authentication_response(
-                    credential=credential_json,
-                    expected_challenge=webauthn.helpers.base64url_to_bytes(
-                        challenge_record.challenge
-                    ),
-                    expected_rp_id=fallback_rp_id,
-                    expected_origin=expected_origins,
-                    credential_public_key=bytes.fromhex(target_cred.public_key),
-                    credential_current_sign_count=target_cred.sign_count,
-                    require_user_verification=False,
-                )
-            except Exception:
-                raise AuthenticationException(f"Ошибка проверки аутентификации WebAuthn: {e}")
+            raise AuthenticationException(f"Ошибка проверки аутентификации WebAuthn: {e}")
 
         # Обновляем sign_count
         target_cred.sign_count = verification.new_sign_count

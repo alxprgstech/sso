@@ -11,6 +11,23 @@ const __dirname = path.dirname(__filename);
 test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", () => {
   test.use({ baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173" });
 
+  test.beforeAll(async () => {
+    // G6-PREFLIGHT: Проверка соответствия профиля enabled (Passkey=True) до запуска UI тестов
+    const baseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173";
+    const capsRes = await fetch(`${baseUrl}/api/v1/auth/capabilities`);
+    if (!capsRes.ok) {
+      throw new Error(`[G6-PREFLIGHT-FAIL] /api/v1/auth/capabilities вернул HTTP ${capsRes.status}`);
+    }
+    const capsData = await capsRes.json();
+    const caps = capsData?.capabilities ?? capsData;
+    if (caps.passkey_enabled !== true) {
+      throw new Error(
+        `[G6-PREFLIGHT-FAIL] Enabled Passkey Suite требует passkey_enabled=true, ` +
+        `но получено: ${JSON.stringify(caps)}. Процесс бэкенда запущен с неверным профилем! Остановка до таймаутов браузера!`
+      );
+    }
+  });
+
   test.beforeEach(() => {
     const testDbUrl = process.env.TEST_DATABASE_URL;
     if (!testDbUrl) {

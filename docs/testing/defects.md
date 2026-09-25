@@ -356,3 +356,96 @@
   4. `sso.spec.ts` тест 03: Добавлен надёжный переход на форму входа после регистрации (с fallback `Войти`).
 - **Регрессионный тест**: `frontend/e2e/sso.spec.ts` (4 теста), `frontend/e2e/passkey.spec.ts` (4 теста).
 
+---
+
+### BUG-018: Утечка зомби-процесса Uvicorn на порту 8000 при фоновом compound shell запуске и ложный ответ health-check в enabled suite
+- **Требование**: G6-RUNTIME, QA-11, QA-14, Section 2 GOAL-06.
+- **Серьёзность**: Critical.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. В CI-workflow запуск бэкенда выполнялся как `cd backend && uvicorn app.main:app ... & echo $! > /tmp/backend.pid`. В bash `$!` сохраняет PID transient subshell оболочки, а не дочернего процесса Python/Uvicorn.
+  2. Остановка default-off выполнялась как `kill $(cat /tmp/backend.pid) || pkill ... || true`. Команда `kill` успешно завершала оболочку с кодом 0; ветка `|| pkill` не исполнялась.
+  3. Процесс default-off Uvicorn оставался зомби-процессом, продолжая слушать порт 8000.
+  4. При старте enabled Uvicorn на порту 8000 процесс падал с ошибкой `[Errno 98] Address already in use`.
+  5. Шаг ожидания `health/live` опрашивал порт 8000 и получал ответ HTTP 200 от оставшегося default-off процесса, создавая иллюзию успешного запуска.
+  6. Браузерные тесты `passkey.spec.ts` обращались к порту 8000 (профиль default-off) и падали по таймауту 45s из-за скрытых в UI элементов Passkey.
+- **Ожидаемое поведение**:
+  1. Серверные процессы запускаются напрямую без промежуточных subshell с фиксацией реального PID процесса.
+  2. Остановка гарантирует завершение процесса (SIGTERM -> SIGKILL) и опрашивает сокет порта до полного освобождения.
+  3. При невозможности занять порт запуск немедленно прерывается с ошибкой и выводом логов сбоя (fail-fast).
+- **Исправление**:
+  1. Разработан кроссплатформенный менеджер `scripts/manage_test_server.py` (`start`, `start-frontend`, `stop`, `preflight`).
+  2. Фиксирует реальный PID через `subprocess.Popen(..., close_fds=True)`, изолирует группы процессов, опрашивает сокет порта при остановке.
+  3. В `tests/test_server_lifecycle.py` добавлены регрессионные тесты `test_port_already_in_use_fail_fast`, `test_real_server_lifecycle_and_port_release`, `test_real_frontend_lifecycle_and_port_release`.
+  4. В `.github/workflows/ci.yml` запуск и остановка серверов переведены на `scripts/manage_test_server.py`.
+
+---
+
+### BUG-019: Ослабление защиты WebAuthn: отключение проверки user verification, fallback RP ID и невалидированный origin
+- **Требование**: G6-WEBAUTHN, SEC Section 4, AGENTS.md Section 4.
+- **Серьёзность**: Critical.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. В `backend/app/services/mfa_service.py` и `backend/app/api/mfa.py` при верификации регистраций и аутентификаций WebAuthn выставлялся флаг `require_user_verification=False`.
+  2. При ошибке верификации выполнялась повторная попытка проверки с альтернативным RP ID ("localhost" / production).
+  3. В список ожидаемых origins принимался заголовок запроса `request.headers.get("origin")` без валидации доверия.
+- **Ожидаемое поведение**:
+  1. Строгое требование User Verification: `UserVerificationRequirement.REQUIRED` в options и `require_user_verification=True` в `verify_registration_response` / `verify_authentication_response`.
+  2. Запрет fallback RP ID: проверка выполняется строго с настроенным RP ID сервера (`WEBAUTHN_RP_ID`).
+  3. Доверенный origin определяется строго конфигурацией сервера (`WEBAUTHN_ORIGIN`), недоверенные клиентские заголовки игнорируются.
+- **Исправление**:
+  1. В `backend/app/services/mfa_service.py` и `backend/app/api/mfa.py` удалены все ветки повторной проверки с fallback RP ID.
+  2. Зафиксированы `require_user_verification=True` и `user_verification=UserVerificationRequirement.REQUIRED`.
+  3. Доверенные origins привязаны строго к `active_settings.WEBAUTHN_ORIGIN`.
+  4. Поиск challenge в базе переведён на получение актуального выданного вызова с сортировкой по времени создания (`order_by(created_at.desc())`).
+  5. В `tests/integration/test_passkey_pg.py` добавлен тест инвариантов безопасности `test_passkey_strict_security_invariants_pg` (проверка отказа при подмене origin, RP ID и отсутствии UV).
+
+---
+
+### BUG-020: Отсутствие preflight-валидации capabilities сервера перед запуском браузерных E2E-тестов
+- **Требование**: G6-PREFLIGHT, QA-11, QA-14.
+- **Серьёзность**: Medium.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. При несовпадении профиля бэкенда (например, default-off вместо enabled) тесты Playwright стартовали и ожидали появления элементов UI, скрытых логикой `capabilities.passkey_enabled`.
+  2. Каждый тест ожидал появления элементов до таймаута Playwright (45 секунд), приводя к каскадному зависанию сьюита на 3-4 минуты без указания первопричины.
+- **Ожидаемое поведение**:
+  1. До запуска браузерных тестов выполняется preflight-проверка capabilities напрямую к бэкенду и через frontend proxy.
+  2. При несовпадении профиля тест немедленно завершается (fail-fast, <0.5 сек) с выводом фактических и ожидаемых capabilities.
+- **Исправление**:
+  1. В `scripts/manage_test_server.py` реализована команда `preflight`, проверяющая соответствие capabilities профилю (`default-off` требует все флаги `False`; `enabled` требует `passkey_enabled=True`).
+  2. В `frontend/e2e/sso.spec.ts` и `frontend/e2e/passkey.spec.ts` в хуки `test.beforeAll` добавлена встроенная preflight-проверка через Vite proxy.
+  3. В `tests/test_server_lifecycle.py` добавлен тест `test_preflight_capabilities_mismatch_fail_fast`.
+  4. Шаг `preflight` встроен в CI-workflow `.github/workflows/ci.yml`.
+
+---
+
+### BUG-021: Несовместимость асинхронного драйвера Psycopg с ProactorEventLoop на Windows в Uvicorn
+- **Требование**: G6-RUNTIME, ARCH-01.
+- **Серьёзность**: High.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. На платформе Windows Uvicorn 0.36.0+ по умолчанию инициализирует `asyncio.ProactorEventLoop`.
+  2. При обращении эндпоинтов к PostgreSQL через асинхронный драйвер `psycopg` выбрасывалось исключение: `sqlalchemy.exc.InterfaceError: Psycopg cannot use the 'ProactorEventLoop' to run in async mode`.
+  3. Любые запросы к БД из Uvicorn на Windows возвращали HTTP 500.
+- **Ожидаемое поведение**:
+  1. Uvicorn запускается с совместимым циклом событий `SelectorEventLoop` на Windows.
+- **Исправление**:
+  1. В `scripts/manage_test_server.py` запуск Uvicorn параметризован: на Windows перед инициализацией цикла устанавливается `asyncio.WindowsSelectorEventLoopPolicy()` и передаётся `loop='asyncio:SelectorEventLoop'`, на POSIX — `loop='auto'`.
+  2. В `scripts/manage_test_server.py` реализована автоматическая трансляция `TEST_DATABASE_URL` в `DATABASE_URL` и `DATABASE_URL_SYNC`.
+
+---
+
+### BUG-022: Накопление аудит-событий регистрации и отсутствие очистки динамических аккаунтов в prepare_e2e_data.py
+- **Требование**: G6-LIMITS, REG-07, QA-11.
+- **Серьёзность**: Medium.
+- **Статус**: Resolved.
+- **Шаги воспроизведения**:
+  1. При повторных запусках E2E-тестов события `registration_attempt` и `user_registered` сохранялись в таблице `audit_events`.
+  2. Межпроцессный rate-limit PostgreSQL блокировал регистрацию новых пользователей с ошибкой `HTTP 429 Превышен лимит попыток регистрации`.
+  3. Динамические пользователи `pw_user_*` оставались в БД, вызывая потенциальные коллизии.
+- **Ожидаемое поведение**:
+  1. Подготовка тестовых данных обеспечивает изоляцию rate-limit между прогонами.
+- **Исправление**:
+  1. В `scripts/prepare_e2e_data.py` добавлена очистка записей `audit_events` для событий регистрации и удаление динамических пользователей `pw_user_*`.
+

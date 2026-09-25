@@ -171,6 +171,13 @@ async def prepare_e2e_data() -> None:
                 "DELETE FROM webauthn_challenges WHERE user_id IN (SELECT id FROM users WHERE username LIKE 'e2e_passkey_%')"
             )
         )
+        # 5. Очищаем аудит-события лимитов и динамические тестовые аккаунты
+        await session.execute(
+            text(
+                "DELETE FROM audit_events WHERE event_type IN ('registration_attempt', 'user_registered', 'email_verification_requested')"
+            )
+        )
+        await session.execute(text("DELETE FROM users WHERE username LIKE 'pw_user_%'"))
 
         await session.commit()
         print("[SUCCESS] Все E2E данные и учетные записи успешно подготовлены.")

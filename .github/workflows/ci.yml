@@ -241,18 +241,8 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start Frontend Preview Server
-        working-directory: frontend
         run: |
-          npm run build
-          npm run preview -- --host 0.0.0.0 --port 5173 &
-          for i in $(seq 1 30); do
-            if curl -s http://localhost:5173/ | grep -q "html"; then
-              echo "Frontend preview is live!"
-              break
-            fi
-            echo "Waiting for frontend..."
-            sleep 1
-          done
+          python scripts/manage_test_server.py start-frontend --port 5173 --pidfile /tmp/frontend.pid --logfile /tmp/frontend.log --backend-url http://localhost:8000
 
       - name: Seed Synthetic E2E Test Accounts (Default-off Profile)
         env:
@@ -277,16 +267,8 @@ jobs:
           WEBAUTHN_ORIGIN: "http://localhost:5173"
           PORT: "8000"
         run: |
-          cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          echo $! > /tmp/backend.pid
-          for i in $(seq 1 30); do
-            if curl -s http://127.0.0.1:8000/health/live | grep -q "ok"; then
-              echo "Default-off Backend is live!"
-              break
-            fi
-            echo "Waiting for backend..."
-            sleep 1
-          done
+          python scripts/manage_test_server.py start --port 8000 --pidfile /tmp/backend.pid --logfile /tmp/backend_default_off.log --profile default-off
+          python scripts/manage_test_server.py preflight --profile default-off --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
 
       - name: Run Default-off Playwright E2E Tests (sso.spec.ts)
         working-directory: frontend
@@ -298,8 +280,7 @@ jobs:
 
       - name: Stop Default-off Backend Server
         run: |
-          kill $(cat /tmp/backend.pid) || pkill -f "uvicorn app.main:app" || true
-          sleep 2
+          python scripts/manage_test_server.py stop --pidfile /tmp/backend.pid --port 8000
 
       - name: Seed Synthetic E2E Test Accounts (Enabled Profile)
         env:
@@ -324,16 +305,8 @@ jobs:
           WEBAUTHN_ORIGIN: "http://localhost:5173"
           PORT: "8000"
         run: |
-          cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          echo $! > /tmp/backend.pid
-          for i in $(seq 1 30); do
-            if curl -s http://127.0.0.1:8000/health/live | grep -q "ok"; then
-              echo "Enabled Backend is live!"
-              break
-            fi
-            echo "Waiting for backend..."
-            sleep 1
-          done
+          python scripts/manage_test_server.py start --port 8000 --pidfile /tmp/backend.pid --logfile /tmp/backend_enabled.log --profile enabled
+          python scripts/manage_test_server.py preflight --profile enabled --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
 
       - name: Run Enabled Playwright E2E Tests (passkey.spec.ts)
         working-directory: frontend
@@ -346,7 +319,12 @@ jobs:
       - name: Stop Enabled Backend Server
         if: always()
         run: |
-          kill $(cat /tmp/backend.pid) 2>/dev/null || pkill -f "uvicorn app.main:app" || true
+          python scripts/manage_test_server.py stop --pidfile /tmp/backend.pid --port 8000
+
+      - name: Stop Frontend Server
+        if: always()
+        run: |
+          python scripts/manage_test_server.py stop --pidfile /tmp/frontend.pid --port 5173
 
       - name: Upload Playwright Artifacts on Failure
         if: failure()

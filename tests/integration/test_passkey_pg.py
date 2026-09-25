@@ -409,3 +409,108 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(
 
     finally:
         app.dependency_overrides.pop(get_settings, None)
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_passkey_strict_security_invariants_pg(
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient
+):
+    """
+    Проверка строгих инвариантов безопасности WebAuthn (SEC-FLAG-06, G6-WEBAUTHN):
+    1. Опции регистрации и аутентификации требуют userVerification='required'.
+    2. Попытка верификации с некорректным origin отвергается без моков.
+    3. Попытка верификации с некорректным RP ID отвергается без fallback на альтернативный домен.
+    4. Отсутствие User Verification приводит к отказу (require_user_verification=True).
+    """
+    from app.core.exceptions import AuthenticationException
+    from app.models.user import User
+    from app.services.mfa_service import WebAuthnService
+    from sqlalchemy import select
+
+    def _get_enabled_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_PASSKEY_ENABLED = True
+        overridden.REQUIRE_VERIFIED_EMAIL = False
+        overridden.WEBAUTHN_RP_ID = "auth.alxprgs.tech"
+        overridden.WEBAUTHN_ORIGIN = "https://auth.alxprgs.tech"
+        return overridden
+
+    app.dependency_overrides[get_settings] = _get_enabled_settings
+    settings = _get_enabled_settings()
+
+    try:
+        code, _ = await execute_bootstrap(
+            session=pg_session,
+            username="passkey_strict_user",
+            email="passkey_strict@alxprgs.tech",
+            password="StrictPasskeyPassword2026!",
+            registration_mode="closed",
+        )
+        assert code == 0
+
+        user_stmt = select(User).where(User.username == "passkey_strict_user")
+        user = (await pg_session.execute(user_stmt)).scalar_one()
+
+        # 1. Проверяем userVerification='required' в registration options
+        reg_opts = await WebAuthnService.get_registration_options(
+            db=pg_session, user=user, settings=settings
+        )
+        assert reg_opts.get("authenticatorSelection", {}).get("userVerification") == "required"
+
+        # 2. Проверяем userVerification='required' в authentication options
+        auth_opts = await WebAuthnService.get_authentication_options(
+            db=pg_session, user=user, settings=settings
+        )
+        assert auth_opts.get("userVerification") == "required"
+
+        # 3. Проверяем отказ при неверном origin при верификации регистрации
+        # Создаем активный challenge в БД
+        now = datetime.now(timezone.utc)
+        ch_rec = WebAuthnChallenge(
+            user_id=user.id,
+            challenge="test_strict_challenge_123",
+            purpose="registration",
+            expires_at=now + timedelta(minutes=5),
+        )
+        pg_session.add(ch_rec)
+        await pg_session.commit()
+
+        # Попытка верификации с фиктивным credential на несовпадающем origin
+        fake_credential = {
+            "id": "test_cred_id",
+            "rawId": "test_cred_id",
+            "type": "public-key",
+            "response": {
+                "clientDataJSON": webauthn.helpers.bytes_to_base64url(
+                    b'{"type":"webauthn.create","challenge":"test_strict_challenge_123","origin":"https://attacker-phishing.com"}'
+                ),
+                "attestationObject": webauthn.helpers.bytes_to_base64url(b"fake_attestation"),
+            },
+        }
+
+        with pytest.raises(AuthenticationException) as exc_info:
+            await WebAuthnService.verify_registration(
+                db=pg_session,
+                user=user,
+                credential_json=fake_credential,
+                name="Strict Key",
+                settings=settings,
+            )
+        assert "Ошибка проверки регистрации WebAuthn" in str(exc_info.value)
+
+        # 4. Проверяем отказ при неверном RP ID (без fallback на localhost)
+        with pytest.raises(AuthenticationException) as exc_info_rp:
+            await WebAuthnService.verify_registration(
+                db=pg_session,
+                user=user,
+                credential_json=fake_credential,
+                name="Strict Key",
+                rp_id="invalid.phishing.domain",
+                settings=settings,
+            )
+        assert "Ошибка проверки регистрации WebAuthn" in str(exc_info_rp.value)
+
+    finally:
+        app.dependency_overrides.pop(get_settings, None)

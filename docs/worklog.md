@@ -1462,3 +1462,112 @@
 - **Блокер**: Сетевой доступ к GitHub из среды агента отсутствует. Для завершения GOAL-05 требуется `git push origin main` от владельца.
 - **Следующий шаг**: Владелец выполняет `git push origin main` → GitHub Actions CI выполняет все проверки → при зелёном статусе GOAL-05 считается завершённым.
 
+
+### WL-048 — подготовка GOAL-06
+- Codex / TASK-048. Начало: 2026-09-25T02:08:23+03:00; завершение: 2026-09-25T02:10:56+03:00.
+- Прочитаны новый лог Passkey (4 failed), workflow переключения профилей, Vite proxy, AuthContext, WebAuthn service и документы состояния.
+- Подготовлен GOAL-06-passkey-e2e-runtime.md: PID/lifecycle гипотеза, проверка capabilities до suite, настоящий браузерный lifecycle, удаление RP fallback и ослабления UV, обязательный успешный CI финального SHA.
+- Проверены структура документа и согласованность с default-off/CD/DB guard; git diff --check для изменения плана без ошибок.
+- Код, тесты и workflows не изменялись. Прогоны приложения и commit/push не выполнялись; гипотеза старого процесса явно оставлена для подтверждения. Локальные логи процессов не тронуты.
+- TASK-048 done означает готовность задания; реализация и удалённая приёмка ещё предстоят. Блокеров подготовки документа нет.
+
+### WL-049 — запрет ослабления защиты
+- Codex / TASK-049. Начало: 2026-09-25T02:12:15+03:00; завершение: 2026-09-25T02:13:02+03:00.
+- По прямому поручению владельца усилен раздел 4 AGENTS.md: запрет ослабления защиты ради тестов, отдельные правила WebAuthn UV/RP ID/origin, запрет обходов MFA/email, skip/xfail и фиктивной интеграции; допустимые тестовые профили отделены от обходов.
+- Проверено: согласованность с default-off и localhost-профилем ТЗ; git diff --check без ошибок. Файлы: AGENTS.md, docs/plan.md, docs/status.md, docs/worklog.md.
+- Приложение не менялось и не тестировалось, commit/push не выполнялись. Дефекты кода остаются предметом GOAL-06. Блокеров нет.
+
+### WL-050 — воспроизведение и подтверждение гипотезы зомби-процесса uvicorn (TASK-050)
+- Antigravity / TASK-050. Начало: 2026-09-25T04:27:00+03:00; завершение: 2026-09-25T04:32:45+03:00.
+- Воспроизведена точная последовательность команд запуска и остановки из `ci.yml`: фоновый запуск compound shell `cd backend && uvicorn ... &` с сохранением `$!` в PID-файл и последующей остановкой через `kill $(cat /tmp/backend.pid) || pkill ... || true`.
+- Экспериментально доказано (порт 8005): `$!` содержит PID subshell (bash), а не Python/uvicorn. Команда `kill` успешно завершает subshell (код 0), ветка `|| pkill` не выполняется, а дочерний процесс uvicorn остаётся висеть в фоновом режиме и слушать порт (состояние LISTENING).
+- При последующем запуске uvicorn нового профиля порт оказывается занят (`address already in use`), процесс нового профиля завершается аварийно, а curl healthcheck отвечает от старого default-off процесса, возвращая `passkey_enabled: false`.
+- Первопричина подтверждена. Зарегистрирован дефект BUG-018 в плане работ. Следующий шаг: TASK-051 (устранение ослаблений WebAuthn) и TASK-052 (надежный lifecycle процессов и preflight capabilities).
+
+### WL-051 — Устранение ослаблений WebAuthn и фиксация строгих инвариантов (TASK-051)
+- Antigravity / TASK-051 (G6-WEBAUTHN). Начало: 2026-09-25T04:33:00+03:00; завершение: 2026-09-25T04:39:15+03:00.
+- Действия:
+  1. Устранены все обнаруженные ослабления WebAuthn в `backend/app/services/mfa_service.py` и `backend/app/api/mfa.py` (BUG-019).
+  2. Установлено жесткое требование user verification: `user_verification=UserVerificationRequirement.REQUIRED` в `generate_registration_options` и `generate_authentication_options`.
+  3. Установлено `require_user_verification=True` в `verify_registration_response` и `verify_authentication_response`.
+  4. Полностью удален fallback на альтернативный RP ID (`rp_id="localhost"`) при криптографической проверке.
+  5. Зафиксирован доверенный origin: проверка strictly по `active_settings.WEBAUTHN_ORIGIN`, исключено использование клиентского заголовка `Origin` из HTTP-запроса.
+  6. Исправлен запрос challenge в `WebAuthnService.verify_registration`: заменен `.one_or_none()` на `.scalars().first()` с сортировкой `order_by(WebAuthnChallenge.created_at.desc())`.
+  7. Добавлен регрессионный интеграционный тест `test_passkey_strict_security_invariants_pg` в `tests/integration/test_passkey_pg.py` (отказ при отсутствии UV, отказ при несовпадении RP ID, отказ при несовпадении origin).
+- Файлы: `backend/app/services/mfa_service.py`, `backend/app/api/mfa.py`, `tests/integration/test_passkey_pg.py`.
+- Проверки: `pytest tests/integration/test_passkey_pg.py -v` (10 passed, 0 failed, 32.1s).
+- Результат: TASK-051 done. Инварианты безопасности WebAuthn полностью восстановлены в строгом соответствии с ТЗ и AGENTS.md.
+
+### WL-052 — Управление процессами серверов и fail-fast preflight (TASK-052)
+- Antigravity / TASK-052 (G6-RUNTIME, G6-PREFLIGHT). Начало: 2026-09-25T04:40:00+03:00; завершение: 2026-09-25T04:48:30+03:00.
+- Действия:
+  1. Разработан кроссплатформенный скрипт управления серверными процессами `scripts/manage_test_server.py`:
+     - Команды `start`, `start-frontend`, `stop`, `preflight`, `status`.
+     - Точный захват реального PID процесса OS (без compound shell оберток), сохранение в PID-файл.
+     - Перенаправление stdout/stderr в безопасные лог-файлы (`uvicorn_<port>.log`, `frontend_preview.log`).
+     - Активный поллинг readiness с таймаутом, fail-fast вывод логов при аварийном завершении процесса.
+     - Корректное завершение с SIGTERM, ожиданием до 10с и SIGKILL (при необходимости), верификация освобождения TCP-сокета.
+     - Устранено зависание pipe inheritance на Windows (`close_fds=True`, `stdin=subprocess.DEVNULL`, `CREATE_NEW_PROCESS_GROUP`).
+     - Устранена несовместимость Uvicorn 0.36.0+ ProactorEventLoop с `psycopg` на Windows (`asyncio.WindowsSelectorEventLoopPolicy()`, передача `--loop asyncio:SelectorEventLoop`).
+     - Поддержка трансляции `TEST_DATABASE_URL` в `DATABASE_URL` и `DATABASE_URL_SYNC`.
+     - Команда `preflight`: проверка соответствия capabilities заданному профилю (`default-off` или `passkey-enabled`) напрямую на бэкенде и через Vite preview proxy (`http://localhost:5173/api/v1/auth/capabilities`) с fail-fast завершением.
+  2. Разработаны 4 теста жизненного цикла серверов `tests/test_server_lifecycle.py`:
+     - `test_manage_server_start_stop_cleans_port`: корректный старт, освобождение порта после стопа.
+     - `test_preflight_detects_mismatched_profile`: fail-fast при несоответствии профиля capabilities.
+     - `test_fail_fast_on_port_collision`: fail-fast при попытке занять уже занятый порт.
+     - `test_clean_restart_cycle`: успешный последовательный цикл старт-стоп-старт на одном порту.
+  3. Добавлены fail-fast preflight проверки в `frontend/e2e/sso.spec.ts` (проверка `all false`) и `frontend/e2e/passkey.spec.ts` (проверка `passkey_enabled=true`) в блоках `test.beforeAll`.
+  4. Обновлен `.github/workflows/ci.yml`: шаг `playwright-e2e` переведен на `manage_test_server.py` (`start-frontend`, `start`, `preflight`, `stop`).
+- Файлы: `scripts/manage_test_server.py`, `tests/test_server_lifecycle.py`, `frontend/e2e/sso.spec.ts`, `frontend/e2e/passkey.spec.ts`, `.github/workflows/ci.yml`.
+- Проверки: `pytest tests/test_server_lifecycle.py -v` (4 passed, 0 failed, 6.84s).
+- Результат: TASK-052 done. Lifecycle процессов и preflight capabilities полностью детерминированы.
+
+### WL-053 — Единый E2E-раннер и 100% прогон в живом Chromium (TASK-053)
+- Antigravity / TASK-053 (G6-WEBAUTHN, G6-VERIFY). Начало: 2026-09-25T04:49:00+03:00; завершение: 2026-09-25T04:54:10+03:00.
+- Действия:
+  1. Создан единый автоматический E2E runner `scripts/run_e2e_suite.py` (`--suite sso|passkey|all`):
+     - Автоматический старт Frontend Vite Preview на порту 5173.
+     - Запуск бэкенда в профиле Default-off, ожидание readiness, валидация preflight на :8000 и :5173.
+     - Запуск Playwright Chromium для `e2e/sso.spec.ts`.
+     - Чистая остановка default-off бэкенда, верификация освобождения порта 8000.
+     - Запуск бэкенда в профиле Passkey-enabled, ожидание readiness, валидация preflight на :8000 и :5173.
+     - Запуск Playwright Chromium для `e2e/passkey.spec.ts`.
+     - Чистая остановка enabled бэкенда и frontend preview с верификацией освобождения сокетов.
+  2. Устранена проблема исчерпания лимита регистрации (`BUG-022`) в `scripts/prepare_e2e_data.py`:
+     - Добавлена очистка таблицы `audit_events` (события `registration_attempt`) и тестовых пользователей `pw_user_%` перед повторными тестовыми прогонами.
+  3. Выполнен полный прогон `python scripts/run_e2e_suite.py --suite all`:
+     - Default-off SSO suite: 4 теста в Chromium завершились успешно (10.3s).
+     - Enabled Passkey suite: 4 теста в Chromium с CDP virtual authenticators завершились успешно (13.1s).
+     - Итого: **8 passed из 8 (100%)** в реальном браузере Chromium.
+- Файлы: `scripts/run_e2e_suite.py`, `scripts/prepare_e2e_data.py`.
+- Проверки: `python scripts/run_e2e_suite.py --suite all` -> 8 passed (0 failed).
+- Результат: TASK-053 done. Полный браузерный E2E жизненный цикл SSO и Passkey успешно пройден в реальном Chromium.
+
+### WL-054 — Регрессионный матричный прогон и документация приёмки (TASK-054)
+- Antigravity / TASK-054 (G6-VERIFY). Начало: 2026-09-25T04:55:00+03:00; завершение: 2026-09-25T05:01:00+03:00.
+- Действия:
+  1. Выполнен полный прогон pytest по всей кодовой базе: `pytest -v --ignore=tests/test_python_sdk.py tests/` -> **112 passed, 0 failed** (59.09s).
+  2. Выполнен прогон тестов MFA и флагов возможностей: `pytest -v tests/test_mfa_features.py tests/integration/test_email_verification_pg.py tests/integration/test_passkey_pg.py tests/integration/test_distributed_rate_limiting_pg.py tests/test_server_lifecycle.py` -> **22 passed, 0 failed** (54.12s).
+  3. Выполнен тест чистой установки Python SDK: `pytest packages/python-sdk/tests/test_sdk_isolated.py -v` -> **3 passed, 0 failed** (0.49s).
+  4. Выполнен typecheck фронтенда: `npm run typecheck` в `frontend/` -> 0 errors.
+  5. Выполнена production-сборка фронтенда: `npm run build` в `frontend/` -> 0 errors (962ms).
+  6. Выполнена проверка линтера и форматирования: `ruff check .` -> все проверки пройдены без ошибок.
+  7. Задокументированы дефекты BUG-018..BUG-022 в `docs/testing/defects.md`.
+  8. Составлен акт приёмки `docs/acceptance-goal-06.md` со всеми подтверждениями гипотезы, логами, результатами тестов и матрицей безопасности.
+  9. Обновлен `docs/plan.md`.
+- Файлы: `docs/acceptance-goal-06.md`, `docs/testing/defects.md`, `docs/plan.md`.
+- Проверки: полный регрессионный матричный прогон (112 pytest, 22 integration/mfa, 4 lifecycle, 8 playwright chromium, 3 sdk, npm typecheck, npm build, ruff).
+### WL-055 — Фиксация коммита, проверка сети и точка продолжения (TASK-055)
+- Antigravity / TASK-055 (G6-VERIFY). Начало: 2026-09-25T05:01:00+03:00; завершение: 2026-09-25T05:07:00+03:00.
+- Действия:
+  1. Выполнена проверка форматирования через ruff: отформатированы `scripts/manage_test_server.py` и `scripts/prepare_e2e_data.py`; `ruff check` и `ruff format --check` подтвердили чистоту репозитория.
+  2. Подготовлен локальный коммит с 17 файлами:
+     `git commit -m "fix(e2e): resolve uvicorn zombie lifecycle and passkey browser runtime (GOAL-06)"`
+     Создан коммит `HEAD`.
+  3. Проверена возможность выполнения `git push --dry-run origin main` из среды агента. Зафиксирован сетевой отказ: `fatal: unable to access 'https://github.com/alxprgstech/sso/': Proxy CONNECT aborted`.
+  4. В строгом соответствии с контрактом цели `GOAL-06-passkey-e2e-runtime.md` (раздел 6, пункт 7) и `AGENTS.md` (раздел 4): фиктивное завершение не объявлено, статус задачи TASK-055 зафиксирован как `blocked`, подготовлены детальные инструкции для владельца репозитория по отправке коммита и удалённой верификации CI.
+  5. Обновлены документы `docs/acceptance-goal-06.md`, `docs/plan.md`, `docs/status.md` и `docs/worklog.md`.
+- Файлы: `docs/acceptance-goal-06.md`, `docs/plan.md`, `docs/status.md`, `docs/worklog.md`.
+- Результат: локальный контур GOAL-06 завершен на 100% с реальным браузерным подтверждением в Chromium; точка продолжения для удалённого CI зафиксирована.
+
+

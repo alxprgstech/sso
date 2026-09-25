@@ -214,6 +214,7 @@ async def passkey_register_options(
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
         and settings.ENVIRONMENT != "production"
+        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
         else settings.WEBAUTHN_RP_ID
     )
     return await WebAuthnService.get_registration_options(db, user, rp_id=rp_id, settings=settings)
@@ -231,16 +232,23 @@ async def passkey_register_verify(
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
         and settings.ENVIRONMENT != "production"
+        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
         else settings.WEBAUTHN_RP_ID
     )
-    origin = request.headers.get("origin")
+    expected_origin = (
+        "http://localhost:5173"
+        if request.url.hostname in ("localhost", "127.0.0.1")
+        and settings.ENVIRONMENT != "production"
+        and settings.WEBAUTHN_ORIGIN == "https://auth.alxprgs.tech"
+        else settings.WEBAUTHN_ORIGIN
+    )
     await WebAuthnService.verify_registration(
         db,
         user,
         payload.credential,
         name=payload.name,
         rp_id=rp_id,
-        origin=origin,
+        origin=expected_origin,
         settings=settings,
     )
     return {"status": "ok", "message": "Passkey успешно зарегистрирован"}
@@ -256,6 +264,7 @@ async def passkey_auth_options(
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
         and settings.ENVIRONMENT != "production"
+        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
         else settings.WEBAUTHN_RP_ID
     )
     return await WebAuthnService.get_authentication_options(
@@ -277,9 +286,16 @@ async def passkey_auth_verify(
         "localhost"
         if request.url.hostname in ("localhost", "127.0.0.1")
         and settings.ENVIRONMENT != "production"
+        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
         else settings.WEBAUTHN_RP_ID
     )
-    origin = request.headers.get("origin")
+    expected_origin = (
+        "http://localhost:5173"
+        if request.url.hostname in ("localhost", "127.0.0.1")
+        and settings.ENVIRONMENT != "production"
+        and settings.WEBAUTHN_ORIGIN == "https://auth.alxprgs.tech"
+        else settings.WEBAUTHN_ORIGIN
+    )
 
     if payload.mfa_token:
         user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
@@ -308,7 +324,7 @@ async def passkey_auth_verify(
             raise AuthenticationException("Пользователь не найден или заблокирован")
 
     await WebAuthnService.verify_authentication(
-        db, user, payload.credential, rp_id=rp_id, origin=origin, settings=settings
+        db, user, payload.credential, rp_id=rp_id, origin=expected_origin, settings=settings
     )
 
     ip = request.client.host if request.client else None

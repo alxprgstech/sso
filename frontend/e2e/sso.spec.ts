@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 test.describe("ALXPRGS SSO End-to-End Suite", () => {
   test.use({ baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173" });
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     const testDbUrl = process.env.TEST_DATABASE_URL;
     if (!testDbUrl) {
       throw new Error("TEST_DATABASE_URL environment variable is required for E2E tests");
@@ -31,6 +31,21 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
       },
       stdio: "inherit",
     });
+
+    // G6-PREFLIGHT: Проверка соответствия профиля default-off до запуска UI тестов
+    const baseUrl = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173";
+    const capsRes = await fetch(`${baseUrl}/api/v1/auth/capabilities`);
+    if (!capsRes.ok) {
+      throw new Error(`[G6-PREFLIGHT-FAIL] /api/v1/auth/capabilities вернул HTTP ${capsRes.status}`);
+    }
+    const capsData = await capsRes.json();
+    const caps = capsData?.capabilities ?? capsData;
+    if (caps.passkey_enabled !== false || caps.totp_enabled !== false) {
+      throw new Error(
+        `[G6-PREFLIGHT-FAIL] Default-off SSO Suite требует отключенных флагов (false), ` +
+        `но получено: ${JSON.stringify(caps)}. Остановка до таймаутов браузера!`
+      );
+    }
   });
   test("01. Default Profile: Capabilities & Security Invariants UI", async ({ page }) => {
     // 1. Открываем главную страницу входа
