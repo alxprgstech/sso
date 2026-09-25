@@ -238,6 +238,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm run build
           npx playwright install --with-deps chromium
 
       - name: Start Frontend Preview Server
@@ -326,12 +327,17 @@ jobs:
         run: |
           python scripts/manage_test_server.py stop --pidfile /tmp/frontend.pid --port 5173
 
-      - name: Upload Playwright Artifacts on Failure
+      - name: Upload Playwright and Server Logs on Failure
         if: failure()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
-          name: playwright-report
+          name: playwright-and-server-logs
           path: |
+            /tmp/frontend.log
+            /tmp/backend_default_off.log
+            /tmp/backend_enabled.log
+            /tmp/backend.log
             frontend/playwright-report/
             frontend/test-results/
+          if-no-files-found: ignore
           retention-days: 14

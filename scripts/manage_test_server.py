@@ -32,6 +32,61 @@ def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
             return False
 
 
+def get_pid_listening_on_port(port: int, host: str = "127.0.0.1") -> int | None:
+    """Определяет PID процесса, слушающего указанный TCP-порт."""
+    if sys.platform == "win32":
+        try:
+            res = subprocess.run(
+                ["netstat", "-ano", "-p", "tcp"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            for line in res.stdout.splitlines():
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[0].upper() == "TCP":
+                    local_addr = parts[1]
+                    state = parts[3].upper()
+                    pid_str = parts[4]
+                    if state == "LISTENING":
+                        addr_port = local_addr.rsplit(":", 1)[-1]
+                        if addr_port == str(port) and pid_str.isdigit():
+                            return int(pid_str)
+        except Exception:
+            pass
+    else:
+        # Linux / Unix
+        try:
+            res = subprocess.run(
+                ["lsof", "-t", f"-i:{port}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if line.isdigit():
+                    return int(line)
+        except Exception:
+            pass
+        try:
+            res = subprocess.run(
+                ["ss", "-tulpn", f"sport = :{port}"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            import re
+
+            for line in res.stdout.splitlines():
+                m = re.search(r"pid=(\d+)", line)
+                if m:
+                    return int(m.group(1))
+        except Exception:
+            pass
+    return None
+
+
 def fetch_json(url: str, timeout: float = 10.0) -> dict[str, Any]:
     req = urllib.request.Request(
         url,
@@ -131,9 +186,13 @@ def start_server(
         merged_env["FEATURE_EMAIL_VERIFICATION_ENABLED"] = "true"
         merged_env["REQUIRE_VERIFIED_EMAIL"] = "false"
 
-    if "TEST_DATABASE_URL" in merged_env:
-        merged_env["DATABASE_URL"] = merged_env["TEST_DATABASE_URL"]
-        merged_env["DATABASE_URL_SYNC"] = merged_env["TEST_DATABASE_URL"]
+    test_db = merged_env.get(
+        "TEST_DATABASE_URL",
+        "postgresql+psycopg://sso_test_user:sso_test_password@localhost:5433/alxprgs_sso_test",
+    )
+    merged_env.setdefault("TEST_DATABASE_URL", test_db)
+    merged_env.setdefault("DATABASE_URL", test_db)
+    merged_env.setdefault("DATABASE_URL_SYNC", test_db)
 
     if env_vars:
         merged_env.update(env_vars)
@@ -189,59 +248,89 @@ def start_server(
             print("--- ЛОГ СЕРВЕРА ---\n" + rf.read())
         return 1
 
-    print(f"[START-OK] Сервер (PID {proc.pid}) успешно запущен и отвечает на {health_url}")
+    # Обновляем pidfile реальным PID процесса, слушающего порт
+    worker_pid = get_pid_listening_on_port(port, host) or proc.pid
+    with open(pidfile, "w", encoding="utf-8") as f:
+        f.write(str(worker_pid))
+
+    print(
+        f"[START-OK] Сервер (PID {worker_pid}, launcher PID {proc.pid}) успешно запущен и отвечает на {health_url}"
+    )
     return 0
 
 
 def stop_server(
     pidfile: str, port: int | None = None, host: str = "127.0.0.1", timeout: int = 5
 ) -> int:
-    if not os.path.exists(pidfile):
-        print(f"[STOP-WARN] PID-файл {pidfile} не найден.")
-        if port and is_port_in_use(port, host):
-            print(f"[STOP-WARN] Порт {port} всё ещё занят, хотя pidfile отсутствует!")
-            return 1
-        return 0
-
-    with open(pidfile, "r", encoding="utf-8") as f:
-        content = f.read().strip()
-
-    if not content:
-        print(f"[STOP-WARN] PID-файл {pidfile} пуст.")
-        return 0
-
-    pid = int(content)
-    print(f"[STOP] Остановка процесса сервера (PID {pid})...")
-
-    # Отправляем сигнал завершения
-    if sys.platform == "win32":
+    pid = None
+    if os.path.exists(pidfile):
         try:
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
-        except Exception as e:
-            print(f"[STOP-WARN] Ошибка taskkill PID {pid}: {e}")
-    else:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
+            with open(pidfile, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            if content and content.isdigit():
+                pid = int(content)
+        except Exception:
             pass
-        except Exception as e:
-            print(f"[STOP-WARN] Ошибка kill SIGTERM PID {pid}: {e}")
 
-    # Ждём завершения процесса
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    listening_pid = get_pid_listening_on_port(port, host) if port else None
+
+    pids_to_kill = set()
+    if pid and pid > 0:
+        pids_to_kill.add(pid)
+    if listening_pid and listening_pid > 0:
+        pids_to_kill.add(listening_pid)
+
+    if not pids_to_kill:
+        if port and is_port_in_use(port, host):
+            print(f"[STOP-WARN] Порт {port} всё ещё занят, хотя PID не определен!")
+            return 1
+        print(f"[STOP-WARN] PID-файл {pidfile} отсутствует или пуст.")
+        return 0
+
+    for target_pid in pids_to_kill:
+        print(f"[STOP] Остановка процесса сервера (PID {target_pid})...")
         if sys.platform == "win32":
-            res = subprocess.run(
-                ["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True
-            )
-            if str(pid) not in res.stdout:
-                break
+            try:
+                subprocess.run(
+                    ["taskkill", "/F", "/T", "/PID", str(target_pid)],
+                    capture_output=True,
+                    check=False,
+                )
+            except Exception as e:
+                print(f"[STOP-WARN] Ошибка taskkill PID {target_pid}: {e}")
         else:
             try:
-                os.kill(pid, 0)
-                time.sleep(0.3)
+                os.kill(target_pid, signal.SIGTERM)
             except ProcessLookupError:
-                break
+                pass
+            except Exception as e:
+                print(f"[STOP-WARN] Ошибка kill SIGTERM PID {target_pid}: {e}")
+
+    # Ждём завершения процессов
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        all_gone = True
+        for target_pid in pids_to_kill:
+            if sys.platform == "win32":
+                res = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {target_pid}"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if str(target_pid) in res.stdout:
+                    all_gone = False
+                    break
+            else:
+                try:
+                    os.kill(target_pid, 0)
+                    all_gone = False
+                    break
+                except ProcessLookupError:
+                    pass
+        if all_gone:
+            break
+        time.sleep(0.3)
 
     # Если задан порт, проверяем освобождение сокета
     if port:
@@ -251,10 +340,26 @@ def stop_server(
             if not is_port_in_use(port, host):
                 port_free = True
                 break
+            # Принудительно завершаем остаточный слушающий процесс
+            rem_pid = get_pid_listening_on_port(port, host)
+            if rem_pid:
+                if sys.platform == "win32":
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(rem_pid)],
+                        capture_output=True,
+                        check=False,
+                    )
+                else:
+                    try:
+                        os.kill(rem_pid, signal.SIGKILL)
+                    except Exception:
+                        pass
             time.sleep(0.3)
 
         if not port_free:
-            print(f"[STOP-ERROR] Порт {port} НЕ был освобожден после остановки PID {pid}!")
+            print(
+                f"[STOP-ERROR] Порт {port} НЕ был освобожден после остановки процессов {pids_to_kill}!"
+            )
             return 1
 
     try:
@@ -263,7 +368,7 @@ def stop_server(
         pass
 
     print(
-        f"[STOP-OK] Сервер (PID {pid}) успешно остановлен"
+        f"[STOP-OK] Сервер (PIDs {pids_to_kill}) успешно остановлен"
         + (f", порт {port} свободен" if port else "")
     )
     return 0
@@ -275,6 +380,7 @@ def start_frontend(
     pidfile: str = "/tmp/frontend.pid",
     logfile: str = "/tmp/frontend.log",
     backend_url: str = "http://localhost:8000",
+    frontend_dir: str | None = None,
     timeout: int = 25,
 ) -> int:
     if is_port_in_use(port, host):
@@ -282,8 +388,26 @@ def start_frontend(
         return 1
 
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    frontend_dir = os.path.join(root_dir, "frontend")
-    vite_bin = os.path.join(frontend_dir, "node_modules", "vite", "bin", "vite.js")
+    fe_dir = os.path.abspath(frontend_dir) if frontend_dir else os.path.join(root_dir, "frontend")
+
+    # 1. Preflight-проверка наличия собранного фронтенда
+    dist_dir = os.path.join(fe_dir, "dist")
+    dist_index = os.path.join(dist_dir, "index.html")
+    if not os.path.exists(dist_index):
+        print(
+            f"[START-ERROR] Сборка фронтенда не найдена в {dist_dir} (отсутствует {dist_index})! "
+            f"Выполните сборку фронтенда ('npm run build') перед запуском preview сервера."
+        )
+        return 1
+
+    vite_bin = os.path.join(fe_dir, "node_modules", "vite", "bin", "vite.js")
+    if not os.path.exists(vite_bin):
+        alt_vite = os.path.join(root_dir, "frontend", "node_modules", "vite", "bin", "vite.js")
+        if os.path.exists(alt_vite):
+            vite_bin = alt_vite
+        else:
+            print(f"[START-ERROR] Исполняемый файл Vite не найден по пути {vite_bin}!")
+            return 1
 
     os.makedirs(os.path.dirname(os.path.abspath(pidfile)), exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(logfile)), exist_ok=True)
@@ -297,7 +421,7 @@ def start_frontend(
 
     proc = subprocess.Popen(
         cmd,
-        cwd=frontend_dir,
+        cwd=fe_dir,
         env=merged_env,
         stdin=subprocess.DEVNULL,
         stdout=log_handle,
@@ -318,7 +442,16 @@ def start_frontend(
     live = False
     while time.time() - start_time < timeout:
         if proc.poll() is not None:
-            print(f"[START-ERROR] Фронтенд (PID {proc.pid}) аварийно завершился!")
+            print(
+                f"[START-ERROR] Фронтенд (PID {proc.pid}) аварийно завершился с кодом {proc.returncode}!"
+            )
+            log_handle.flush()
+            try:
+                with open(logfile, "r", encoding="utf-8", errors="replace") as rf:
+                    tail_lines = rf.readlines()[-50:]
+                    print("--- ЛОГ ФРОНТЕНДА (хвост) ---\n" + "".join(tail_lines))
+            except Exception as e:
+                print(f"[START-WARN] Не удалось прочитать лог {logfile}: {e}")
             return 1
         try:
             req = urllib.request.Request(url)
@@ -331,9 +464,22 @@ def start_frontend(
 
     if not live:
         print(f"[START-ERROR] Таймаут ожидания фронтенда по адресу {url} ({timeout}с)!")
+        log_handle.flush()
+        try:
+            with open(logfile, "r", encoding="utf-8", errors="replace") as rf:
+                tail_lines = rf.readlines()[-50:]
+                print("--- ЛОГ ФРОНТЕНДА (хвост) ---\n" + "".join(tail_lines))
+        except Exception as e:
+            print(f"[START-WARN] Не удалось прочитать лог {logfile}: {e}")
         return 1
 
-    print(f"[START-OK] Фронтенд готов по адресу {url}")
+    fe_worker_pid = get_pid_listening_on_port(port, host) or proc.pid
+    with open(pidfile, "w", encoding="utf-8") as f:
+        f.write(str(fe_worker_pid))
+
+    print(
+        f"[START-OK] Фронтенд готов по адресу {url} (PID {fe_worker_pid}, launcher PID {proc.pid})"
+    )
     return 0
 
 
@@ -357,6 +503,11 @@ def main() -> int:
     p_start_fe.add_argument("--pidfile", default="/tmp/frontend.pid")
     p_start_fe.add_argument("--logfile", default="/tmp/frontend.log")
     p_start_fe.add_argument("--backend-url", default="http://localhost:8000")
+    p_start_fe.add_argument(
+        "--frontend-dir",
+        default=None,
+        help="Путь к каталогу фронтенда (по умолчанию ./frontend)",
+    )
     p_start_fe.add_argument("--timeout", type=int, default=25)
 
     # stop
@@ -390,6 +541,7 @@ def main() -> int:
             pidfile=args.pidfile,
             logfile=args.logfile,
             backend_url=args.backend_url,
+            frontend_dir=args.frontend_dir,
             timeout=args.timeout,
         )
     elif args.command == "stop":

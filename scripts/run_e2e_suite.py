@@ -87,6 +87,16 @@ def run_e2e(suite: str) -> int:
     npx_cmd = "npx.cmd" if sys.platform == "win32" else "npx"
 
     try:
+        # 0. Проверка сборки фронтенда
+        dist_index = os.path.join(FRONTEND_DIR, "dist", "index.html")
+        if not os.path.exists(dist_index):
+            print("\n================== 0. СБОРКА ФРОНТЕНДА ДЛЯ PREVIEW ==================")
+            npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+            bld_res = subprocess.run([npm_cmd, "run", "build"], cwd=FRONTEND_DIR)
+            if bld_res.returncode != 0:
+                print("[ERROR] Не удалось выполнить сборку фронтенда ('npm run build')!")
+                return 1
+
         # 1. Запуск фронтенда
         print("\n================== 1. ЗАПУСК FRONTEND PREVIEW ==================")
         fe_start = subprocess.run(
