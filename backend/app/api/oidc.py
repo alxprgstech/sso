@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import base64
 import urllib.parse
+from datetime import datetime, timezone
+from authlib.oauth2.rfc6749.util import extract_basic_authorization, scope_to_list
 from fastapi import APIRouter, Depends, Form, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -24,13 +25,23 @@ def _extract_client_credentials(
     client_id: str | None = None,
     client_secret: str | None = None,
 ) -> tuple[str, str | None]:
-    """Извлекает client_id и client_secret из HTTP Basic Auth или параметров формы."""
+    """
+    Извлекает client_id и client_secret из HTTP Basic Auth или параметров формы (RFC 6749 Section 2.3).
+    Запрещает одновременное использование нескольких методов аутентификации.
+    """
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Basic "):
+        if client_id is not None or client_secret is not None:
+            raise OAuthErrorException(
+                "invalid_request",
+                "Использование более одного метода аутентификации клиента запрещено (RFC 6749 Section 2.3)",
+                400,
+            )
         try:
-            b64_creds = auth_header.split(" ", 1)[1]
-            decoded = base64.b64decode(b64_creds).decode("utf-8")
-            cid, csec = decoded.split(":", 1)
+            creds = extract_basic_authorization(dict(request.headers))
+            if not creds:
+                raise ValueError("Empty credentials")
+            cid, csec = creds
             return cid, csec
         except Exception:
             raise OAuthErrorException(
@@ -65,30 +76,77 @@ async def authorize(
             "unsupported_response_type", "Поддерживается только response_type=code", 400
         )
 
+    # Валидация запрошенного scope (SSO-04)
+    SUPPORTED_SCOPES = {"openid", "profile", "email"}
+    requested_scopes = set(scope_to_list(scope))
+    if "openid" not in requested_scopes:
+        raise OAuthErrorException(
+            "invalid_scope", "Запрос OpenID Connect должен содержать scope 'openid'", 400
+        )
+    unsupported_scopes = requested_scopes - SUPPORTED_SCOPES
+    if unsupported_scopes:
+        raise OAuthErrorException(
+            "invalid_scope",
+            f"Неподдерживаемые scopes: {', '.join(sorted(unsupported_scopes))}",
+            400,
+        )
+
     # 1. Валидация клиента и точного redirect_uri
     client = await OIDCService.get_and_validate_client(
         db, client_id=client_id, require_secret=False
     )
     OIDCService.validate_redirect_uri(client, redirect_uri)
 
-    # 2. Проверка активной сессии пользователя в SSO
+    # 2. Проверка активной валидной сессии пользователя в SSO (G8-SEC, FINAL-02)
     cookie_name = get_cookie_name(settings, request)
     raw_token = request.cookies.get(cookie_name)
     user: User | None = None
+    session_invalid = False
 
     if raw_token:
         token_hash = hash_token(raw_token)
         sess_stmt = select(Session).where(Session.session_token_hash == token_hash)
         session_obj = (await db.execute(sess_stmt)).scalar_one_or_none()
         if session_obj:
-            user_stmt = select(User).where(User.id == session_obj.user_id, User.is_active.is_(True))
-            user = (await db.execute(user_stmt)).scalar_one_or_none()
+            now = datetime.now(timezone.utc)
+            # Проверка абсолютного срока жизни (7 дней)
+            if session_obj.expires_at <= now:
+                await db.delete(session_obj)
+                await db.commit()
+                session_invalid = True
+            # Проверка срока неактивности (idle timeout: 12 часов)
+            elif (
+                now - session_obj.last_activity_at
+            ).total_seconds() > settings.SESSION_IDLE_TIMEOUT_SECONDS:
+                await db.delete(session_obj)
+                await db.commit()
+                session_invalid = True
+            else:
+                user_stmt = select(User).where(User.id == session_obj.user_id)
+                user_candidate = (await db.execute(user_stmt)).scalar_one_or_none()
+                if not user_candidate or not user_candidate.is_active:
+                    session_invalid = True
+                elif (
+                    settings.REQUIRE_VERIFIED_EMAIL
+                    and settings.FEATURE_EMAIL_VERIFICATION_ENABLED
+                    and not user_candidate.email_verified
+                ):
+                    session_invalid = True
+                else:
+                    user = user_candidate
+                    session_obj.last_activity_at = now
+                    await db.commit()
+        else:
+            session_invalid = True
 
-    # Если пользователь не аутентифицирован, перенаправляем на страницу входа
+    # Если пользователь не аутентифицирован или сессия недействительна, перенаправляем на страницу входа
     if not user:
         return_url = str(request.url)
         login_url = f"{settings.FRONTEND_URL}/login?return_to={urllib.parse.quote(return_url)}"
-        return RedirectResponse(url=login_url, status_code=status.HTTP_302_FOUND)
+        redirect_res = RedirectResponse(url=login_url, status_code=status.HTTP_302_FOUND)
+        if raw_token or session_invalid:
+            redirect_res.delete_cookie(key=cookie_name, path="/")
+        return redirect_res
 
     # 3. Пользователь авторизован в SSO -> моментальный выпуск single-use authorization code
     code = await OIDCService.create_authorization_code(
@@ -174,8 +232,8 @@ async def token(
         )
 
 
-@router.get("/userinfo", response_model=UserInfoResponse)
-@router.post("/userinfo", response_model=UserInfoResponse)
+@router.get("/userinfo", response_model=UserInfoResponse, response_model_exclude_none=True)
+@router.post("/userinfo", response_model=UserInfoResponse, response_model_exclude_none=True)
 async def userinfo(
     request: Request,
     authorization: str | None = Header(None),

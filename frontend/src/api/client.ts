@@ -1,4 +1,17 @@
-import { Capabilities, LoginResponse, UserProfile, SessionInfo, AdminUser, AdminClient, AuditEventItem, RegisterRequest, RegisterResponse, SystemStatus } from "../types/api";
+import {
+  Capabilities,
+  LoginResponse,
+  UserProfile,
+  SessionInfo,
+  AdminUser,
+  AdminClient,
+  AuditEventItem,
+  RegisterRequest,
+  RegisterResponse,
+  SystemStatus,
+  TOTPSetupResponse,
+  RecoveryCodesResponse,
+} from "../types/api";
 
 class ApiClient {
   private csrfToken: string | null = null;
@@ -210,6 +223,71 @@ class ApiClient {
     }
     return res;
   }
+
+  // --- TOTP API (SEC-FLAG-01) ---
+  async setupTotp(): Promise<TOTPSetupResponse> {
+    return this.request<TOTPSetupResponse>("/api/v1/mfa/totp/setup", {
+      method: "POST",
+    });
+  }
+
+  async confirmTotp(code: string): Promise<{ status: string; message: string }> {
+    return this.request<{ status: string; message: string }>("/api/v1/mfa/totp/confirm", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+  }
+
+  async verifyTotpLogin(code: string, mfaToken: string): Promise<LoginResponse> {
+    const res = await this.request<LoginResponse>("/api/v1/mfa/totp/verify", {
+      method: "POST",
+      body: JSON.stringify({ code, mfa_token: mfaToken }),
+    });
+    if ("csrf_token" in res) {
+      this.csrfToken = res.csrf_token;
+    }
+    return res;
+  }
+
+  async deleteTotp(): Promise<{ status: string; message: string }> {
+    return this.request<{ status: string; message: string }>("/api/v1/mfa/totp", {
+      method: "DELETE",
+    });
+  }
+
+  // --- Recovery Codes API (SEC-FLAG-02) ---
+  async generateRecoveryCodes(): Promise<RecoveryCodesResponse> {
+    return this.request<RecoveryCodesResponse>("/api/v1/mfa/recovery-codes/generate", {
+      method: "POST",
+    });
+  }
+
+  async verifyRecoveryCodeLogin(recoveryCode: string, mfaToken: string): Promise<LoginResponse> {
+    const res = await this.request<LoginResponse>("/api/v1/mfa/recovery-codes/verify", {
+      method: "POST",
+      body: JSON.stringify({ recovery_code: recoveryCode, mfa_token: mfaToken }),
+    });
+    if ("csrf_token" in res) {
+      this.csrfToken = res.csrf_token;
+    }
+    return res;
+  }
+
+  // --- Email Verification API (SEC-FLAG-07) ---
+  async requestEmailVerification(email?: string): Promise<{ status: string; message: string }> {
+    return this.request<{ status: string; message: string }>("/api/v1/mfa/email/request", {
+      method: "POST",
+      body: JSON.stringify({ email: email || null }),
+    });
+  }
+
+  async confirmEmailVerification(token: string): Promise<{ status: string; message: string }> {
+    return this.request<{ status: string; message: string }>("/api/v1/mfa/email/confirm", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  }
 }
 
 export const api = new ApiClient();
+

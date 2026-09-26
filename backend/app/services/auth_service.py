@@ -235,7 +235,7 @@ class AuthService:
         stmt = delete(Session).where(Session.id == session_id, Session.user_id == user_id)
         res = await db.execute(stmt)
         await db.commit()
-        return (res.rowcount or 0) > 0
+        return (getattr(res, "rowcount", 0) or 0) > 0
 
     @staticmethod
     async def revoke_all_sessions(
@@ -249,7 +249,7 @@ class AuthService:
             stmt = stmt.where(Session.id != except_session_id)
         res = await db.execute(stmt)
         await db.commit()
-        return res.rowcount or 0
+        return getattr(res, "rowcount", 0) or 0
 
     @staticmethod
     async def register_user(

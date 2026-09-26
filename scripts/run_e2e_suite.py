@@ -173,7 +173,7 @@ def run_e2e(suite: str) -> int:
 
             # Playwright
             pw_res = subprocess.run(
-                [npx_cmd, "playwright", "test", "e2e/sso.spec.ts"],
+                [npx_cmd, "playwright", "test", "e2e/sso.spec.ts", "e2e/multi_client_sso.spec.ts"],
                 cwd=FRONTEND_DIR,
                 env=default_off_env,
             )

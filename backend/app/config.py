@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     OIDC_ISSUER: str = "https://auth.alxprgs.tech"
     JWT_PRIVATE_KEY_PEM: str = ""
     JWT_KEY_ID: str = "default-rsa-key-1"
+    JWT_PREVIOUS_PUBLIC_KEY_PEM: str = ""
+    JWT_PREVIOUS_KEY_ID: str = ""
 
     # База данных
     DATABASE_URL: str = "postgresql+psycopg://sso_user:sso_password@localhost:5432/alxprgs_sso"
@@ -44,6 +46,7 @@ class Settings(BaseSettings):
     AUTH_CODE_TTL_SECONDS: int = 60
     ACCESS_TOKEN_TTL_SECONDS: int = 300  # 5 минут
     REFRESH_TOKEN_TTL_SECONDS: int = 604800  # 7 дней
+    REFRESH_FAMILY_MAX_LIFETIME_SECONDS: int = 2592000  # 30 дней абсолютный лимит семейства
     SESSION_IDLE_TIMEOUT_SECONDS: int = 43200  # 12 часов
     SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 604800  # 7 дней
     MFA_STEP_TTL_SECONDS: int = 300  # 5 минут на подтверждение второго фактора

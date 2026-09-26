@@ -43,17 +43,20 @@ def main():
     parser.add_argument(
         "--output-dir", default=None, help="Directory to save generated RSA PEM files"
     )
+    parser.add_argument("--key-id", default=None, help="Key ID (kid) for the RSA keypair")
     parser.add_argument(
         "--bits", type=int, default=2048, choices=[2048, 4096], help="RSA key size in bits"
     )
 
     args = parser.parse_args()
 
+    kid = args.key_id or f"rsa-key-{secrets.token_hex(4)}"
+
     print("[*] Generating ALXPRGS SSO Cryptographic Keys...")
 
     # 1. RSA Keypair
     priv_pem, pub_pem = generate_rsa_keypair(args.bits)
-    print(f"[+] RSA {args.bits}-bit key pair generated.")
+    print(f"[+] RSA {args.bits}-bit key pair generated (kid: {kid}).")
 
     if args.output_dir:
         out_dir = Path(args.output_dir)
@@ -72,6 +75,13 @@ def main():
     # 3. SECRET_KEY
     secret_key = secrets.token_hex(32)
     print(f"[+] SECRET_KEY (Hex):           {secret_key}")
+
+    print("\n[*] Key Rotation (SSO-06) Environment Configuration:")
+    print(f"    JWT_KEY_ID={kid}")
+    print("    JWT_PRIVATE_KEY_PEM=<path_or_pem_content>")
+    print("    (For overlapping period: configure previous public key)")
+    print("    JWT_PREVIOUS_KEY_ID=<previous_kid>")
+    print("    JWT_PREVIOUS_PUBLIC_KEY_PEM=<previous_pub_path_or_pem>")
 
     print(
         "\n[!] Keep private and encryption keys secret. Store securely in production environments."

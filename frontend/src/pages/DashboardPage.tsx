@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
-import { SessionInfo } from "../types/api";
+import { SessionInfo, TOTPSetupResponse } from "../types/api";
 import { prepareCreationOptions, serializeCreationResponse } from "../utils/webauthn";
 
 export const DashboardPage: React.FC = () => {
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, refreshUser } = useAuth();
 
   // Состояние смены пароля
   const [currentPassword, setCurrentPassword] = useState("");
@@ -26,6 +26,121 @@ export const DashboardPage: React.FC = () => {
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeySuccess, setPasskeySuccess] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  // Состояние TOTP (SEC-FLAG-01)
+  const [totpSetupData, setTotpSetupData] = useState<TOTPSetupResponse | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpSuccess, setTotpSuccess] = useState<string | null>(null);
+  const [totpError, setTotpError] = useState<string | null>(null);
+
+  // Состояние Recovery Codes (SEC-FLAG-02)
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoverySuccess, setRecoverySuccess] = useState<string | null>(null);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
+  // Состояние Email Verification (SEC-FLAG-07)
+  const [emailToken, setEmailToken] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  const handleSetupTotp = async () => {
+    setTotpLoading(true);
+    setTotpError(null);
+    setTotpSuccess(null);
+    try {
+      const data = await api.setupTotp();
+      setTotpSetupData(data);
+    } catch (err: any) {
+      setTotpError(err.message || "Не удалось настроить TOTP");
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleConfirmTotp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!totpCode.trim()) return;
+    setTotpLoading(true);
+    setTotpError(null);
+    try {
+      const res = await api.confirmTotp(totpCode.trim());
+      setTotpSuccess(res.message || "TOTP успешно активирован");
+      setTotpSetupData(null);
+      setTotpCode("");
+      await refreshUser();
+    } catch (err: any) {
+      setTotpError(err.message || "Неверный код TOTP");
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleDeleteTotp = async () => {
+    if (!confirm("Вы уверены, что хотите отключить TOTP? Связанные резервные коды также будут отозваны.")) return;
+    setTotpLoading(true);
+    setTotpError(null);
+    try {
+      const res = await api.deleteTotp();
+      setTotpSuccess(res.message || "TOTP успешно отключен");
+      setTotpSetupData(null);
+      setRecoveryCodes(null);
+      await refreshUser();
+    } catch (err: any) {
+      setTotpError(err.message || "Ошибка при отключении TOTP");
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleGenerateRecoveryCodes = async () => {
+    setRecoveryLoading(true);
+    setRecoveryError(null);
+    setRecoverySuccess(null);
+    try {
+      const data = await api.generateRecoveryCodes();
+      setRecoveryCodes(data.recovery_codes);
+      setRecoverySuccess("Резервные коды успешно сформированы. Сохраните их в безопасном месте!");
+    } catch (err: any) {
+      setRecoveryError(err.message || "Ошибка генерации резервных кодов");
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  const handleRequestEmailVerification = async () => {
+    setEmailLoading(true);
+    setEmailError(null);
+    setEmailSuccess(null);
+    try {
+      const res = await api.requestEmailVerification();
+      setEmailSuccess(res.message || "Письмо с подтверждением отправлено");
+    } catch (err: any) {
+      setEmailError(err.message || "Ошибка отправки подтверждения");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleConfirmEmailVerification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailToken.trim()) return;
+    setEmailLoading(true);
+    setEmailError(null);
+    setEmailSuccess(null);
+    try {
+      const res = await api.confirmEmailVerification(emailToken.trim());
+      setEmailSuccess(res.message || "Email успешно подтвержден!");
+      setEmailToken("");
+      await refreshUser();
+    } catch (err: any) {
+      setEmailError(err.message || "Неверный или просроченный токен верификации");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
 
   const fetchSessions = async () => {
     setSessionsLoading(true);
@@ -307,7 +422,7 @@ export const DashboardPage: React.FC = () => {
         <h2 className="text-xl font-bold text-gray-900 border-b pb-4 mb-4">Безопасность и второй фактор</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* TOTP */}
-          <div className="border border-gray-200 rounded-lg p-4 space-y-2">
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3" data-testid="totp-section">
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-gray-900">Приложение-аутентификатор (TOTP)</h3>
               <span
@@ -315,15 +430,87 @@ export const DashboardPage: React.FC = () => {
                   capabilities?.totp_enabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
                 }`}
               >
-                {capabilities?.totp_enabled ? "Доступно" : "Отключено по умолчанию"}
+                {capabilities?.totp_enabled ? (user.has_totp ? "Активен" : "Доступно") : "Отключено по умолчанию"}
               </span>
             </div>
             <p className="text-xs text-gray-500">
               Генерация одноразовых 6-значных кодов по RFC 6238 (Google Authenticator, YubiKey).
             </p>
-            {!capabilities?.totp_enabled && (
+            {!capabilities?.totp_enabled ? (
               <div className="text-xs text-gray-400 italic">
                 Флаг FEATURE_TOTP_ENABLED выключен в конфигурации сервера.
+              </div>
+            ) : (
+              <div className="space-y-3 pt-2">
+                {totpSuccess && (
+                  <div className="text-xs bg-green-50 text-green-700 p-2 rounded" data-testid="totp-success">
+                    {totpSuccess}
+                  </div>
+                )}
+                {totpError && (
+                  <div className="text-xs bg-red-50 text-red-700 p-2 rounded" data-testid="totp-error">
+                    {totpError}
+                  </div>
+                )}
+                {user.has_totp ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-green-700 font-medium">✓ Двухфакторная аутентификация TOTP включена</span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteTotp}
+                      disabled={totpLoading}
+                      className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                      data-testid="disable-totp-button"
+                    >
+                      Отключить
+                    </button>
+                  </div>
+                ) : totpSetupData ? (
+                  <form onSubmit={handleConfirmTotp} className="space-y-2 bg-gray-50 p-3 rounded-lg border">
+                    <div className="text-xs text-gray-700">Секретный ключ (введите в приложение аутентификатора):</div>
+                    <div className="text-xs font-mono font-bold bg-white p-2 rounded border break-all select-all text-blue-900">
+                      {totpSetupData.secret}
+                    </div>
+                    <div className="text-xs text-gray-600">Введите 6-значный код для подтверждения:</div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="000000"
+                        maxLength={6}
+                        value={totpCode}
+                        onChange={(e) => setTotpCode(e.target.value)}
+                        className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 font-mono text-center tracking-widest"
+                        data-testid="totp-code-input"
+                      />
+                      <button
+                        type="submit"
+                        disabled={totpLoading}
+                        className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
+                        data-testid="confirm-totp-button"
+                      >
+                        {totpLoading ? "Проверка..." : "Подтвердить"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTotpSetupData(null)}
+                        className="text-xs text-gray-600 bg-gray-200 px-3 py-1.5 rounded hover:bg-gray-300"
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSetupTotp}
+                    disabled={totpLoading}
+                    className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
+                    data-testid="setup-totp-button"
+                  >
+                    {totpLoading ? "Загрузка..." : "Настроить TOTP"}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -412,7 +599,7 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           {/* Резервные коды */}
-          <div className="border border-gray-200 rounded-lg p-4 space-y-2">
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3" data-testid="recovery-codes-section">
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-gray-900">Резервные коды восстановления</h3>
               <span
@@ -426,31 +613,132 @@ export const DashboardPage: React.FC = () => {
             <p className="text-xs text-gray-500">
               Одноразовые резервные коды для восстановления доступа при утрате второго фактора.
             </p>
-            {!capabilities?.recovery_codes_enabled && (
+            {!capabilities?.recovery_codes_enabled ? (
               <div className="text-xs text-gray-400 italic">
                 Флаг FEATURE_RECOVERY_CODES_ENABLED выключен в конфигурации сервера.
+              </div>
+            ) : (
+              <div className="space-y-3 pt-2">
+                {recoverySuccess && (
+                  <div className="text-xs bg-green-50 text-green-700 p-2 rounded" data-testid="recovery-success">
+                    {recoverySuccess}
+                  </div>
+                )}
+                {recoveryError && (
+                  <div className="text-xs bg-red-50 text-red-700 p-2 rounded" data-testid="recovery-error">
+                    {recoveryError}
+                  </div>
+                )}
+                {!user.has_totp ? (
+                  <div className="text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                    Резервные коды требуют предварительной активации TOTP аутентификатора.
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleGenerateRecoveryCodes}
+                      disabled={recoveryLoading}
+                      className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50 mb-2"
+                      data-testid="generate-recovery-codes-button"
+                    >
+                      {recoveryLoading ? "Генерация..." : "Сгенерировать новые коды"}
+                    </button>
+                    {recoveryCodes && (
+                      <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 space-y-2 mt-2" data-testid="recovery-codes-display">
+                        <div className="text-xs font-semibold text-amber-800">
+                          ⚠️ Сохраните эти коды прямо сейчас! Они отображаются только один раз:
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 font-mono text-xs select-all text-gray-900">
+                          {recoveryCodes.map((code, idx) => (
+                            <div key={idx} className="bg-white p-1.5 rounded border text-center font-bold">
+                              {code}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Подтверждение email */}
-          <div className="border border-gray-200 rounded-lg p-4 space-y-2">
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3" data-testid="email-verification-section">
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-gray-900">Подтверждение адреса почты</h3>
               <span
                 className={`text-xs px-2 py-0.5 rounded font-medium ${
-                  capabilities?.email_verification_enabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+                  capabilities?.email_verification_enabled
+                    ? user.email_verified
+                      ? "bg-green-100 text-green-800"
+                      : "bg-yellow-100 text-yellow-800"
+                    : "bg-gray-100 text-gray-600"
                 }`}
               >
-                {capabilities?.email_verification_enabled ? "Доступно" : "Отключено по умолчанию"}
+                {capabilities?.email_verification_enabled
+                  ? user.email_verified
+                    ? "Подтверждён"
+                    : "Не подтверждён"
+                  : "Отключено по умолчанию"}
               </span>
             </div>
             <p className="text-xs text-gray-500">
               Отправка одноразовой ссылки верификации на адрес электронной почты.
             </p>
-            {!capabilities?.email_verification_enabled && (
+            {!capabilities?.email_verification_enabled ? (
               <div className="text-xs text-gray-400 italic">
                 Флаг FEATURE_EMAIL_VERIFICATION_ENABLED выключен в конфигурации сервера.
+              </div>
+            ) : (
+              <div className="space-y-3 pt-2">
+                {emailSuccess && (
+                  <div className="text-xs bg-green-50 text-green-700 p-2 rounded" data-testid="email-success">
+                    {emailSuccess}
+                  </div>
+                )}
+                {emailError && (
+                  <div className="text-xs bg-red-50 text-red-700 p-2 rounded" data-testid="email-error">
+                    {emailError}
+                  </div>
+                )}
+                {user.email_verified ? (
+                  <div className="text-xs text-green-700 font-medium">
+                    ✓ Ваш адрес электронной почты ({user.email}) успешно подтверждён.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleRequestEmailVerification}
+                      disabled={emailLoading}
+                      className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
+                      data-testid="request-email-verification-button"
+                    >
+                      {emailLoading ? "Отправка..." : "Отправить письмо с подтверждением"}
+                    </button>
+                    <form onSubmit={handleConfirmEmailVerification} className="flex gap-2 pt-1">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Токен подтверждения из письма"
+                        value={emailToken}
+                        onChange={(e) => setEmailToken(e.target.value)}
+                        className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        data-testid="email-token-input"
+                      />
+                      <button
+                        type="submit"
+                        disabled={emailLoading}
+                        className="text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 disabled:opacity-50"
+                        data-testid="confirm-email-button"
+                      >
+                        Подтвердить
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
             )}
           </div>

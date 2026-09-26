@@ -100,3 +100,13 @@ export interface AuditEventItem {
   details: Record<string, any>;
   created_at: string;
 }
+
+export interface TOTPSetupResponse {
+  secret: string;
+  otpauth_url: string;
+}
+
+export interface RecoveryCodesResponse {
+  recovery_codes: string[];
+}
+

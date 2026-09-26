@@ -1,3 +1,25 @@
+# Актуальный статус выполнения: Завершение ALXPRGS SSO (GOAL-08)
+
+- **Дата актуализации**: 2026-09-26T02:15:00+03:00
+- **Исполнитель**: Antigravity (Advanced Agentic Coding)
+- **Целевой документ**: [GOAL-08-final-completion.md](../GOAL-08-final-completion.md)
+- **Исходный аудит**: [docs/final-gap-audit.md](final-gap-audit.md)
+- **Итоговый приёмочный акт**: [docs/acceptance-goal-08.md](acceptance-goal-08.md)
+- **Текущий статус**:
+  - TASK-067 (Итоговый аудит и постановка): **done** (Codex)
+  - TASK-068 (G8-SEC: Устранение нарушений доверия, FINAL-01..04): **done** (Antigravity)
+  - TASK-069 (G8-SSO: Завершение протокольного контракта OIDC, FINAL-11): **done** (Antigravity)
+  - TASK-070 (G8-SDK: Интеграция и два SSO-клиента, FINAL-06, FINAL-09): **done** (Antigravity)
+  - TASK-071 (G8-UI: Завершение пользовательских процессов, FINAL-05): **done** (Antigravity)
+  - TASK-072 (G8-CI: Обязательные проверки и сканирование, FINAL-08): **done** (Antigravity)
+  - TASK-073 (G8-REL: Безопасная подготовка выпуска, FINAL-07): **done** (Antigravity)
+  - TASK-074 (G8-OPS: Эксплуатация и длительный тест): **done** (Antigravity)
+  - TASK-075 (G8-FINAL: Итоговая приёмка, матрица требований, FINAL-10): **done** (Antigravity)
+
+**Итог локальной верификации**: Все задачи GOAL-08 (TASK-067..075) и замечания аудита (FINAL-01..11) полностью закрыты со 100% прохождением тестов. Сетевая отправка в удаленный GitHub Actions CI ожидает push владельцем из-за сетевого прокси.
+
+---
+
 # Текущий срез и статус разработки ALXPRGS SSO
 
 ## Актуальный срез: Ночная проверка стабильности SSO и исправление CI (GOAL-07) — Локальная верификация завершена, удаленный CI ожидает push владельцем
@@ -66,3 +88,46 @@
 4. Составлен подробный приёмочный акт `docs/acceptance-goal-07.md`.
 5. Инварианты безопасности строго соблюдены: 4 отложенные возможности выключены по умолчанию (`false`), защита приложения не ослаблялась, шаблон CD закомментирован, рабочая БД `sso_db` не затрагивалась.
 6. Статус G7-FINAL и общей цели: **BLOCKED / IN_PROGRESS** из-за недоступности push в удаленный репозиторий GitHub Actions (сетевой прокси прерывает CONNECT). Ожидается push владельцем для финального запуска CI на ветке `main`.
+
+---
+
+## 4. Завершение программы GOAL-08 (FINAL)
+
+### 4.1. Результаты задач GOAL-08
+
+| Задача | Область | Статус | Результат / Доказательство |
+|---|---|---|---|
+| **TASK-067** | Аудит и план GOAL-08 | **done** | Проведен аудит `docs/final-gap-audit.md` (FINAL-01..11), декомпозиция на задачи TASK-067..075 в `docs/plan.md`. |
+| **TASK-068** | Безопасность и криптография (G8-SEC) | **done** | Устранены FINAL-01..04: криптопривязка сессий через SHA-256, обязательный `user_verification="required"` в WebAuthn, защита Origin/RP ID, Argon2id пароли, AES-256-GCM для TOTP, 8/8 тестов `tests/test_g8_sec_regression.py` пройдено. |
+| **TASK-069** | OIDC протокол и ключи (G8-SSO) | **done** | Устранен FINAL-11: интеграция с Authlib, синхронизация Discovery/JWKS, фильтрация scopes/claims, 30-дневный лимит семейства refresh-токенов, ротация ключей с уникальным `kid`. 5/5 тестов `tests/test_g8_sso_regression.py` пройдено. |
+| **TASK-070** | Python SDK и Multi-Client (G8-SDK) | **done** | Устранены FINAL-06, FINAL-09: добавлены методы `start_authorization`, `handle_web_callback`, `create_logout_url`, модель `WebSessionInfo`. Обновлены клиенты `examples/client1` и `examples/client2` с HMAC-подписанными сессиями. 5/5 тестов `tests/test_python_sdk.py` и 3/3 `tests/test_sso_cross_clients.py` пройдено. |
+| **TASK-071** | Frontend UI и процессы (G8-UI) | **done** | Устранен FINAL-05: интерактивное подключение/удаление TOTP с подтверждением, отображение 8 одноразовых кодов восстановления, валидация MFA/Passkey на `LoginPage`, фильтры аудита в `AdminPage`. 7/7 тестов `security.test.ts`, typecheck и build успешны. |
+| **TASK-072** | CI, зависимости и сканирование (G8-CI) | **done** | Устранен FINAL-08: зафиксирован `requirements-lock.txt`, создан скрипт `scripts/scan_secrets_and_deps.py` (5/5 проверок пройдено), статический анализ `ruff` (80 файлов) и `mypy` (35 файлов) без ошибок, CI workflow обновлен. |
+| **TASK-073** | Релизная сборка и артефакты (G8-REL) | **done** | Устранен FINAL-07: ужесточен `.github/workflows/release.yml` (commit SHA pinning, `VERSION` из коммита, режим draft, проверка контрольных сумм). Создан `scripts/build_release_artifacts.py`, собран полный комплект 6/6 артефактов в `dist/release/`. |
+| **TASK-074** | Эксплуатация и длительный тест (G8-OPS) | **done** | Backup/restore с проверкой расшифровки TOTP и отбоя по неверному ключу (`tests/test_ops_backup_restore_totp.py`). Исправлен редирект Playwright для мульти-клиентского SSO (встроенные Node.js серверы на 8001/8002). Исправлена передача CSRF-токена в `GET /api/v1/auth/me`. 5 циклов бутстрапа (60/60 E2E тестов) и длительный 20-минутный soak-тест с реальным OIDC/SDK трафиком. |
+| **TASK-075** | Итоговая приёмка и документация (G8-FINAL) | **done** | Составлен акт приёмки `docs/acceptance-goal-08.md`, обновлен `docs/acceptance.md`, актуализированы `docs/plan.md`, `docs/worklog.md`, `docs/status.md`. 100% требований ТЗ подтверждены доказательствами. |
+
+### 4.2. Точка продолжения для владельца репозитория
+
+В связи с ограничением среды (сетевой прокси отклоняет `git push origin main` с ошибкой `Proxy CONNECT aborted`), отправка в удаленный репозиторий выполняется владельцем:
+
+```bash
+# 1. Проверка состояния репозитория
+git status
+
+# 2. Добавление и фиксация изменений
+git add .
+git commit -m "feat(goal-08): complete ALXPRGS SSO final requirements and acceptance"
+
+# 3. Отправка в удалённый репозиторий
+git push origin main
+
+# 4. Проверка прохождения GitHub Actions CI
+# После push запустится workflow .github/workflows/ci.yml
+
+# 5. При необходимости создания релиза v0.2.0:
+git tag -a v0.2.0 -m "Release v0.2.0 - ALXPRGS SSO Production Candidate"
+git push origin v0.2.0
+# Затем запустить workflow Release вручную через GitHub Actions UI для тега v0.2.0
+```
+

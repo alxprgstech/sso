@@ -185,3 +185,81 @@ async def test_seamless_sso_between_two_clients():
             sdk1.verify_access_token(tokens_2.access_token, expected_audience=client1_id)
 
     # Бесшовный единый вход подтверждён!
+
+
+def test_client_web_session_cookie_lifecycle_and_csrf():
+    """
+    Инварианты SDK-06, SSO-01, FINAL-09:
+    Тестирование полного жизненного цикла веб-сессии в демонстрационном клиенте:
+    1. Инициация входа /login с выставлением подписанной cookie client1_auth_flow.
+    2. Отклонение callback без cookie или с несовпадающим state (защита от CSRF).
+    3. Успешный callback с установкой HttpOnly подписанной сессионной cookie client1_session.
+    4. Доступ к защищенному маршруту /dashboard по сессионной cookie.
+    5. Завершение сессии /logout с очисткой cookie и редиректом на сервер авторизации.
+    """
+    from alxprgs_sso.models import UserClaims, WebSessionInfo
+
+    c1 = TestClient(client1_module.app)
+
+    # 1. /login
+    login_res = c1.get("/login", follow_redirects=False)
+    assert login_res.status_code == 302
+    assert "client1_auth_flow" in login_res.cookies
+    auth_flow_cookie = login_res.cookies["client1_auth_flow"]
+
+    # Распарсим state из URL
+    location = login_res.headers["Location"]
+    parsed_url = urlparse(location)
+    query_params = parse_qs(parsed_url.query)
+    expected_state = query_params["state"][0]
+
+    # 2. Попытка CSRF: несовпадающий state
+    c1.cookies.set("client1_auth_flow", auth_flow_cookie)
+    csrf_res = c1.get(f"/callback?code=mock_code&state=fake_state_{uuid.uuid4().hex}")
+    assert csrf_res.status_code == 400
+    assert "CSRF" in csrf_res.text
+
+    # Попытка запроса без cookie сессии авторизации
+    c1_no_cookie = TestClient(client1_module.app)
+    no_cookie_res = c1_no_cookie.get(f"/callback?code=mock_code&state={expected_state}")
+    assert no_cookie_res.status_code == 400
+    assert "Отсутствует сессия авторизации" in no_cookie_res.text
+
+    # 3. Успешный callback с валидным state и подписанной cookie
+    mock_session_info = WebSessionInfo(
+        user=UserClaims(
+            sub="user_12345",
+            preferred_username="test_analyst",
+            email="analyst@alxprgs.tech",
+            email_verified=True,
+            roles=["analyst", "user"],
+        ),
+        access_token="mock_access_token",
+        id_token="mock_id_token",
+        expires_in=3600,
+        id_token_claims={"sub": "user_12345", "aud": "client_analytics_app"},
+    )
+
+    with patch.object(
+        client1_module.sso_client,
+        "handle_web_callback",
+        new=AsyncMock(return_value=mock_session_info),
+    ):
+        callback_res = c1.get(
+            f"/callback?code=valid_code&state={expected_state}",
+            follow_redirects=False,
+        )
+        assert callback_res.status_code == 302
+        assert callback_res.headers["Location"] == "/dashboard"
+        assert "client1_session" in callback_res.cookies
+
+        # 4. Проверяем /dashboard с полученной сессионной cookie
+        dashboard_res = c1.get("/dashboard")
+        assert dashboard_res.status_code == 200
+        assert "test_analyst" in dashboard_res.text
+        assert "analyst@alxprgs.tech" in dashboard_res.text
+
+        # 5. Logout
+        logout_res = c1.get("/logout", follow_redirects=False)
+        assert logout_res.status_code == 302
+        assert "oauth/logout" in logout_res.headers["Location"]

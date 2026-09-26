@@ -34,8 +34,12 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 BACKEND_DIR = ROOT_DIR / "backend"
+SDK_DIR = ROOT_DIR / "packages" / "python-sdk"
 MANAGE_SCRIPT = ROOT_DIR / "scripts" / "manage_test_server.py"
 SEED_SCRIPT = ROOT_DIR / "scripts" / "prepare_e2e_data.py"
+
+if str(SDK_DIR) not in sys.path:
+    sys.path.insert(0, str(SDK_DIR))
 
 # Настройки по умолчанию
 DEFAULT_TEST_DB_URL = os.environ.get(
@@ -273,10 +277,18 @@ def evaluate_soak_criteria(
 # ==============================================================================
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> None:
+        return None
+
+
 class SimpleHttpClient:
     def __init__(self, base_url: str = "http://127.0.0.1:8000"):
         self.base_url = base_url.rstrip("/")
         self.cookies: dict[str, str] = {}
+        self.last_headers: dict[str, str] = {}
 
     def request(
         self,
@@ -285,6 +297,7 @@ class SimpleHttpClient:
         json_data: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         timeout: float = 10.0,
+        follow_redirects: bool = True,
     ) -> tuple[int, dict[str, Any], float]:
         url = f"{self.base_url}{path}"
         req_headers = {
@@ -306,11 +319,20 @@ class SimpleHttpClient:
         start_t = time.perf_counter()
         status_code = 0
         resp_data: dict[str, Any] = {}
+        self.last_headers = {}
+
+        opener = (
+            urllib.request.build_opener()
+            if follow_redirects
+            else urllib.request.build_opener(_NoRedirectHandler)
+        )
 
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with opener.open(req, timeout=timeout) as resp:
                 elapsed_ms = (time.perf_counter() - start_t) * 1000.0
                 status_code = resp.status
+                for k, v in resp.headers.items():
+                    self.last_headers[k.lower()] = v
                 # Save cookies
                 for cookie_header in resp.headers.get_all("Set-Cookie") or []:
                     parts = cookie_header.split(";")[0].split("=", 1)
@@ -325,6 +347,8 @@ class SimpleHttpClient:
         except urllib.error.HTTPError as e:
             elapsed_ms = (time.perf_counter() - start_t) * 1000.0
             status_code = e.code
+            for k, v in e.headers.items():
+                self.last_headers[k.lower()] = v
             for cookie_header in e.headers.get_all("Set-Cookie") or []:
                 parts = cookie_header.split(";")[0].split("=", 1)
                 if len(parts) == 2:
@@ -471,9 +495,15 @@ def run_boot_stage(
                 print(f"[BOOT-FAIL] Preflight default-off провален:\n{pref_res.stdout}")
                 return {"status": "failed", "cycle": c, "step": "preflight-default-off"}
 
-            # SSO E2E Test
+            # SSO E2E Test (Default profile SSO + Cross-client delegation)
             sso_res = subprocess.run(
-                [npx_cmd, "playwright", "test", "e2e/sso.spec.ts"],
+                [
+                    npx_cmd,
+                    "playwright",
+                    "test",
+                    "e2e/sso.spec.ts",
+                    "e2e/multi_client_sso.spec.ts",
+                ],
                 cwd=FRONTEND_DIR,
                 env=def_env,
                 capture_output=True,
@@ -614,9 +644,9 @@ def run_boot_stage(
 
         c_dur = round(time.time() - c_start, 2)
         print(
-            f"[BOOT-OK] Цикл {c}/{cycles} успешно завершен за {c_dur}s (SSO 4/4 passed, Passkey 4/4 passed)"
+            f"[BOOT-OK] Цикл {c}/{cycles} успешно завершен за {c_dur}s (SSO 4/4, Multi-Client 4/4, Passkey 4/4 passed)"
         )
-        results.append({"cycle": c, "status": "passed", "duration_s": c_dur, "tests_passed": 8})
+        results.append({"cycle": c, "status": "passed", "duration_s": c_dur, "tests_passed": 12})
 
     print(f"\n[G7-BOOT-SUCCESS] Все {cycles} циклов пройдены без единой ошибки и утечки портов!")
     return {"status": "passed", "cycles_completed": cycles, "details": results}
@@ -831,6 +861,71 @@ def run_soak_stage(
                 print(f"[SOAK-OP-FAIL] /me: status={st}, body={d}")
                 unexpected_errors += 1
 
+            # 1.5.1 OIDC Authorization Code Flow & Python SDK Validation (G8-OPS / SSO-01 / SDK-02)
+            try:
+                from alxprgs_sso import SSOClient
+
+                sdk_client = SSOClient(
+                    server_url=f"http://127.0.0.1:{BACKEND_PORT}",
+                    client_id="client_analytics_app",
+                    client_secret="analytics_client_secret_123",
+                    expected_issuer="https://auth.alxprgs.tech",
+                    expected_audience="client_analytics_app",
+                )
+                auth_url, code_verifier, expected_state, expected_nonce = (
+                    sdk_client.start_authorization(
+                        redirect_uri="http://localhost:8001/callback",
+                        scope="openid profile email",
+                    )
+                )
+                parsed_auth = urllib.parse.urlparse(auth_url)
+                auth_path = f"{parsed_auth.path}?{parsed_auth.query}"
+
+                st_auth, _, lat_auth = client.request("GET", auth_path, follow_redirects=False)
+                total_ops += 1
+                latencies.append(lat_auth)
+
+                if st_auth not in (302, 303, 307):
+                    print(f"[SOAK-OP-FAIL] /oauth/authorize: expected 302, got status={st_auth}")
+                    unexpected_errors += 1
+                else:
+                    loc = client.last_headers.get("location", "")
+                    parsed_loc = urllib.parse.urlparse(loc)
+                    loc_params = urllib.parse.parse_qs(parsed_loc.query)
+                    code_val = loc_params.get("code", [None])[0]
+                    state_val = loc_params.get("state", [None])[0]
+                    if not code_val or state_val != expected_state:
+                        print(f"[SOAK-OP-FAIL] /oauth/authorize: invalid redirect params {loc}")
+                        unexpected_errors += 1
+                    else:
+                        start_tok_t = time.perf_counter()
+                        import asyncio
+
+                        session_info = asyncio.run(
+                            sdk_client.handle_web_callback(
+                                code=code_val,
+                                state=state_val,
+                                expected_state=expected_state,
+                                code_verifier=code_verifier,
+                                redirect_uri="http://localhost:8001/callback",
+                                expected_nonce=expected_nonce,
+                            )
+                        )
+                        tok_lat = round((time.perf_counter() - start_tok_t) * 1000.0, 2)
+                        total_ops += 1
+                        latencies.append(tok_lat)
+                        if (
+                            not session_info.user
+                            or session_info.user.preferred_username != "compose_admin"
+                        ):
+                            print(
+                                f"[SOAK-OP-FAIL] SDK session_info user mismatch: {session_info.user}"
+                            )
+                            unexpected_errors += 1
+            except Exception as oidc_ex:
+                print(f"[SOAK-OP-FAIL] OIDC Code/Token & SDK flow error: {oidc_ex}")
+                unexpected_errors += 1
+
             # 1.6. Logout with CSRF token
             csrf_tok = login_data.get("csrf_token", "")
             st, d, lat = client.request(
@@ -1012,6 +1107,11 @@ def run_soak_stage(
     duration_achieved_sec = round(load_end_time - load_start_time, 1)
     expected_samples = int(target_duration_sec / sample_interval_sec)
 
+    if target_duration_sec >= 300.0:
+        expected_browser_smoke_runs = int((target_duration_sec - 0.1) // 300.0)
+    else:
+        expected_browser_smoke_runs = 0
+
     failure_reasons = evaluate_soak_criteria(
         duration_achieved_sec=duration_achieved_sec,
         target_duration_sec=target_duration_sec,
@@ -1025,6 +1125,7 @@ def run_soak_stage(
         backend_port_busy=be_busy,
         frontend_port_busy=fe_busy,
         pid_verified=pid_verified,
+        expected_browser_smoke_runs=expected_browser_smoke_runs,
     )
 
     passed = len(failure_reasons) == 0
@@ -1043,6 +1144,8 @@ def run_soak_stage(
         "total_operations": total_ops,
         "unexpected_errors": unexpected_errors,
         "handled_expected_errors": handled_401 + handled_403 + handled_429,
+        "scheduled_smokes": expected_browser_smoke_runs,
+        "executed_smokes": browser_smoke_runs,
         "browser_smoke_runs": browser_smoke_runs,
         "browser_smoke_failed": browser_smoke_failed,
         "latency_overall_p50_ms": overall_p50,
@@ -1051,6 +1154,8 @@ def run_soak_stage(
         "backend_final_rss_mb": final_rss,
         "backend_max_rss_mb": max_rss,
         "pid_verified": pid_verified,
+        "pg_baseline": pg_baseline,
+        "pg_final": pg_final,
         "pg_baseline_connections": pg_baseline,
         "pg_final_connections": pg_final,
     }
@@ -1917,9 +2022,41 @@ def main() -> int:
     out_dir = Path(args.output_dir) / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    git_commit = "unknown"
+    git_dirty = False
+    try:
+        commit_res = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+        )
+        if commit_res.returncode == 0:
+            git_commit = commit_res.stdout.strip()
+        status_res = subprocess.run(
+            ["git", "status", "--porcelain"], capture_output=True, text=True, check=False
+        )
+        if status_res.returncode == 0:
+            git_dirty = len(status_res.stdout.strip()) > 0
+    except Exception:
+        pass
+
+    node_ver = "unknown"
+    try:
+        node_res = subprocess.run(["node", "-v"], capture_output=True, text=True, check=False)
+        if node_res.returncode == 0:
+            node_ver = node_res.stdout.strip()
+    except Exception:
+        pass
+
     summary: dict[str, Any] = {
         "run_id": run_id,
         "timestamp_start": datetime.now(timezone.utc).isoformat(),
+        "git_commit": git_commit,
+        "git_dirty": git_dirty,
+        "environment": {
+            "python_version": sys.version,
+            "node_version": node_ver,
+            "platform": sys.platform,
+            "os": os.name,
+        },
         "suite": args.suite,
         "seed": args.seed,
         "stages": {},
@@ -1974,6 +2111,15 @@ def main() -> int:
         traceback.print_exc()
         summary["error"] = str(e)
         overall_ok = False
+
+    # Сохраняем расширенные метаданные телеметрии soak в корень сводки
+    if "G7-SOAK" in summary.get("stages", {}):
+        soak_s = summary["stages"]["G7-SOAK"]
+        summary["scheduled_smokes"] = soak_s.get("scheduled_smokes", 0)
+        summary["executed_smokes"] = soak_s.get("executed_smokes", 0)
+        summary["pid_verified"] = soak_s.get("pid_verified", False)
+        summary["pg_baseline"] = soak_s.get("pg_baseline", -1)
+        summary["pg_final"] = soak_s.get("pg_final", -1)
 
     summary["timestamp_end"] = datetime.now(timezone.utc).isoformat()
     summary["overall_status"] = "PASSED" if overall_ok else "FAILED"

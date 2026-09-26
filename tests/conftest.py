@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -67,12 +68,17 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
     except TestDatabaseSafetyError as err:
         pytest.fail(str(err))
 
-    masked_url = mask_dsn(db_url)
+    connect_args = {}
+    if "asyncpg" in db_url:
+        connect_args["timeout"] = 5
+    elif "psycopg" in db_url:
+        connect_args["connect_timeout"] = 5
+
     engine = create_async_engine(
         db_url,
         echo=False,
-        pool_pre_ping=True,
-        connect_args={"connect_timeout": 3},
+        poolclass=NullPool,
+        connect_args=connect_args,
     )
     try:
         async with engine.begin() as conn:
@@ -83,7 +89,7 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
         if isinstance(exc, pytest.fail.Exception):
             raise
         pytest.fail(
-            f"ОШИБКА QA-02/G4-DB: Тестовая база данных PostgreSQL недоступна по адресу {masked_url}. "
+            f"ОШИБКА QA-02/G4-DB: Тестовая база данных PostgreSQL недоступна по адресу {mask_dsn(db_url)}. "
             f"Убедитесь, что TEST_DATABASE_URL задан корректно и тестовый контейнер alxprgs-sso-test-db "
             f"(порт 5433) запущен. Исключение: {exc}"
         )

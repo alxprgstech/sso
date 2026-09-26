@@ -34,6 +34,7 @@ export const AdminPage: React.FC = () => {
 
   // --- 3. Аудит ---
   const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
+  const [auditFilter, setAuditFilter] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
 
   // --- 4. Конфигурация системы и режим регистрации ---
@@ -443,7 +444,26 @@ export const AdminPage: React.FC = () => {
       {/* ========================================================================= */}
       {activeTab === "audit" && (
         <div className="bg-white shadow rounded-xl p-6 border border-gray-100 space-y-4">
-          <h2 className="text-lg font-bold text-gray-900">Журнал событий безопасности (Audit Log)</h2>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <h2 className="text-lg font-bold text-gray-900">Журнал событий безопасности (Audit Log)</h2>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <input
+                type="text"
+                placeholder="Фильтр по типу события или IP..."
+                value={auditFilter}
+                onChange={(e) => setAuditFilter(e.target.value)}
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-full sm:w-64"
+                data-testid="audit-filter-input"
+              />
+              <button
+                onClick={loadAudit}
+                disabled={auditLoading}
+                className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg whitespace-nowrap"
+              >
+                Обновить
+              </button>
+            </div>
+          </div>
           {auditLoading ? (
             <div className="py-8 text-center text-sm text-gray-500">Загрузка журнала аудита...</div>
           ) : (
@@ -458,22 +478,29 @@ export const AdminPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {auditEvents.map((e) => (
-                    <tr key={e.id}>
-                      <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">
-                        {new Date(e.created_at).toLocaleString("ru-RU")}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-medium">
-                          {e.event_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs text-gray-500">{e.ip_address || "—"}</td>
-                      <td className="px-4 py-2 font-mono text-xs text-gray-600 truncate max-w-xs">
-                        {JSON.stringify(e.details)}
-                      </td>
-                    </tr>
-                  ))}
+                  {auditEvents
+                    .filter(
+                      (e) =>
+                        !auditFilter ||
+                        e.event_type.toLowerCase().includes(auditFilter.toLowerCase()) ||
+                        (e.ip_address && e.ip_address.includes(auditFilter))
+                    )
+                    .map((e) => (
+                      <tr key={e.id}>
+                        <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(e.created_at).toLocaleString("ru-RU")}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-medium">
+                            {e.event_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 font-mono text-xs text-gray-500">{e.ip_address || "—"}</td>
+                        <td className="px-4 py-2 font-mono text-xs text-gray-600 truncate max-w-xs">
+                          {JSON.stringify(e.details)}
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>

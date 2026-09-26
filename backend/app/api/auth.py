@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import (
+    generate_csrf_token,
     get_cookie_name,
     get_current_session,
     get_current_user,
@@ -207,7 +208,15 @@ async def logout(
 
 
 @router.get("/me", response_model=UserProfileResponse)
-async def get_me(user: User = Depends(get_current_user)) -> UserProfileResponse:
+async def get_me(
+    response: Response,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> UserProfileResponse:
+    csrf = generate_csrf_token(session.id, settings)
+    response.headers["X-CSRF-Token"] = csrf
+    response.headers["Access-Control-Expose-Headers"] = "X-CSRF-Token"
     return UserProfileResponse(
         id=user.id,
         username=user.username,

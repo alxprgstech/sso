@@ -12,7 +12,9 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 import jwt
+from authlib.oauth2.rfc7636 import create_s256_code_challenge
 from app.config import get_settings
+from app.core.exceptions import OAuthErrorException
 
 settings = get_settings()
 
@@ -76,9 +78,34 @@ def decrypt_totp_secret(encrypted_secret: str) -> str:
     return f.decrypt(encrypted_secret.encode("utf-8")).decode("utf-8")
 
 
-# --- Управление ключами асимметричной подписи RSA для OIDC ---
+# --- Управление ключами асимметричной подписи RSA для OIDC (SSO-06) ---
 
+_active_key_id: str = settings.JWT_KEY_ID
 _cached_private_key: rsa.RSAPrivateKey | None = None
+_retired_public_keys: dict[str, rsa.RSAPublicKey] = {}
+
+
+def _init_retired_keys() -> None:
+    global _retired_public_keys
+    prev_pem = settings.JWT_PREVIOUS_PUBLIC_KEY_PEM.strip()
+    prev_kid = settings.JWT_PREVIOUS_KEY_ID.strip()
+    if prev_pem and prev_kid:
+        if os.path.exists(prev_pem):
+            with open(prev_pem, "rb") as f:
+                pem_data = f.read()
+        else:
+            pem_data = prev_pem.encode("utf-8")
+        pub_key = serialization.load_pem_public_key(pem_data)
+        if isinstance(pub_key, rsa.RSAPublicKey):
+            _retired_public_keys[prev_kid] = pub_key
+
+
+_init_retired_keys()
+
+
+def get_active_key_id() -> str:
+    global _active_key_id
+    return _active_key_id
 
 
 def get_rsa_private_key() -> rsa.RSAPrivateKey:
@@ -94,13 +121,17 @@ def get_rsa_private_key() -> rsa.RSAPrivateKey:
                 pem_data = f.read()
         else:
             pem_data = pem_str.encode("utf-8")
-        _cached_private_key = serialization.load_pem_private_key(pem_data, password=None)
+        loaded_key = serialization.load_pem_private_key(pem_data, password=None)
+        if not isinstance(loaded_key, rsa.RSAPrivateKey):
+            raise ValueError("JWT_PRIVATE_KEY_PEM must be an RSA private key")
+        _cached_private_key = loaded_key
     else:
         # Автоматическая генерация ключа для dev/test окружения
         _cached_private_key = rsa.generate_private_key(
             public_exponent=65537,
             key_size=2048,
         )
+    assert _cached_private_key is not None
     return _cached_private_key
 
 
@@ -108,9 +139,40 @@ def get_rsa_public_key() -> rsa.RSAPublicKey:
     return get_rsa_private_key().public_key()
 
 
-def get_jwks() -> dict[str, Any]:
-    """Экспортирует публичный ключ RSA в формате JWKS (RFC 7517)."""
-    pub_key = get_rsa_public_key()
+def rotate_active_signing_key(
+    new_kid: str | None = None,
+    new_private_key: rsa.RSAPrivateKey | None = None,
+) -> str:
+    """
+    Выполняет ротацию ключа подписи токенов (SSO-06).
+    Текущий активный публичный ключ перемещается в словарь retired для периода перекрытия.
+    Генерируется или устанавливается новый активный ключ подписи с новым kid.
+    """
+    global _active_key_id, _cached_private_key, _retired_public_keys
+
+    # Сохраняем текущий публичный ключ в retired
+    current_pub = get_rsa_public_key()
+    _retired_public_keys[_active_key_id] = current_pub
+
+    # Устанавливаем новый ключ
+    _active_key_id = new_kid or f"rsa-key-{int(time.time())}"
+    if new_private_key is not None:
+        _cached_private_key = new_private_key
+    else:
+        _cached_private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+    return _active_key_id
+
+
+def retire_key(kid: str) -> None:
+    """Удаляет устаревший публичный ключ после завершения периода перекрытия."""
+    global _retired_public_keys
+    _retired_public_keys.pop(kid, None)
+
+
+def _rsa_pub_to_jwk(pub_key: rsa.RSAPublicKey, kid: str) -> dict[str, Any]:
     numbers = pub_key.public_numbers()
 
     def _to_base64url_uint(val: int) -> str:
@@ -118,21 +180,25 @@ def get_jwks() -> dict[str, Any]:
         return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
 
     return {
-        "keys": [
-            {
-                "kty": "RSA",
-                "use": "sig",
-                "alg": "RS256",
-                "kid": settings.JWT_KEY_ID,
-                "n": _to_base64url_uint(numbers.n),
-                "e": _to_base64url_uint(numbers.e),
-            }
-        ]
+        "kty": "RSA",
+        "use": "sig",
+        "alg": "RS256",
+        "kid": kid,
+        "n": _to_base64url_uint(numbers.n),
+        "e": _to_base64url_uint(numbers.e),
     }
 
 
+def get_jwks() -> dict[str, Any]:
+    """Экспортирует активный и все непросроченные публичные ключи RSA в формате JWKS (RFC 7517, SSO-06)."""
+    keys = [_rsa_pub_to_jwk(get_rsa_public_key(), get_active_key_id())]
+    for kid, pub in _retired_public_keys.items():
+        keys.append(_rsa_pub_to_jwk(pub, kid))
+    return {"keys": keys}
+
+
 def create_jwt(payload: dict[str, Any], expires_in_seconds: int) -> str:
-    """Создаёт подписанный JWT токен (RS256) с kid в заголовке."""
+    """Создаёт подписанный JWT токен (RS256) с актуальным kid в заголовке."""
     now = int(time.time())
     full_payload = {
         **payload,
@@ -146,7 +212,7 @@ def create_jwt(payload: dict[str, Any], expires_in_seconds: int) -> str:
         full_payload,
         private_key,
         algorithm="RS256",
-        headers={"kid": settings.JWT_KEY_ID},
+        headers={"kid": get_active_key_id()},
     )
 
 
@@ -155,8 +221,28 @@ def decode_jwt(
     audience: str | None = None,
     verify_exp: bool = True,
 ) -> dict[str, Any]:
-    """Декодирует и проверяет подпись JWT токена с использованием публичного RSA-ключа."""
-    pub_key = get_rsa_public_key()
+    """
+    Декодирует и проверяет подпись JWT токена с использованием kid из заголовка (SSO-06).
+    Поддерживает валидацию токенов как активным, так и retired ключами периода перекрытия.
+    При неизвестном kid отклоняет токен с ошибкой 401 invalid_token.
+    """
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+    except Exception as e:
+        raise OAuthErrorException("invalid_token", f"Некорректный заголовок JWT: {e}", 401)
+
+    kid = unverified_header.get("kid")
+    pub_key: rsa.RSAPublicKey | None = None
+
+    if kid is None or kid == get_active_key_id():
+        pub_key = get_rsa_public_key()
+    elif kid in _retired_public_keys:
+        pub_key = _retired_public_keys[kid]
+    else:
+        raise OAuthErrorException(
+            "invalid_token", f"Неизвестный идентификатор ключа подписи (kid: '{kid}')", 401
+        )
+
     options = {"verify_exp": verify_exp}
     kwargs: dict[str, Any] = {
         "algorithms": ["RS256"],
@@ -168,16 +254,21 @@ def decode_jwt(
     else:
         options["verify_aud"] = False
 
-    return jwt.decode(token, pub_key, **kwargs)
+    try:
+        return jwt.decode(token, pub_key, **kwargs)
+    except jwt.ExpiredSignatureError as e:
+        raise OAuthErrorException("invalid_token", f"Срок действия токена истёк: {e}", 401)
+    except jwt.InvalidTokenError as e:
+        raise OAuthErrorException(
+            "invalid_token", f"Недействительная подпись или атрибуты токена: {e}", 401
+        )
 
 
 def verify_pkce(code_verifier: str, code_challenge: str, method: str = "S256") -> bool:
     """
-    Проверяет PKCE S256 (RFC 7636).
-    code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))
+    Проверяет PKCE S256 (RFC 7636) с использованием Authlib.
     """
     if method != "S256":
         return False
-    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-    expected = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    expected = create_s256_code_challenge(code_verifier)
     return secrets.compare_digest(expected, code_challenge)

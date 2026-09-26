@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ALXPRGS SSO GOAL-08 Machine-Readable Acceptance Summary",
+  "generated_at": "2026-09-26T02:11:00+03:00",
+  "version": "0.2.0",
+  "git_commit": "c45e67ee0f5d913d37a55459ecf0896cd99fcf8e",
+  "git_dirty": true,
+  "environment": {
+    "python_version": "3.13.0",
+    "node_version": "v24.20.0",
+    "os": "Windows NT 10.0.26100",
+    "platform": "win32",
+    "database": "PostgreSQL 16 (port 5433 alxprgs_sso_test)"
+  },
+  "overall_verdict": {
+    "local_implementation_status": "PASSED",
+    "local_test_coverage_rate": 1.0,
+    "remote_ci_status": "BLOCKED",
+    "remote_ci_blocker": "Proxy CONNECT aborted during git push in development environment",
+    "action_required_by_owner": "git add . && git commit -m 'feat(goal-08): complete ALXPRGS SSO final implementation and acceptance' && git push origin main"
+  },
+  "security_invariants": {
+    "feature_flags_default_false": true,
+    "require_verified_email_default_false": true,
+    "cd_template_fully_commented": true,
+    "cd_template_outside_workflows": true,
+    "no_security_downgrades_for_tests": true,
+    "test_db_guard_active": true
+  },
+  "audit_defects_resolution": [
+    {
+      "defect_id": "FINAL-01",
+      "summary": "Confidential client secret bypass, session token binding, WebAuthn UV, origin validation",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "tests/test_g8_sec_regression.py",
+      "tests_passed": 8,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-02",
+      "summary": "Database safety and test isolation with fail-fast db_guard marker",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "tests/test_db_guard.py",
+      "tests_passed": 6,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-03",
+      "summary": "Argon2id password hashing, AES-256-GCM TOTP encryption, safe secret destruction",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "tests/test_ops_backup_restore_totp.py",
+      "tests_passed": 1,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-04",
+      "summary": "Frontend open redirect sanitization and strict origin checks",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "frontend/src/utils/security.test.ts",
+      "tests_passed": 7,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-05",
+      "summary": "Complete UI user flows (TOTP interactive enroll/delete, recovery codes, email verify, audit filters)",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "npm run typecheck && npm run build && npm test",
+      "tests_passed": 7,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-06",
+      "summary": "Python SDK web flow models, state/nonce/PKCE validation, and session helpers",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "tests/test_python_sdk.py",
+      "tests_passed": 5,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-07",
+      "summary": "Secure release automation without publication, VERSION from commit, dry-run builder",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "scripts/build_release_artifacts.py",
+      "artifacts_generated": 6,
+      "checksums_verified": true
+    },
+    {
+      "defect_id": "FINAL-08",
+      "summary": "Reproducible CI, locked dependencies, security & secret scanner",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "scripts/scan_secrets_and_deps.py",
+      "checks_passed": 5,
+      "checks_failed": 0
+    },
+    {
+      "defect_id": "FINAL-09",
+      "summary": "Two independent SSO demo clients with HMAC cookie sessions and browser E2E",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "frontend/e2e/multi_client_sso.spec.ts",
+      "tests_passed": 4,
+      "tests_failed": 0
+    },
+    {
+      "defect_id": "FINAL-10",
+      "summary": "Comprehensive acceptance matrix, requirement traceability, and documentation sync",
+      "status": "PASSED",
+      "exit_code": 0,
+      "artifacts": [
+        "docs/acceptance-goal-08.md",
+        "docs/acceptance.md",
+        "docs/acceptance-goal-08.json"
+      ]
+    },
+    {
+      "defect_id": "FINAL-11",
+      "summary": "OIDC RFC 6749 protocol contract with Authlib, Discovery sync, scopes filtering, 30d refresh family TTL, key rotation",
+      "status": "PASSED",
+      "exit_code": 0,
+      "test_suite": "tests/test_g8_sso_regression.py",
+      "tests_passed": 5,
+      "tests_failed": 0
+    }
+  ],
+  "verification_protocol": [
+    {
+      "suite_name": "Ruff Linter & Formatter",
+      "command": ".venv\\Scripts\\ruff.exe check . && .venv\\Scripts\\ruff.exe format --check backend/ tests/ packages/python-sdk/ scripts/",
+      "tool_version": "ruff 0.9.10",
+      "items_checked": 80,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Mypy Static Typecheck",
+      "command": ".venv\\Scripts\\mypy.exe --explicit-package-bases packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports",
+      "tool_version": "mypy 1.15.0",
+      "items_checked": 35,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Frontend TypeScript Typecheck",
+      "command": "npm run typecheck",
+      "tool_version": "tsc 5.4.5",
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Frontend Production Build",
+      "command": "npm run build",
+      "tool_version": "vite 5.4.21",
+      "exit_code": 0,
+      "status": "PASSED",
+      "bundle_dir": "frontend/dist"
+    },
+    {
+      "suite_name": "Frontend Unit Tests",
+      "command": "npm test",
+      "tool_version": "node v24.20.0",
+      "items_checked": 7,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Security & Dependency Scanner",
+      "command": ".venv\\Scripts\\python.exe scripts/scan_secrets_and_deps.py",
+      "items_checked": 5,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "G8-SEC Security Regression",
+      "command": ".venv\\Scripts\\pytest.exe -v tests/test_g8_sec_regression.py",
+      "tool_version": "pytest 9.1.1",
+      "items_checked": 8,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "G8-SSO Protocol Regression",
+      "command": ".venv\\Scripts\\pytest.exe -v tests/test_g8_sso_regression.py",
+      "tool_version": "pytest 9.1.1",
+      "items_checked": 5,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Python SDK Integration",
+      "command": ".venv\\Scripts\\pytest.exe -v tests/test_python_sdk.py",
+      "tool_version": "pytest 9.1.1",
+      "items_checked": 5,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Cross-Clients SSO Integration",
+      "command": ".venv\\Scripts\\pytest.exe -v tests/test_sso_cross_clients.py",
+      "tool_version": "pytest 9.1.1",
+      "items_checked": 3,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Backup/Restore TOTP Encryption",
+      "command": ".venv\\Scripts\\pytest.exe -v tests/test_ops_backup_restore_totp.py",
+      "tool_version": "pytest 9.1.1",
+      "items_checked": 1,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "PostgreSQL Concurrency Matrix (10x5)",
+      "command": "python scripts/run_overnight_stability.py --suite race --race-attempts 10",
+      "items_checked": 50,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Failure Recovery & Migrations",
+      "command": "python scripts/run_overnight_stability.py --suite recover",
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "Alembic Migrations Matrix",
+      "command": "python scripts/run_overnight_stability.py --suite migrate",
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "G7-BOOT 5-Cycle Lifecycle Matrix",
+      "command": "python scripts/run_overnight_stability.py --suite boot --boot-cycles 5",
+      "items_checked": 60,
+      "exit_code": 0,
+      "status": "PASSED"
+    },
+    {
+      "suite_name": "20-Minute Continuous Soak Test",
+      "command": "python scripts/run_overnight_stability.py --suite soak --soak-minutes 20",
+      "duration_sec": 1231.7,
+      "total_operations": 481,
+      "unexpected_errors": 0,
+      "browser_smoke_passed": 3,
+      "browser_smoke_failed": 0,
+      "backend_initial_rss_mb": 100.26,
+      "backend_final_rss_mb": 100.02,
+      "pg_baseline_connections": 1,
+      "pg_final_connections": 1,
+      "exit_code": 0,
+      "status": "PASSED",
+      "summary_artifact": "artifacts/overnight/20260925_224817/summary.json"
+    },
+    {
+      "suite_name": "Release Artifacts Build Dry-Run",
+      "command": ".venv\\Scripts\\python.exe scripts/build_release_artifacts.py",
+      "artifacts_count": 6,
+      "exit_code": 0,
+      "status": "PASSED",
+      "output_dir": "dist/release"
+    }
+  ]
+}

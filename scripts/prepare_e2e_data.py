@@ -26,6 +26,7 @@ if BACKEND_DIR not in sys.path:
 
 from app.core.rbac import ROLE_ADMIN, ROLE_USER
 from app.core.security import hash_password
+from app.models.oidc import OIDCClient, OIDCRedirectUri
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
 from sqlalchemy import select, text
@@ -159,6 +160,56 @@ async def prepare_e2e_data() -> None:
                         )
                     )
                 print(f"[OK] Обновлен синтетический пользователь {u_data['username']}")
+
+        # 3.1 Обеспечиваем наличие двух независимых демонстрационных OIDC клиентов
+        demo_clients = [
+            {
+                "client_id": "client_analytics_app",
+                "client_name": "Analytics Portal",
+                "client_type": "confidential",
+                "secret": "analytics_client_secret_123",
+                "redirect_uris": [
+                    "http://localhost:8001/callback",
+                    "http://127.0.0.1:8001/callback",
+                ],
+            },
+            {
+                "client_id": "client_docs_app",
+                "client_name": "Documentation Portal",
+                "client_type": "confidential",
+                "secret": "docs_client_secret_123",
+                "redirect_uris": [
+                    "http://localhost:8002/callback",
+                    "http://127.0.0.1:8002/callback",
+                ],
+            },
+        ]
+        for c_data in demo_clients:
+            c_res = await session.execute(
+                select(OIDCClient).where(OIDCClient.client_id == c_data["client_id"])
+            )
+            c_obj = c_res.scalar_one_or_none()
+            if not c_obj:
+                c_obj = OIDCClient(
+                    client_id=c_data["client_id"],
+                    client_name=c_data["client_name"],
+                    client_type=c_data["client_type"],
+                    client_secret_hash=hash_password(c_data["secret"]),
+                    is_active=True,
+                )
+                session.add(c_obj)
+                await session.flush()
+                for uri in c_data["redirect_uris"]:
+                    session.add(OIDCRedirectUri(client_id=c_obj.id, uri=uri))
+                print(f"[OK] Создан OIDC клиент {c_data['client_id']}")
+            else:
+                c_obj.client_secret_hash = hash_password(c_data["secret"])
+                c_obj.is_active = True
+                existing_uris = {r.uri for r in c_obj.redirect_uris}
+                for uri in c_data["redirect_uris"]:
+                    if uri not in existing_uris:
+                        session.add(OIDCRedirectUri(client_id=c_obj.id, uri=uri))
+                print(f"[OK] Обновлен OIDC клиент {c_data['client_id']}")
 
         # 4. Очищаем устаревшие webauthn credentials для синтетических passkey пользователей
         await session.execute(

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
 import { prepareRequestOptions, serializeRequestResponse } from "../utils/webauthn";
+import { sanitizeReturnTo } from "../utils/security";
 
 interface LoginPageProps {
   onNavigateToRegister?: () => void;
@@ -20,9 +21,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
   const [mfaCode, setMfaCode] = useState("");
   const [mfaMethods, setMfaMethods] = useState<string[]>([]);
 
-  // Поддержка OIDC перенаправления (return_to)
+  // Поддержка OIDC перенаправления (return_to / redirect_uri)
   const urlParams = new URLSearchParams(window.location.search);
-  const returnTo = urlParams.get("return_to") || urlParams.get("redirect_uri");
+  const rawReturnTo = urlParams.get("return_to") || urlParams.get("redirect_uri");
+  const returnTo = sanitizeReturnTo(rawReturnTo);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,11 +51,52 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
 
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mfaToken || !mfaCode) {
+    if (!mfaToken || !mfaCode.trim()) {
       setError("Введите одноразовый код");
       return;
     }
-    setError("Функция многофакторной аутентификации в текущем профиле отключена.");
+
+    setError(null);
+    setLoading(true);
+
+    const cleanCode = mfaCode.trim();
+    try {
+      let loginSuccess = false;
+
+      // Если метод TOTP и введен 6-значный цифровой код
+      if (mfaMethods.includes("totp") && /^\d{6}$/.test(cleanCode)) {
+        try {
+          await api.verifyTotpLogin(cleanCode, mfaToken);
+          loginSuccess = true;
+        } catch (totpErr: any) {
+          if (mfaMethods.includes("recovery_code")) {
+            await api.verifyRecoveryCodeLogin(cleanCode, mfaToken);
+            loginSuccess = true;
+          } else {
+            throw totpErr;
+          }
+        }
+      } else if (mfaMethods.includes("recovery_code")) {
+        await api.verifyRecoveryCodeLogin(cleanCode, mfaToken);
+        loginSuccess = true;
+      } else if (mfaMethods.includes("totp")) {
+        await api.verifyTotpLogin(cleanCode, mfaToken);
+        loginSuccess = true;
+      } else {
+        throw new Error("Нет доступных методов второго фактора для данного кода");
+      }
+
+      if (loginSuccess) {
+        await refreshUser();
+        if (returnTo) {
+          window.location.href = returnTo;
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || "Неверный код подтверждения");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePasskeyLogin = async () => {

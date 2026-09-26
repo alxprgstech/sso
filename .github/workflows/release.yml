@@ -36,6 +36,8 @@ jobs:
 
       - name: Resolve Tag and Validate
         id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.event.inputs.tag }}"
           echo "Resolving tag: $TAG"
@@ -46,14 +48,6 @@ jobs:
             exit 1
           fi
 
-          # Извлекаем версию без 'v'
-          VERSION="${TAG#v}"
-          ROOT_VERSION=$(cat VERSION | tr -d '[:space:]')
-          if [ "$VERSION" != "$ROOT_VERSION" ]; then
-            echo "ERROR: Tag version '$VERSION' does not match root VERSION '$ROOT_VERSION'!"
-            exit 1
-          fi
-
           # Разрешаем SHA коммита тега
           COMMIT_SHA=$(git rev-list -n 1 "$TAG" 2>/dev/null || echo "")
           if [ -z "$COMMIT_SHA" ]; then
@@ -61,9 +55,28 @@ jobs:
             exit 1
           fi
 
+          # Извлекаем версию без 'v' строго из коммита тега (FINAL-07)
+          VERSION="${TAG#v}"
+          ROOT_VERSION=$(git show "$COMMIT_SHA:VERSION" 2>/dev/null | tr -d '[:space:]' || echo "")
+          if [ -z "$ROOT_VERSION" ]; then
+            echo "ERROR: VERSION file not found in commit $COMMIT_SHA for tag $TAG!"
+            exit 1
+          fi
+          if [ "$VERSION" != "$ROOT_VERSION" ]; then
+            echo "ERROR: Tag version '$VERSION' does not match root VERSION '$ROOT_VERSION' in commit $COMMIT_SHA!"
+            exit 1
+          fi
+
           # Проверяем, что коммит находится в ветке main
           if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
             echo "ERROR: Commit $COMMIT_SHA for tag $TAG is not on main branch!"
+            exit 1
+          fi
+
+          # Проверяем, не существует ли уже опубликованный (не draft) релиз для этого тега
+          EXISTING_RELEASE=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || echo "NOT_FOUND")
+          if [ "$EXISTING_RELEASE" = "false" ]; then
+            echo "ERROR: Published release for tag $TAG already exists! Overwriting published releases is forbidden."
             exit 1
           fi
 
@@ -77,7 +90,7 @@ jobs:
           echo "Successfully validated tag $TAG ($COMMIT_SHA) for version $VERSION."
 
   build-artifacts:
-    name: Build All Release Artifacts
+    name: Build and Verify All Release Artifacts
     needs: verify-tag-and-sha
     runs-on: ubuntu-latest
     steps:
@@ -96,10 +109,18 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Verify Quality and Consistency on Release Commit
+        run: |
+          python -m pip install --upgrade pip build
+          pip install -e "./backend[dev]" -e "./packages/python-sdk"
+          python scripts/bump_version.py check
+          python scripts/scan_secrets_and_deps.py
+          ruff check backend tests packages/python-sdk scripts
+          mypy --explicit-package-bases packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports
+
       - name: Build Backend and SDK Wheels & Sdist
         run: |
           mkdir -p dist/artifacts
-          python -m pip install --upgrade pip build
           python -m build backend --outdir dist/artifacts
           python -m build packages/python-sdk --outdir dist/artifacts
 
@@ -107,8 +128,25 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          npm test
           npm run build
           tar -czf ../dist/artifacts/alxprgs-sso-frontend-${{ needs.verify-tag-and-sha.outputs.version }}.tar.gz -C dist .
+
+      - name: Extract Release Notes from CHANGELOG
+        run: |
+          python -c "
+          import re, sys
+          from pathlib import Path
+          content = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          version = '${{ needs.verify-tag-and-sha.outputs.version }}'
+          pattern = r'## \[' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n## \[|\Z)'
+          match = re.search(pattern, content, re.DOTALL)
+          if match:
+              notes = match.group(1).strip()
+          else:
+              notes = f'Release {version}'
+          Path('dist/artifacts/RELEASE_NOTES.md').write_text(notes, encoding='utf-8')
+          "
 
       - name: Generate Checksums and Manifest
         working-directory: dist/artifacts
@@ -132,29 +170,46 @@ jobs:
           path: dist/artifacts/
 
   publish-release:
-    name: Publish GitHub Release
+    name: Publish GitHub Release (Draft Mode)
     needs: [verify-tag-and-sha, build-artifacts]
     runs-on: ubuntu-latest
     if: github.event.inputs.dry_run != 'true'
     permissions:
       contents: write
     steps:
+      - name: Checkout repository at exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
+
       - name: Download Artifacts
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
           name: release-artifacts
           path: release-files
 
-      - name: Publish Draft and Final Release
+      - name: Verify Artifact Integrity Against Checksums
+        working-directory: release-files
+        run: |
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Create or Update Draft Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag }}
           IS_PRE: ${{ needs.verify-tag-and-sha.outputs.is_prerelease }}
         run: |
-          echo "Publishing release for $TAG..."
-          # Создание релиза через GitHub CLI
-          gh release create "$TAG" release-files/* \
-            --title "ALXPRGS SSO $TAG" \
-            --notes-file CHANGELOG.md \
-            --draft=false \
-            $([ "$IS_PRE" = "true" ] && echo "--prerelease")
+          echo "Managing draft release for $TAG..."
+          EXISTING_DRAFT=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || echo "NOT_FOUND")
+          if [ "$EXISTING_DRAFT" = "true" ]; then
+            echo "Existing draft release found for $TAG. Updating artifacts..."
+            gh release upload "$TAG" release-files/* --clobber
+          else
+            echo "Creating new draft release for $TAG..."
+            gh release create "$TAG" release-files/* \
+              --title "ALXPRGS SSO $TAG" \
+              --notes-file release-files/RELEASE_NOTES.md \
+              --draft \
+              $([ "$IS_PRE" = "true" ] && echo "--prerelease")
+          fi
+          echo "Draft release successfully prepared for $TAG. Manual review required before final publishing."

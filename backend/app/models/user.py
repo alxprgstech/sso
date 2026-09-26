@@ -9,7 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
-    from app.models.credential import PasswordCredential
     from app.models.mfa import RecoveryCode, TOTPCredential, WebAuthnCredential
     from app.models.session import Session
 

@@ -8,14 +8,15 @@ from alxprgs_sso.exceptions import (
     SSOError,
     TokenExpiredError,
 )
-from alxprgs_sso.models import TokenResponse, UserClaims
+from alxprgs_sso.models import TokenResponse, UserClaims, WebSessionInfo
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "SSOClient",
     "UserClaims",
     "TokenResponse",
+    "WebSessionInfo",
     "SSOError",
     "ConfigurationError",
     "InvalidTokenError",

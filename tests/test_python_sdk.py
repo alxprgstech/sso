@@ -219,3 +219,161 @@ def test_sdk_fastapi_security_dependency():
         )
         assert r_admin.status_code == 200
         assert r_admin.json()["admin"] == "sysadmin"
+
+
+def test_sdk_web_flow_and_id_token_verification():
+    """
+    Тестирование веб-потока SDK (SDK-03/06):
+    start_authorization, verify_id_token (nonce match/mismatch), handle_web_callback, create_logout_url.
+    """
+
+    client = SSOClient(
+        server_url="https://auth.alxprgs.tech",
+        client_id="test_web_client",
+        expected_issuer="https://auth.alxprgs.tech",
+        expected_audience="test_web_client",
+    )
+    redirect_uri = "https://app.alxprgs.tech/callback"
+
+    # 1. start_authorization
+    auth_url, verifier, state, nonce = client.start_authorization(redirect_uri)
+    assert "client_id=test_web_client" in auth_url
+    assert f"state={state}" in auth_url
+    assert f"nonce={nonce}" in auth_url
+    assert "code_challenge=" in auth_url
+    assert "code_challenge_method=S256" in auth_url
+
+    # 2. create_logout_url
+    logout_url = client.create_logout_url(post_logout_redirect_uri="https://app.alxprgs.tech/")
+    assert logout_url.startswith("https://auth.alxprgs.tech/oauth/logout")
+    assert "post_logout_redirect_uri=https%3A%2F%2Fapp.alxprgs.tech%2F" in logout_url
+
+    # 3. verify_id_token
+    private_key, server_jwks, kid = _generate_test_jwks_and_key()
+    with patch.object(client, "get_jwks", return_value=server_jwks):
+        valid_id_token = _create_signed_jwt(
+            {
+                "sub": "user-uuid-1",
+                "aud": "test_web_client",
+                "iss": "https://auth.alxprgs.tech",
+                "nonce": nonce,
+                "token_use": "id_token",
+            },
+            private_key=private_key,
+            kid=kid,
+            expires_in_seconds=300,
+        )
+
+        # Успешная валидация с правильным nonce
+        id_payload = client.verify_id_token(valid_id_token, expected_nonce=nonce)
+        assert id_payload["sub"] == "user-uuid-1"
+        assert id_payload["nonce"] == nonce
+
+        # Неверный nonce -> отказ InvalidTokenError
+        with pytest.raises(InvalidTokenError) as exc_nonce:
+            client.verify_id_token(valid_id_token, expected_nonce="wrong-nonce-value")
+        assert "nonce" in str(exc_nonce.value)
+
+        # Неверный token_use -> отказ
+        wrong_token_use = _create_signed_jwt(
+            {
+                "sub": "user-uuid-1",
+                "aud": "test_web_client",
+                "iss": "https://auth.alxprgs.tech",
+                "nonce": nonce,
+                "token_use": "access_token",
+            },
+            private_key=private_key,
+            kid=kid,
+        )
+        with pytest.raises(InvalidTokenError) as exc_tu:
+            client.verify_id_token(wrong_token_use, expected_nonce=nonce)
+        assert "id_token" in str(exc_tu.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_sdk_handle_web_callback_csrf_and_success():
+    """
+    Тестирование handle_web_callback: защита от CSRF (state mismatch) и успешное завершение.
+    """
+    from unittest.mock import AsyncMock
+
+    from alxprgs_sso.models import TokenResponse
+
+    client = SSOClient(
+        server_url="https://auth.alxprgs.tech",
+        client_id="test_web_client",
+        expected_issuer="https://auth.alxprgs.tech",
+        expected_audience="test_web_client",
+    )
+    redirect_uri = "https://app.alxprgs.tech/callback"
+
+    # 1. State mismatch -> InvalidTokenError (защита от CSRF)
+    with pytest.raises(InvalidTokenError) as exc_csrf:
+        await client.handle_web_callback(
+            code="some_code",
+            state="attacker_state",
+            expected_state="legitimate_state",
+            code_verifier="verifier",
+            redirect_uri=redirect_uri,
+        )
+    assert "state" in str(exc_csrf.value).lower()
+
+    # 2. Успешный callback с валидацией ID токена
+    private_key, server_jwks, kid = _generate_test_jwks_and_key()
+    test_nonce = "safe_nonce_987"
+    valid_id_token = _create_signed_jwt(
+        {
+            "sub": "user-uuid-2",
+            "aud": "test_web_client",
+            "iss": "https://auth.alxprgs.tech",
+            "nonce": test_nonce,
+            "token_use": "id_token",
+        },
+        private_key=private_key,
+        kid=kid,
+        expires_in_seconds=300,
+    )
+    valid_access_token = _create_signed_jwt(
+        {
+            "sub": "user-uuid-2",
+            "aud": "test_web_client",
+            "iss": "https://auth.alxprgs.tech",
+            "preferred_username": "web_user",
+            "email": "web@alxprgs.tech",
+            "email_verified": True,
+            "roles": ["user"],
+            "token_use": "access_token",
+        },
+        private_key=private_key,
+        kid=kid,
+        expires_in_seconds=300,
+    )
+
+    mock_token_resp = TokenResponse(
+        access_token=valid_access_token,
+        id_token=valid_id_token,
+        expires_in=300,
+        token_type="Bearer",
+    )
+
+    with patch.object(client, "get_jwks", return_value=server_jwks):
+        with patch.object(
+            client, "exchange_code_for_tokens", new_callable=AsyncMock
+        ) as mock_exchange:
+            mock_exchange.return_value = mock_token_resp
+
+            session_info = await client.handle_web_callback(
+                code="auth_code_123",
+                state="legit_state",
+                expected_state="legit_state",
+                code_verifier="verifier_123",
+                redirect_uri=redirect_uri,
+                expected_nonce=test_nonce,
+            )
+
+            assert session_info.user.sub == "user-uuid-2"
+            assert session_info.user.preferred_username == "web_user"
+            assert session_info.user.email == "web@alxprgs.tech"
+            assert session_info.id_token_claims is not None
+            assert session_info.id_token_claims["nonce"] == test_nonce

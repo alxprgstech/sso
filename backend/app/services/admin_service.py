@@ -205,7 +205,7 @@ class AdminService:
         stmt = delete(Session).where(Session.user_id == user_id)
         res = await db.execute(stmt)
         await db.commit()
-        count = res.rowcount or 0
+        count = getattr(res, "rowcount", 0) or 0
         await AuditService.log_event(
             db,
             event_type="admin_revoked_sessions",
@@ -325,7 +325,7 @@ class AdminService:
         stmt = delete(OIDCClient).where(OIDCClient.client_id == client_id)
         res = await db.execute(stmt)
         await db.commit()
-        if (res.rowcount or 0) > 0:
+        if (getattr(res, "rowcount", 0) or 0) > 0:
             await AuditService.log_event(
                 db,
                 event_type="oidc_client_deleted",

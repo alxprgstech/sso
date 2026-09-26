@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
-def test_capabilities_default_off():
+def test_capabilities_default_off(default_db_mock):
     """Проверка витрины возможностей: все 4 фичи выключены по умолчанию (SEC-FLAG-01)."""
     res = client.get("/api/v1/auth/capabilities")
     assert res.status_code == 200

@@ -30,3 +30,18 @@ class TokenResponse(BaseModel):
     id_token: str | None = None
     refresh_token: str | None = None
     scope: str | None = None
+
+
+class WebSessionInfo(BaseModel):
+    """
+    Информация об установленной веб-сессии пользователя (SDK-03/06).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    user: UserClaims
+    access_token: str
+    id_token: str | None = None
+    refresh_token: str | None = None
+    expires_in: int
+    id_token_claims: dict[str, object] | None = None

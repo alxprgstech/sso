@@ -157,4 +157,6 @@ npm run build
 - `docs/api.md`: Спецификация API (OIDC, Auth, Registration, Admin);
 - `docs/sdk.md`: Документация Python SDK `alxprgs-sso`;
 - `docs/operations.md`: Руководство по эксплуатации (backup, restore, key rotation);
-- `docs/acceptance-registration-setup.md`: Матрица приёмки целей регистрации и первого запуска (GOAL-02).
+- `docs/acceptance-goal-08.md`: Акт и матрица итоговой приёмки ALXPRGS SSO (GOAL-08 / v0.2.0);
+- `docs/acceptance.md`: Сводный реестр актов приёмки продукта.
+

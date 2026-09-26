@@ -48,6 +48,8 @@ class OAuthErrorException(HTTPException):
         error_description: str,
         status_code: int = status.HTTP_400_BAD_REQUEST,
     ) -> None:
+        self.error = error
+        self.error_description = error_description
         super().__init__(
             status_code=status_code,
             detail={"error": error, "error_description": error_description},

@@ -14,7 +14,7 @@ class TokenResponse(BaseModel):
 
 class UserInfoResponse(BaseModel):
     sub: str  # Стабильный непрозрачный UUID (SSO-04)
-    preferred_username: str
-    email: str
-    email_verified: bool
+    preferred_username: str | None = None
+    email: str | None = None
+    email_verified: bool | None = None
     roles: list[str] = []

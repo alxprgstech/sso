@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from authlib.oauth2.rfc6749.util import scope_to_list
 from app.config import get_settings
 from app.core.exceptions import OAuthErrorException
 from app.core.security import (
@@ -121,7 +122,7 @@ class OIDCService:
         Атомарное погашение кода в транзакции PostgreSQL.
         """
         client = await OIDCService.get_and_validate_client(
-            db, client_id, client_secret, require_secret=(client_secret is not None)
+            db, client_id, client_secret, require_secret=True
         )
 
         code_hash = hash_token(code)
@@ -210,7 +211,7 @@ class OIDCService:
         и аннулированием всего семейства (Token Family) (SSO-05).
         """
         client = await OIDCService.get_and_validate_client(
-            db, client_id, client_secret, require_secret=(client_secret is not None)
+            db, client_id, client_secret, require_secret=True
         )
 
         token_hash = hash_token(raw_refresh_token)
@@ -254,6 +255,39 @@ class OIDCService:
         if rt_obj.expires_at <= now:
             raise OAuthErrorException("invalid_grant", "Срок действия refresh токена истёк", 400)
 
+        # Проверка абсолютного срока жизни семейства токенов (SSO-05 / FINAL-11)
+        first_token_stmt = (
+            select(RefreshToken.created_at)
+            .where(RefreshToken.family_id == rt_obj.family_id)
+            .order_by(RefreshToken.created_at.asc())
+            .limit(1)
+        )
+        first_created_at = (await db.execute(first_token_stmt)).scalar_one_or_none()
+        if first_created_at is not None:
+            max_family_expiry = first_created_at + timedelta(
+                seconds=settings.REFRESH_FAMILY_MAX_LIFETIME_SECONDS
+            )
+            if now >= max_family_expiry:
+                await db.execute(
+                    update(RefreshToken)
+                    .where(RefreshToken.family_id == rt_obj.family_id)
+                    .values(is_revoked=True)
+                )
+                await AuditService.log_event(
+                    db,
+                    event_type="refresh_family_expired",
+                    user_id=rt_obj.user_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={"family_id": str(rt_obj.family_id), "client_id": client_id},
+                )
+                await db.commit()
+                raise OAuthErrorException(
+                    "invalid_grant",
+                    "Срок действия семейства refresh-токенов истёк (превышен максимальный абсолютный лимит)",
+                    400,
+                )
+
         # Отзываем использованный refresh токен
         rt_obj.is_revoked = True
         await db.flush()
@@ -289,46 +323,69 @@ class OIDCService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> TokenResponse:
+        granted_scopes = set(scope_to_list(scope))
         roles = [r.name for r in user.roles]
         now = datetime.now(timezone.utc)
 
-        # 1. Access Token (JWT RS256, 5 минут)
+        # 1. Access Token (JWT RS256, 5 минут, SSO-04 фильтрация claims)
         access_payload: dict[str, Any] = {
             "sub": str(user.id),
             "aud": client.client_id,
-            "preferred_username": user.username,
-            "email": user.email,
-            "email_verified": user.email_verified,
             "scope": scope,
-            "roles": roles,
             "token_use": "access_token",
             "jti": str(uuid.uuid4()),
         }
+        if "profile" in granted_scopes:
+            access_payload["preferred_username"] = user.username
+            access_payload["roles"] = roles
+        if "email" in granted_scopes:
+            access_payload["email"] = user.email
+            access_payload["email_verified"] = user.email_verified
+
         access_token = create_jwt(
             access_payload, expires_in_seconds=settings.ACCESS_TOKEN_TTL_SECONDS
         )
 
-        # 2. ID Token (JWT RS256, если запрошен scope openid)
+        # 2. ID Token (JWT RS256, если запрошен scope openid, SSO-04 фильтрация claims)
         id_token = None
-        if "openid" in scope.split():
+        if "openid" in granted_scopes:
             id_payload: dict[str, Any] = {
                 "sub": str(user.id),  # Стабильный непрозрачный UUID (SSO-04)
                 "aud": client.client_id,
-                "preferred_username": user.username,
-                "email": user.email,
-                "email_verified": user.email_verified,
-                "roles": roles,
                 "token_use": "id_token",
             }
             if nonce:
                 id_payload["nonce"] = nonce
+            if "profile" in granted_scopes:
+                id_payload["preferred_username"] = user.username
+                id_payload["roles"] = roles
+            if "email" in granted_scopes:
+                id_payload["email"] = user.email
+                id_payload["email_verified"] = user.email_verified
+
             id_token = create_jwt(id_payload, expires_in_seconds=settings.ACCESS_TOKEN_TTL_SECONDS)
 
-        # 3. Refresh Token (Ротируемый токен, 7 дней)
+        # 3. Refresh Token (Ротируемый токен, 7 дней с ограничением абсолютного срока жизни)
         raw_refresh = generate_random_token(32)
         rt_hash = hash_token(raw_refresh)
         target_family_id = family_id or uuid.uuid4()
         rt_expires = now + timedelta(seconds=settings.REFRESH_TOKEN_TTL_SECONDS)
+
+        # Ограничиваем срок действия нового refresh токена абсолютным сроком жизни семейства
+        if family_id is not None:
+            first_token_stmt = (
+                select(RefreshToken.created_at)
+                .where(RefreshToken.family_id == family_id)
+                .order_by(RefreshToken.created_at.asc())
+                .limit(1)
+            )
+            first_created_at = (await db.execute(first_token_stmt)).scalar_one_or_none()
+            if first_created_at is not None:
+                max_family_expiry = first_created_at + timedelta(
+                    seconds=settings.REFRESH_FAMILY_MAX_LIFETIME_SECONDS
+                )
+                if rt_expires > max_family_expiry:
+                    rt_expires = max_family_expiry
 
         new_rt = RefreshToken(
             family_id=target_family_id,
@@ -365,6 +422,7 @@ class OIDCService:
         """
         Возвращает профиль пользователя по Bearer Access Token (SSO-01, SSO-03, SSO-04).
         Строго отклоняет ID Token (SSO-03).
+        Фильтрует claims email/profile согласно scope из access token (SSO-04).
         """
         try:
             payload = decode_jwt(access_token)
@@ -376,6 +434,9 @@ class OIDCService:
         # Проверка SSO-03: Не принимать ID token как access token
         if payload.get("token_use") != "access_token":
             raise OAuthErrorException("invalid_token", "Передан ID Token вместо Access Token", 401)
+
+        token_scope = payload.get("scope", "")
+        token_scopes = set(scope_to_list(token_scope))
 
         user_id_str = payload.get("sub")
         if not user_id_str:
@@ -391,10 +452,10 @@ class OIDCService:
 
         return UserInfoResponse(
             sub=str(user.id),
-            preferred_username=user.username,
-            email=user.email,
-            email_verified=user.email_verified,
-            roles=[r.name for r in user.roles],
+            preferred_username=user.username if "profile" in token_scopes else None,
+            email=user.email if "email" in token_scopes else None,
+            email_verified=user.email_verified if "email" in token_scopes else None,
+            roles=[r.name for r in user.roles] if "profile" in token_scopes else [],
         )
 
     @staticmethod
@@ -409,7 +470,7 @@ class OIDCService:
         Отзыв токенов по RFC 7009 (Token Revocation).
         """
         client = await OIDCService.get_and_validate_client(
-            db, client_id, client_secret, require_secret=(client_secret is not None)
+            db, client_id, client_secret, require_secret=True
         )
 
         token_hash = hash_token(token)

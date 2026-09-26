@@ -156,6 +156,8 @@ async def oidc_configuration() -> dict[str, Any]:
         "revocation_endpoint": f"{base_url}/oauth/revoke",
         "end_session_endpoint": f"{base_url}/oauth/logout",
         "response_types_supported": ["code"],
+        "response_modes_supported": ["query"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
         "scopes_supported": ["openid", "profile", "email"],
