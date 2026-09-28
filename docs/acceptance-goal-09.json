@@ -1,12 +1,12 @@
 {
   "goal": "GOAL-09",
-  "updated_at": "2026-09-28T18:37:22+03:00",
+  "updated_at": "2026-09-28T21:33:49+03:00",
   "base_sha": "1f630fa8304d2f38ab1f56aeaa58523a73483fcb",
   "source_tree_dirty": true,
   "initial_user_diff_hash": "66c2a16e776a4b35540f383983f4913feab4220f",
   "final_sha": null,
   "overall_status": "blocked",
-  "remote_ci_url": null,
+  "remote_ci_url": "https://github.com/alxprgstech/sso/actions/runs/36445914754",
   "local_test_coverage_rate": null,
   "historical_goal_08_is_current_evidence": false,
   "environment": {
@@ -35,13 +35,17 @@
     {"command": "python -m pytest -q -p no:cacheprovider tests/test_mfa_features.py tests/test_reset_local_ps1.py tests/test_start_ps1.py tests/test_start_sh.py", "environment": "locked Python 3.12.14 temporary runtime", "exit_code": 0, "result": "14 passed and 2 subtests passed; nine pre-existing warnings"},
     {"command": "python -m scripts.init_fresh_ci_test_marker", "environment": "locked Python 3.12.14 temporary runtime, TEST_DATABASE_URL absent", "exit_code": 1, "result": "expected OpsSafetyError before database connection; no ModuleNotFoundError"},
     {"command": "python scripts/check_secret_scan.py --self-test; synthetic untracked candidate gate", "environment": "detect-secrets 1.5.0, current Windows tree", "exit_code": 0, "result": "61 candidates, 0 new; real scanner detects synthetic control; separate synthetic candidate causes gate exit 1 without value in output; Linux CI 117/56 still pending rerun"},
+    {"command": "python scripts/check_secret_scan.py --self-test", "environment": "detect-secrets 1.5.0 with PYTHONUTF8=1, Windows", "exit_code": 0, "result": "116 candidates in 39 files, 0 new after review of 55 UTF-8 findings; synthetic control detected; original 58 await private owner review"},
+    {"command": "python -m pytest -q -p no:cacheprovider tests/test_secret_scan_utf8.py tests/test_ops_safety_unit.py", "environment": "locked Python 3.12.14 temporary runtime", "exit_code": 0, "result": "25 passed including UTF-8 scanner regression and marker safety"},
+    {"command": "ruff check backend/ tests/ packages/python-sdk/ scripts/ examples/; ruff format --check backend/ tests/ packages/python-sdk/ scripts/ examples/", "environment": "Ruff 0.16.8, current Windows tree", "exit_code": 0, "result": "all checks passed; 100 files formatted"},
+    {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA 3715b5eba94c66f97de9f3ab4eceb33d0cfe4455", "exit_code": 1, "result": "run 36445914754 failed: secret scan 116/55 before UTF-8 baseline update; backend default-off two failed tests; Playwright default-off one failed test"},
     {"command": "python scripts/build_release_artifacts.py build --outdir <fresh temporary directory>; python scripts/build_release_artifacts.py verify --outdir <same directory>", "environment": "dirty untagged local tree", "exit_code": 0, "result": "bundle verified; manifest source_tree_dirty=true; not release tag proof"}
   ],
   "c9": [
     {"id": "C9-01", "implementation": ["tests/test_ops_backup_restore_totp.py", "scripts/backup_db.py", "scripts/restore_db.py"], "test": "tests/test_ops_safety_unit.py; PG restore pending", "status": "blocked"},
     {"id": "C9-02", "implementation": ["packages/python-sdk/alxprgs_sso/client.py", "examples/demo_app.py", "examples/demo_sessions.py", "backend/app/api/oidc.py"], "test": "SDK unit and isolated wheel passed; PG HTTP pending", "status": "in_progress"},
     {"id": "C9-03", "implementation": ["frontend/e2e/multi_client_sso.spec.ts"], "test": "Playwright test discovered and typechecked; browser not run", "status": "blocked"},
-    {"id": "C9-04", "implementation": ["requirements-lock.txt", "frontend/package-lock.json", ".github/workflows/ci.yml", "scripts/check_secret_scan.py"], "test": "TASK-092 local Ruff, secret scan and guard regression passed; original 58 historical secret candidates and Linux remote CI rerun pending", "status": "blocked"},
+    {"id": "C9-04", "implementation": ["requirements-lock.txt", "frontend/package-lock.json", ".github/workflows/ci.yml", "scripts/check_secret_scan.py"], "test": "TASK-092 local Ruff, UTF-8 secret scan 116/0 and guard regression passed; CI run 36445914754 failed before UTF-8 correction; original 58 historical candidates and remote rerun pending", "status": "blocked"},
     {"id": "C9-05", "implementation": [".github/workflows/release.yml", "scripts/release_bundle.py"], "test": "untagged local bundle and negative unit passed; tagged remote gate pending", "status": "blocked"},
     {"id": "C9-06", "implementation": ["docs/acceptance-goal-09.md", "docs/acceptance-goal-09.json", "docs/plan.md", "docs/status.md", "docs/worklog.md"], "test": "matrix created; overall acceptance pending", "status": "in_progress"}
   ],
@@ -54,7 +58,7 @@
     {"number": 6, "requirements": "USR/SEC", "implementation": "RBAC, CSRF, reauthentication, admin", "test": "full PG and browser negative suite", "status": "blocked"},
     {"number": 7, "requirements": "UI-01..04, FINAL-05/09", "implementation": "React frontend", "test": "browser and visual QA; local component checks passed", "status": "blocked"},
     {"number": 8, "requirements": "SDK-01..06, FINAL-03/06", "implementation": "SDK wheel and examples", "test": "installed wheel 3 isolated tests passed; PG demo pending", "status": "blocked"},
-    {"number": 9, "requirements": "CI/SEC", "implementation": "GitHub Actions CI", "test": "full remote CI and findings review", "status": "blocked"},
+    {"number": 9, "requirements": "CI/SEC", "implementation": "GitHub Actions CI", "test": "remote run 36445914754 failed; UTF-8 fix rerun and original 58 findings review pending", "status": "blocked"},
     {"number": 10, "requirements": "VER/CI", "implementation": "version script and workflows", "test": "version check passed; remote SHA run pending", "status": "blocked"},
     {"number": 11, "requirements": "REL, FINAL-07", "implementation": "release workflow and bundle", "test": "local untagged dry-run passed; tagged gate pending", "status": "blocked"},
     {"number": 12, "requirements": "CD", "implementation": "commented CD template", "test": "local invariant passed; remote gate pending", "status": "blocked"},
