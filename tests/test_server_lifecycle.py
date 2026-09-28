@@ -12,8 +12,26 @@ import socket
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
+
+from scripts import manage_test_server
+
+
+def test_stop_refuses_foreign_listener_before_kill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pidfile = tmp_path / "owned.pid"
+    pidfile.write_text("101", encoding="utf-8")
+    monkeypatch.setattr(manage_test_server, "get_pid_listening_on_port", lambda *args: 202)
+
+    def forbidden_kill(*args: object, **kwargs: object) -> None:
+        raise AssertionError("A foreign listener must never be killed")
+
+    monkeypatch.setattr(manage_test_server.subprocess, "run", forbidden_kill)
+    assert manage_test_server.stop_server(str(pidfile), port=54321) == 1
+    assert pidfile.read_text(encoding="utf-8") == "101"
 
 
 def get_free_port() -> int:

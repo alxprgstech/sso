@@ -71,12 +71,14 @@ docker compose logs -f backend
 После первого запуска и успешного применения миграций создайте учетную запись администратора через CLI:
 
 ```bash
-# Внутри работающего контейнера:
-docker compose exec backend python -m app.cli.bootstrap_admin --username admin --email admin@alxprgs.tech --password "YourStrongPassword123!"
+# В интерактивном терминале внутри работающего контейнера:
+docker compose exec -it backend python -m app.cli.bootstrap_admin --username admin --email admin@alxprgs.tech
 
-# Либо через локальное окружение (при доступной БД):
-alx-admin --username admin --email admin@alxprgs.tech --password "YourStrongPassword123!"
+# Либо в локальном интерактивном окружении (при доступной БД):
+alx-admin --username admin --email admin@alxprgs.tech
 ```
+
+Пароль задаётся через скрытый терминальный запрос. Не передавайте его аргументом процесса: командная строка может попасть в историю и списки процессов.
 
 ---
 
@@ -104,37 +106,31 @@ docker compose exec backend alembic downgrade -1
 
 ### 4.1. Создание резервной копии базы данных
 
-Скрипт `scripts/backup_db.py` выполняет `pg_dump` с проверкой целостности, расчетом контрольной суммы SHA-256 и сохранением в каталог `backups/`:
+Скрипт `scripts/backup_db.py` выполняет `pg_dump`, проверяет непустой файл и выводит SHA-256. Без явного `--docker` используется только локальный `pg_dump` из `PATH`; при его отсутствии команда завершается ошибкой. Перед любым запуском проверяйте сервер и БД, особенно если используете `--docker`: имя контейнера должно принадлежать именно выбранному PostgreSQL.
 
 ```bash
-# При запущенном Docker Compose:
-python scripts/backup_db.py --docker --output-dir backups/
+# Только после независимой проверки соответствия контейнера нужному серверу:
+python scripts/backup_db.py --docker --container <проверенный-контейнер> --output-dir backups/
 
 # Либо прямое подключение к локальному PostgreSQL:
 python scripts/backup_db.py --host localhost --port 5432 --user sso_user --db sso_db
 ```
 
-Пример вывода:
-```text
-[*] Starting backup for database 'sso_db'...
-[*] Executing via Docker container 'alxprgs-sso-db'...
-[+] Backup completed successfully!
-    File: /path/to/sso/backups/sso_backup_sso_db_20260924_120000.sql
-    Size: 24.50 KB
-    SHA-256: 4b2f8a...
-```
+Указанные команды — инструкции, а не свидетельство проверки нынешнего дерева. Файл и его контрольную сумму храните вместе с отдельно защищённым TOTP encryption key; сам дамп и ключ не коммитьте.
 
 ### 4.2. Восстановление базы данных
 
-Скрипт `scripts/restore_db.py` выполняет восстановление с обязательным флагом подтверждения `--confirm`:
+Скрипт `scripts/restore_db.py` требует `--confirm`. `psql` запускается с `ON_ERROR_STOP=1`: SQL-ошибка возвращает ненулевой код. Restore заменяет существующие данные целевой БД; сначала создайте отдельную пустую цель и убедитесь, что адрес и владелец совпадают с планом восстановления.
 
 ```bash
-# Восстановление через Docker контейнер:
-python scripts/restore_db.py backups/sso_backup_sso_db_20260924_120000.sql --confirm --docker
+# Только после проверки контейнера:
+python scripts/restore_db.py <проверенный-dump.sql> --confirm --docker --container <проверенный-контейнер> --db <отдельная-тестовая-БД>
 
 # Восстановление через локальный psql:
-python scripts/restore_db.py backups/sso_backup_sso_db_20260924_120000.sql --confirm --host localhost --port 5432 --user sso_user --db sso_db
+python scripts/restore_db.py <проверенный-dump.sql> --confirm --host localhost --port 5432 --user sso_user --db <отдельная-тестовая-БД>
 ```
+
+Для локальной интеграционной кампании выделите отдельный PostgreSQL 16 на `localhost:5433` с пользователем `sso_test_user` и БД `alxprgs_sso_test`. После миграций и **до** тестов на пустой БД с явным `TEST_DATABASE_URL` выполните `python scripts/init_fresh_ci_test_marker.py --local-fresh`. Команда проверяет точный адрес, отсутствие старого маркера, ожидаемую схему, исходную закрытую конфигурацию и отсутствие данных во всех прикладных таблицах. Fixture pytest и E2E seed больше не создают/исправляют маркер самостоятельно. Если проверка отказала, не изменяйте существующую БД ради теста; подготовьте новую пустую БД. CI использует этот же скрипт для выделенного сервиса на `localhost:5432` без локального флага.
 
 ---
 

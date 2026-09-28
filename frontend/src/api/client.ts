@@ -12,6 +12,7 @@ import {
   TOTPSetupResponse,
   RecoveryCodesResponse,
 } from "../types/api";
+import type { EncodedCreationOptions, EncodedRequestOptions } from "../utils/webauthn";
 
 class ApiClient {
   private csrfToken: string | null = null;
@@ -184,13 +185,13 @@ class ApiClient {
   }
 
   // --- Passkey / WebAuthn API (G4-PASSKEY) ---
-  async getPasskeyRegistrationOptions(): Promise<any> {
-    return this.request<any>("/api/v1/mfa/passkey/register/options", {
+  async getPasskeyRegistrationOptions(): Promise<EncodedCreationOptions | { publicKey: EncodedCreationOptions }> {
+    return this.request<EncodedCreationOptions | { publicKey: EncodedCreationOptions }>("/api/v1/mfa/passkey/register/options", {
       method: "POST",
     });
   }
 
-  async verifyPasskeyRegistration(credential: any, name = "Passkey"): Promise<{ status: string; message: string }> {
+  async verifyPasskeyRegistration(credential: object, name = "Passkey"): Promise<{ status: string; message: string }> {
     return this.request<{ status: string; message: string }>("/api/v1/mfa/passkey/register/verify", {
       method: "POST",
       body: JSON.stringify({ credential, name }),
@@ -207,13 +208,13 @@ class ApiClient {
     });
   }
 
-  async getPasskeyAuthOptions(): Promise<any> {
-    return this.request<any>("/api/v1/mfa/passkey/auth/options", {
+  async getPasskeyAuthOptions(): Promise<EncodedRequestOptions | { publicKey: EncodedRequestOptions }> {
+    return this.request<EncodedRequestOptions | { publicKey: EncodedRequestOptions }>("/api/v1/mfa/passkey/auth/options", {
       method: "POST",
     });
   }
 
-  async verifyPasskeyAuth(credential: any, mfaToken?: string): Promise<LoginResponse> {
+  async verifyPasskeyAuth(credential: object, mfaToken?: string): Promise<LoginResponse> {
     const res = await this.request<LoginResponse>("/api/v1/mfa/passkey/auth/verify", {
       method: "POST",
       body: JSON.stringify({ credential, mfa_token: mfaToken }),
@@ -290,4 +291,3 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
-

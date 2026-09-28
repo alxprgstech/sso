@@ -1,11 +1,13 @@
 """
-ALXPRGS SSO - Скрипт статического сканирования репозитория на секреты, зависимости и инварианты (G8-CI, FINAL-08).
+ALXPRGS SSO - ограниченная проверка инвариантов конфигурации (G8-CI).
 Проверяет:
-1. Отсутствие закоммиченных реальных приватных ключей и секретов в кодовой базе.
+1. Небольшой набор известных шаблонов секретов (не полный secret scan).
 2. Безопасность .env.example (только тестовые/фиктивные значения).
 3. Изоляцию шаблона CD (100% закомментирован, вне активных workflows).
 4. Соответствие default-off флагов в коде и конфигурации по умолчанию.
-5. Наличие и валидность lock-файла requirements-lock.txt.
+5. Наличие lock-файлов (не проверка разрешения зависимостей или CVE).
+
+Полный аудит выполняют отдельные инструменты pip-audit, npm audit и detect-secrets в CI.
 """
 
 from __future__ import annotations
@@ -162,11 +164,6 @@ def check_lock_files() -> list[str]:
     py_lock = os.path.join(ROOT_DIR, "requirements-lock.txt")
     if not os.path.exists(py_lock):
         errors.append("requirements-lock.txt not found in repository root!")
-    else:
-        with open(py_lock, "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-            if len(lines) < 20:
-                errors.append(f"requirements-lock.txt contains too few entries ({len(lines)})")
 
     fe_lock = os.path.join(ROOT_DIR, "frontend", "package-lock.json")
     if not os.path.exists(fe_lock):
@@ -177,7 +174,7 @@ def check_lock_files() -> list[str]:
 
 def main() -> int:
     print("=" * 60)
-    print("ALXPRGS SSO - Проверка безопасности, секретов и зависимостей")
+    print("ALXPRGS SSO - ограниченная проверка инвариантов; не аудит CVE/секретов")
     print("=" * 60)
 
     all_errors = []
@@ -216,7 +213,7 @@ def main() -> int:
         for err in sec_errs:
             print(f"  [FAIL] {err}")
     else:
-        print("  [OK] Не обнаружено незащищенных секретов и приватных ключей.")
+        print("  [OK] Ограниченный набор шаблонов не дал совпадений; полный scan отдельно.")
 
     print("[5/5] Проверка наличия lock-файлов зависимостей...")
     lock_errs = check_lock_files()
@@ -225,14 +222,14 @@ def main() -> int:
         for err in lock_errs:
             print(f"  [FAIL] {err}")
     else:
-        print("  [OK] Lock-файлы Python и Frontend присутствуют и валидны.")
+        print("  [OK] Lock-файлы Python и Frontend присутствуют; разрешение и CVE не проверены.")
 
     print("=" * 60)
     if all_errors:
         print(f"[FAILED] Найдено ошибок: {len(all_errors)}")
         return 1
     else:
-        print("[SUCCESS] Все проверки безопасности и инвариантов успешно пройдены!")
+        print("[SUCCESS] Ограниченные инварианты пройдены; security audit отдельно.")
         return 0
 
 

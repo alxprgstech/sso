@@ -6,9 +6,14 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      target_sha:
+        required: true
+        type: string
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ inputs.target_sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -21,7 +26,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Check CD template is commented out and outside workflows
         run: |
@@ -48,15 +55,27 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Run Security and Dependency Scanner
         run: python scripts/scan_secrets_and_deps.py
+
+      - name: Audit pinned Python dependencies
+        run: |
+          python -m pip install pip-audit==2.10.1
+          pip-audit --strict -r requirements-lock.txt
+
+      - name: Scan tracked source for secrets without printing values
+        run: |
+          python -m pip install detect-secrets==1.5.0
+          python scripts/check_secret_scan.py --self-test
 
   version-consistency:
     name: Verify Version Consistency
@@ -64,10 +83,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -95,23 +116,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Install backend and SDK dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e "./backend[dev]" -e "./packages/python-sdk"
+          python -m pip install -r requirements-lock.txt
+          python -m pip install --no-deps --no-build-isolation -e "./backend[dev]" -e "./packages/python-sdk"
+          python -m pip check
 
       - name: Run Ruff Lint and Format check
         run: |
-          ruff check backend/ tests/ packages/python-sdk/ scripts/
-          ruff format --check backend/ tests/ packages/python-sdk/ scripts/
+          ruff check backend/ tests/ packages/python-sdk/ scripts/ examples/
+          ruff format --check backend/ tests/ packages/python-sdk/ scripts/ examples/
 
       - name: Run Mypy Typecheck
         run: |
@@ -124,6 +148,16 @@ jobs:
           SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
         run: |
           cd backend && alembic upgrade head
+
+      - name: Mark fresh dedicated CI database and check PostgreSQL client
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+          pg_dump --version
+          psql --version
+          python scripts/init_fresh_ci_test_marker.py
 
       - name: Run Backend Tests on PostgreSQL (Default-off profile)
         env:
@@ -139,7 +173,7 @@ jobs:
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
         run: |
-          pytest -v --ignore=tests/test_python_sdk.py tests/
+          pytest -v tests/
 
       - name: Run MFA & Feature Flags Tests (Enabled profile)
         env:
@@ -162,23 +196,27 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Build SDK Wheel and Sdist
         run: |
-          python -m pip install --upgrade pip build
-          python -m build packages/python-sdk --outdir dist/sdk
+          python -m pip install -r requirements-lock.txt
+          python -m build --no-isolation packages/python-sdk --outdir dist/sdk
 
       - name: Test clean installation in isolated venv
         run: |
           python -m venv test_env
-          ./test_env/bin/pip install dist/sdk/*.whl pytest httpx fastapi cryptography
-          ./test_env/bin/pytest packages/python-sdk/tests/test_sdk_isolated.py -v
+          ./test_env/bin/pip install -r requirements-lock.txt
+          ./test_env/bin/pip install --no-deps dist/sdk/*.whl
+          ./test_env/bin/pip check
+          ./test_env/bin/pytest packages/python-sdk/tests/test_sdk_isolated.py tests/test_python_sdk.py -v
 
   frontend-build:
     name: Frontend Build & Typecheck
@@ -186,12 +224,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -202,8 +242,12 @@ jobs:
       - name: Frontend Typecheck, Unit Tests and Build
         working-directory: frontend
         run: |
+          npm audit --audit-level=high
+          npm run lint
           npm run typecheck
+          npm run typecheck:tests
           npm test
+          npm run test:components
           npm run build
 
   playwright-e2e:
@@ -227,25 +271,31 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Set up Node.js
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install backend and SDK dependencies
+      - name: Install backend and SDK wheel
         run: |
-          python -m pip install --upgrade pip
-          pip install -e "./backend[dev]" -e "./packages/python-sdk"
+          python -m pip install -r requirements-lock.txt
+          python -m pip install --no-deps --no-build-isolation -e "./backend[dev]"
+          python -m build --no-isolation packages/python-sdk --outdir dist/sdk
+          python -m pip install --no-deps dist/sdk/*.whl
+          python -m pip check
+          python -c "import alxprgs_sso, pathlib; assert 'site-packages' in str(pathlib.Path(alxprgs_sso.__file__).resolve())"
 
       - name: Run Database Migrations
         env:
@@ -254,6 +304,11 @@ jobs:
           SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
         run: |
           cd backend && alembic upgrade head
+
+      - name: Mark fresh dedicated E2E database
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+        run: python scripts/init_fresh_ci_test_marker.py
 
       - name: Install frontend dependencies and Playwright Chromium
         working-directory: frontend
@@ -297,6 +352,11 @@ jobs:
         env:
           PLAYWRIGHT_BASE_URL: "http://localhost:5173"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          PYTHON_BIN: python
+          E2E_CLIENT1_SECRET: analytics_client_secret_123
+          E2E_CLIENT2_SECRET: docs_client_secret_123
+          E2E_USERNAME: compose_admin
+          E2E_PASSWORD: ComposeAdminPass2026!
         run: |
           npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts
 

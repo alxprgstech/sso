@@ -1,3 +1,4 @@
+import { errorMessage } from "../utils/error";
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -51,8 +52,8 @@ export const AdminPage: React.FC = () => {
     try {
       const data = await api.getAdminUsers(0, 50, search || undefined);
       setUsers(data);
-    } catch (err: any) {
-      alert(err.message || "Ошибка загрузки пользователей");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка загрузки пользователей"));
     } finally {
       setUsersLoading(false);
     }
@@ -63,8 +64,8 @@ export const AdminPage: React.FC = () => {
     try {
       const data = await api.getAdminClients();
       setClients(data);
-    } catch (err: any) {
-      alert(err.message || "Ошибка загрузки клиентов");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка загрузки клиентов"));
     } finally {
       setClientsLoading(false);
     }
@@ -75,8 +76,8 @@ export const AdminPage: React.FC = () => {
     try {
       const data = await api.getAuditEvents(0, 50);
       setAuditEvents(data);
-    } catch (err: any) {
-      alert(err.message || "Ошибка загрузки аудита");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка загрузки аудита"));
     } finally {
       setAuditLoading(false);
     }
@@ -88,8 +89,8 @@ export const AdminPage: React.FC = () => {
       const data = await api.getSystemStatus();
       setSystemStatus(data);
       setSelectedMode(data.registration_mode as "closed" | "open");
-    } catch (err: any) {
-      alert(err.message || "Ошибка загрузки состояния системы");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка загрузки состояния системы"));
     } finally {
       setSystemLoading(false);
     }
@@ -119,8 +120,8 @@ export const AdminPage: React.FC = () => {
       setNewPassword("");
       setNewIsAdmin(false);
       await loadUsers();
-    } catch (err: any) {
-      alert(err.message || "Ошибка создания пользователя");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка создания пользователя"));
     }
   };
 
@@ -130,8 +131,8 @@ export const AdminPage: React.FC = () => {
     try {
       await api.updateAdminUser(u.id, { is_active: !u.is_active });
       await loadUsers();
-    } catch (err: any) {
-      alert(err.message || "Ошибка изменения статуса");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка изменения статуса"));
     }
   };
 
@@ -139,8 +140,8 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await api.revokeUserSessions(userId);
       alert(`Отозвано активных сессий: ${res.revoked_count}`);
-    } catch (err: any) {
-      alert(err.message || "Ошибка отзыва сессий");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка отзыва сессий"));
     }
   };
 
@@ -169,8 +170,8 @@ export const AdminPage: React.FC = () => {
       if (res.client_secret) {
         setSecretModal({ clientId: res.client_id, secret: res.client_secret });
       }
-    } catch (err: any) {
-      alert(err.message || "Ошибка создания клиента");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка создания клиента"));
     }
   };
 
@@ -181,8 +182,8 @@ export const AdminPage: React.FC = () => {
       if (res.client_secret) {
         setSecretModal({ clientId: res.client_id, secret: res.client_secret });
       }
-    } catch (err: any) {
-      alert(err.message || "Ошибка ротации секрета");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка ротации секрета"));
     }
   };
 
@@ -191,8 +192,8 @@ export const AdminPage: React.FC = () => {
     try {
       await api.deleteClient(clientId);
       await loadClients();
-    } catch (err: any) {
-      alert(err.message || "Ошибка удаления клиента");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Ошибка удаления клиента"));
     }
   };
 
@@ -219,10 +220,10 @@ export const AdminPage: React.FC = () => {
         type: "success",
         text: `Режим регистрации успешно изменён на "${updated.registration_mode}". Изменение действует для всех процессов без перезапуска.`,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setModeUpdateMsg({
         type: "error",
-        text: (typeof err.message === "string" ? err.message : JSON.stringify(err.message)) || "Ошибка обновления режима регистрации",
+        text: errorMessage(err, "Ошибка обновления режима регистрации"),
       });
     } finally {
       setModeUpdating(false);

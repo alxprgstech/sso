@@ -42,11 +42,13 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host " [OK]" -ForegroundColor Green
 
 # Определение команды compose
-$composeCmd = @("docker", "compose")
+$composeExe = "docker"
+$composeArgs = @("compose")
 $null = docker compose version 2>&1
 if ($LASTEXITCODE -ne 0) {
     if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
-        $composeCmd = @("docker-compose")
+        $composeExe = "docker-compose"
+        $composeArgs = @()
     } else {
         Write-Host "[ERROR] Docker Compose не найден (требуется плагин 'docker compose' или утилита 'docker-compose')." -ForegroundColor Red
         exit 1
@@ -71,7 +73,7 @@ try {
 
 if ($portBusy) {
     # Проверяем, не запущен ли уже наш собственный контейнер frontend
-    $existingContainers = & $composeCmd ps -q frontend 2>&1
+    $existingContainers = & $composeExe @composeArgs ps -q frontend 2>&1
     if (-not $existingContainers) {
         Write-Host " [ЗАНЯТ]" -ForegroundColor Red
         Write-Host ""
@@ -102,47 +104,44 @@ if (-not (Test-Path $envFile)) {
     # TOTP_ENCRYPTION_KEY (32 байта Base64)
     $totpBytes = New-Object byte[] 32
     $rng.GetBytes($totpBytes)
-    $totpKey = [System.Convert]::ToBase64String($totpBytes)
+    $totpKey = [System.Convert]::ToBase64String($totpBytes).Replace("+", "-").Replace("/", "_")
 
     # POSTGRES_PASSWORD (24 байта hex)
     $dbBytes = New-Object byte[] 24
     $rng.GetBytes($dbBytes)
     $dbPassword = [System.BitConverter]::ToString($dbBytes).Replace("-", "").ToLower()
 
-    if (Test-Path $envExample) {
-        $envContent = Get-Content $envExample -Raw
-    } else {
-        $envContent = @"
-ENVIRONMENT=development
-DEBUG=false
-HOST=0.0.0.0
-PORT=8000
-BASE_URL=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
-OIDC_ISSUER=https://auth.alxprgs.tech
-DATABASE_URL=postgresql+psycopg://sso_user:PASSWORD_PLACEHOLDER@db:5432/sso_db
-DATABASE_URL_SYNC=postgresql+psycopg://sso_user:PASSWORD_PLACEHOLDER@db:5432/sso_db
-SESSION_SECRET_KEY=SESSION_SECRET_PLACEHOLDER
-TOTP_ENCRYPTION_KEY=TOTP_KEY_PLACEHOLDER
-FEATURE_TOTP_ENABLED=false
-FEATURE_PASSKEY_ENABLED=false
-FEATURE_RECOVERY_CODES_ENABLED=false
-FEATURE_EMAIL_VERIFICATION_ENABLED=false
-REQUIRE_VERIFIED_EMAIL=false
-POSTGRES_USER=sso_user
-POSTGRES_PASSWORD=PASSWORD_PLACEHOLDER
-POSTGRES_DB=sso_db
-"@
+    if (-not (Test-Path -LiteralPath $envExample)) {
+        throw "Не найден обязательный шаблон .env.example. Восстановите его из репозитория."
     }
-
-    $envContent = $envContent -replace "SESSION_SECRET_KEY=.*", "SESSION_SECRET_KEY=$sessionSecret"
-    $envContent = $envContent -replace "TOTP_ENCRYPTION_KEY=.*", "TOTP_ENCRYPTION_KEY=$totpKey"
-    $envContent = $envContent -replace "sso_password", "$dbPassword"
-    $envContent = $envContent -replace "PASSWORD_PLACEHOLDER", "$dbPassword"
-    $envContent = $envContent -replace "SESSION_SECRET_PLACEHOLDER", "$sessionSecret"
-    $envContent = $envContent -replace "TOTP_KEY_PLACEHOLDER", "$totpKey"
-
-    Set-Content -Path $envFile -Value $envContent -Encoding UTF8
+    $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+    $envContent = [System.IO.File]::ReadAllText($envExample, $utf8)
+    $dbUrl = "postgresql+psycopg://sso_user:${dbPassword}@db:5432/sso_db"
+    $replacements = [ordered]@{
+        DEBUG = "false"
+        BASE_URL = "http://localhost:3000"
+        FRONTEND_URL = "http://localhost:3000"
+        DATABASE_URL = $dbUrl
+        DATABASE_URL_SYNC = $dbUrl
+        POSTGRES_USER = "sso_user"
+        POSTGRES_PASSWORD = $dbPassword
+        POSTGRES_DB = "sso_db"
+        SESSION_SECRET_KEY = $sessionSecret
+        TOTP_ENCRYPTION_KEY = $totpKey
+        FEATURE_TOTP_ENABLED = "false"
+        FEATURE_PASSKEY_ENABLED = "false"
+        FEATURE_RECOVERY_CODES_ENABLED = "false"
+        FEATURE_EMAIL_VERIFICATION_ENABLED = "false"
+        REQUIRE_VERIFIED_EMAIL = "false"
+    }
+    foreach ($key in $replacements.Keys) {
+        $pattern = "(?m)^$key=.*$"
+        if ([regex]::Matches($envContent, $pattern).Count -ne 1) {
+            throw "Некорректный шаблон .env.example: ожидается ровно одна строка $key."
+        }
+        $envContent = [regex]::Replace($envContent, $pattern, "$key=$($replacements[$key])")
+    }
+    [System.IO.File]::WriteAllText($envFile, $envContent, $utf8)
     Write-Host "  Файл .env успешно создан с уникальными криптографическими ключами." -ForegroundColor Green
 } else {
     Write-Host " [СОХРАНЁН]" -ForegroundColor Green
@@ -151,11 +150,11 @@ POSTGRES_DB=sso_db
 
 # 5. Запуск Docker Compose сервисов (SETUP-02)
 Write-Host "[5/6] Запуск контейнеров ALXPRGS SSO..."
-& $composeCmd up -d --build
+& $composeExe @composeArgs up -d --build
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "[ERROR] Ошибка запуска контейнеров Docker Compose (TEST-SETUP-04)." -ForegroundColor Red
-    Write-Host "Проверьте логи командой: $($composeCmd -join ' ') logs" -ForegroundColor Yellow
+    Write-Host "Проверьте логи командой: $((@($composeExe) + $composeArgs) -join ' ') logs" -ForegroundColor Yellow
     exit 1
 }
 
@@ -184,7 +183,7 @@ if (-not $isHealthy) {
     Write-Host " [ТАЙМАУТ]" -ForegroundColor Red
     Write-Host ""
     Write-Host "[ERROR] Сервисы не перешли в состояние готовности за 60 секунд (TEST-SETUP-04)." -ForegroundColor Red
-    Write-Host "Проверьте журнал бэкенда: $($composeCmd -join ' ') logs backend" -ForegroundColor Yellow
+    Write-Host "Проверьте журнал бэкенда: $((@($composeExe) + $composeArgs) -join ' ') logs backend" -ForegroundColor Yellow
     exit 1
 }
 Write-Host " [ГОТОВО]" -ForegroundColor Green
@@ -197,10 +196,10 @@ $isTty = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected -
 
 if ($isTty) {
     # Интерактивный вызов внутри контейнера бэкенда
-    & $composeCmd exec backend python -m app.cli.bootstrap_admin
+    & $composeExe @composeArgs exec backend python -m app.cli.bootstrap_admin
 } else {
     # Неинтерактивный вызов
-    & $composeCmd exec -T backend python -m app.cli.bootstrap_admin
+    & $composeExe @composeArgs exec -T backend python -m app.cli.bootstrap_admin
 }
 
 $bootstrapExit = $LASTEXITCODE

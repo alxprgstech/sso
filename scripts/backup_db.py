@@ -60,7 +60,7 @@ def main():
             cmd = [
                 "docker",
                 "exec",
-                "-t",
+                "-i",
                 args.container,
                 "pg_dump",
                 "-U",
@@ -74,47 +74,33 @@ def main():
             with open(backup_file, "wb") as f:
                 subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
         else:
-            # Check pg_dump locally
+            # An implicit Docker fallback could address a different PostgreSQL server.
             pg_dump_path = shutil.which("pg_dump")
             if not pg_dump_path:
-                # If pg_dump not found locally, try docker container as fallback
-                print("[!] 'pg_dump' not found in PATH, attempting docker fallback...")
-                cmd = [
-                    "docker",
-                    "exec",
-                    "-i",
-                    args.container,
-                    "pg_dump",
-                    "-U",
-                    args.user,
-                    "-d",
-                    args.db,
-                    "--clean",
-                    "--if-exists",
-                ]
-                with open(backup_file, "wb") as f:
-                    subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
-            else:
-                env = os.environ.copy()
-                if "POSTGRES_PASSWORD" in os.environ:
-                    env["PGPASSWORD"] = os.environ["POSTGRES_PASSWORD"]
-                cmd = [
-                    pg_dump_path,
-                    "-h",
-                    args.host,
-                    "-p",
-                    str(args.port),
-                    "-U",
-                    args.user,
-                    "-d",
-                    args.db,
-                    "--clean",
-                    "--if-exists",
-                    "-f",
-                    str(backup_file),
-                ]
-                print(f"[*] Executing pg_dump on {args.host}:{args.port}...")
-                subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
+                raise RuntimeError(
+                    "pg_dump is not in PATH; use --docker only for an explicitly verified container"
+                )
+            env = os.environ.copy()
+            if "POSTGRES_PASSWORD" in os.environ:
+                env["PGPASSWORD"] = os.environ["POSTGRES_PASSWORD"]
+            cmd = [
+                pg_dump_path,
+                "-w",
+                "-h",
+                args.host,
+                "-p",
+                str(args.port),
+                "-U",
+                args.user,
+                "-d",
+                args.db,
+                "--clean",
+                "--if-exists",
+                "-f",
+                str(backup_file),
+            ]
+            print(f"[*] Executing pg_dump on {args.host}:{args.port}...")
+            subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
 
         if not backup_file.exists() or backup_file.stat().st_size == 0:
             print("[x] Error: Backup file is empty or was not created.")
@@ -129,13 +115,15 @@ def main():
         print(f"    SHA-256: {sha256}")
 
     except subprocess.CalledProcessError as e:
-        err_msg = e.stderr.decode() if e.stderr else str(e)
-        print(f"[x] Backup failed: {err_msg}", file=sys.stderr)
+        print(
+            f"[x] Backup failed (exit {e.returncode}); inspect the server privately",
+            file=sys.stderr,
+        )
         if backup_file.exists():
             backup_file.unlink()
         sys.exit(1)
     except Exception as e:
-        print(f"[x] Unexpected backup error: {e}", file=sys.stderr)
+        print(f"[x] Backup failed: {type(e).__name__}", file=sys.stderr)
         if backup_file.exists():
             backup_file.unlink()
         sys.exit(1)

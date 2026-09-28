@@ -30,6 +30,7 @@ chmod +x start.sh
 
 1. **Проверка окружения**: проверяет наличие `docker` в PATH, доступность демона Docker и доступность порта `127.0.0.1:3000` (TEST-SETUP-04).
 2. **Безопасная конфигурация**: автоматически генерирует локальный файл `.env` с уникальными криптостойкими ключами (`SESSION_SECRET_KEY`, `TOTP_ENCRYPTION_KEY`, пароль БД) без перезаписи уже существующего файла (SETUP-04).
+   Windows-скрипт записывает файл в UTF-8 без BOM. Для контейнеров пароль `POSTGRES_PASSWORD` совпадает с паролем в `DATABASE_URL` и `DATABASE_URL_SYNC`; оба URL указывают на сервис `db`.
 3. **Запуск сервисов**: поднимает изолированный контур Docker Compose (база данных PostgreSQL 16, бэкенд FastAPI, фронтенд Nginx + React).
 4. **Проверка готовности**: ожидает успешного прохождения liveness healthcheck (`/health/live`) с контролем таймаута (до 60 секунд).
 5. **Интерактивный мастер первого администратора (SETUP-03..SETUP-07)**:
@@ -45,6 +46,8 @@ chmod +x start.sh
 - Пользовательский интерфейс и шлюз: `http://localhost:3000` (привязка строго к `127.0.0.1:3000`, SETUP-08);
 - Панель администратора: `http://localhost:3000/admin`;
 - База данных PostgreSQL: порт 5432 **не публикуется наружу** для защиты корпоративных данных (SETUP-08).
+
+Если прежний запуск создал некорректный `.env` и остановился **до первого запуска контейнеров**, удалите только этот файл и повторите мастер: он создаст новые секреты. Если PostgreSQL уже запускался с этим файлом, сначала сохраните данные и согласуйте пароль БД и ключи; простая замена `.env` может лишить доступа к существующей базе и сессиям. Содержимое `.env` не отправляйте в чат и не коммитьте.
 
 ### 1.3. Повторный запуск и идемпотентность (SETUP-05, SETUP-06)
 
@@ -118,11 +121,13 @@ REQUIRE_VERIFIED_EMAIL=false
 
 ## 4. Тестирование и верификация
 
-### 4.1. Автоматизированные тесты pytest (54 теста)
+### 4.1. Автоматизированные тесты pytest
 
 ```bash
-# Запуск полного тестового набора по всем 11 модулям:
-pytest tests/ -v
+# Только на выделенном PostgreSQL после установки зафиксированных зависимостей,
+# миграций, явной настройки TEST_DATABASE_URL и отдельного создания маркера
+# по docs/operations.md; fixture не создаёт маркер за вас:
+python -m pytest tests/ -v
 ```
 
 Тестовый комплект покрывает:
@@ -131,15 +136,21 @@ pytest tests/ -v
 - Мастер первого запуска (`tests/test_bootstrap_admin.py`, 7 тестов): первичная инициализация, идемпотентность, отказ в повышении прав обычного пользователя, валидация TTY;
 - Отложенные возможности (`tests/test_mfa_features.py`): изоляция default-off и корректность enabled-профиля;
 - Административный API и RBAC (`tests/test_admin_api.py`);
-- Python SDK и кросс-сервисный SSO (`tests/test_python_sdk.py`, `tests/test_sso_cross_clients.py`);
+- Python SDK unit (`tests/test_python_sdk.py`, `tests/test_sso_cross_clients.py`); реальный двухклиентский SSO проверяется отдельно в Playwright;
 - Негативные сценарии безопасности и гонки (`tests/test_security_and_negative_scenarios.py`).
 
 ### 4.2. Проверка фронтенда
 
 ```bash
 cd frontend
+npm ci
+npm run lint
 npm run typecheck
+npm run typecheck:tests
+npm test
+npm run test:components
 npm run build
+npm audit --audit-level=high
 ```
 
 ---
@@ -157,6 +168,6 @@ npm run build
 - `docs/api.md`: Спецификация API (OIDC, Auth, Registration, Admin);
 - `docs/sdk.md`: Документация Python SDK `alxprgs-sso`;
 - `docs/operations.md`: Руководство по эксплуатации (backup, restore, key rotation);
-- `docs/acceptance-goal-08.md`: Акт и матрица итоговой приёмки ALXPRGS SSO (GOAL-08 / v0.2.0);
+- `docs/acceptance-goal-08.md`: Исторический акт GOAL-08; не подтверждает нынешний изменённый код;
+- `docs/acceptance-goal-09.md`: Текущая матрица, реально пройденные проверки и блокеры;
 - `docs/acceptance.md`: Сводный реестр актов приёмки продукта.
-

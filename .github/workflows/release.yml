@@ -26,20 +26,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       commit_sha: ${{ steps.resolve.outputs.commit_sha }}
+      tag: ${{ steps.resolve.outputs.tag }}
       version: ${{ steps.resolve.outputs.version }}
       is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Resolve Tag and Validate
         id: resolve
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag }}"
           echo "Resolving tag: $TAG"
           
           # Проверяем формат тега
@@ -66,6 +66,14 @@ jobs:
             echo "ERROR: Tag version '$VERSION' does not match root VERSION '$ROOT_VERSION' in commit $COMMIT_SHA!"
             exit 1
           fi
+          # Check all three component versions from the tagged commit.
+          PEP_VERSION="$VERSION"
+          if [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+            PEP_VERSION="${BASH_REMATCH[1]}rc${BASH_REMATCH[2]}"
+          fi
+          git show "$COMMIT_SHA:backend/pyproject.toml" | grep -Fq "version = \"$PEP_VERSION\"" || exit 1
+          git show "$COMMIT_SHA:packages/python-sdk/pyproject.toml" | grep -Fq "version = \"$PEP_VERSION\"" || exit 1
+          git show "$COMMIT_SHA:frontend/package.json" | grep -Fq "\"version\": \"$VERSION\"" || exit 1
 
           # Проверяем, что коммит находится в ветке main
           if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
@@ -74,13 +82,8 @@ jobs:
           fi
 
           # Проверяем, не существует ли уже опубликованный (не draft) релиз для этого тега
-          EXISTING_RELEASE=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || echo "NOT_FOUND")
-          if [ "$EXISTING_RELEASE" = "false" ]; then
-            echo "ERROR: Published release for tag $TAG already exists! Overwriting published releases is forbidden."
-            exit 1
-          fi
-
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           if [[ "$TAG" == *"-rc."* ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
@@ -89,79 +92,44 @@ jobs:
           fi
           echo "Successfully validated tag $TAG ($COMMIT_SHA) for version $VERSION."
 
+  verify-quality:
+    name: Full CI on release commit
+    needs: verify-tag-and-sha
+    uses: ./.github/workflows/ci.yml
+    with:
+      target_sha: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
+    permissions:
+      contents: read
+
   build-artifacts:
     name: Build and Verify All Release Artifacts
-    needs: verify-tag-and-sha
+    needs: [verify-tag-and-sha, verify-quality]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository at exact commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
+          fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Set up Node.js
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "20"
+          node-version: "24"
 
-      - name: Verify Quality and Consistency on Release Commit
+      - name: Build and verify exact release bundle
+        env:
+          RELEASE_TAG: ${{ needs.verify-tag-and-sha.outputs.tag }}
+          RELEASE_SHA: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
         run: |
-          python -m pip install --upgrade pip build
-          pip install -e "./backend[dev]" -e "./packages/python-sdk"
-          python scripts/bump_version.py check
-          python scripts/scan_secrets_and_deps.py
-          ruff check backend tests packages/python-sdk scripts
-          mypy --explicit-package-bases packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports
-
-      - name: Build Backend and SDK Wheels & Sdist
-        run: |
-          mkdir -p dist/artifacts
-          python -m build backend --outdir dist/artifacts
-          python -m build packages/python-sdk --outdir dist/artifacts
-
-      - name: Build Frontend
-        working-directory: frontend
-        run: |
-          npm ci
-          npm test
-          npm run build
-          tar -czf ../dist/artifacts/alxprgs-sso-frontend-${{ needs.verify-tag-and-sha.outputs.version }}.tar.gz -C dist .
-
-      - name: Extract Release Notes from CHANGELOG
-        run: |
-          python -c "
-          import re, sys
-          from pathlib import Path
-          content = Path('CHANGELOG.md').read_text(encoding='utf-8')
-          version = '${{ needs.verify-tag-and-sha.outputs.version }}'
-          pattern = r'## \[' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n## \[|\Z)'
-          match = re.search(pattern, content, re.DOTALL)
-          if match:
-              notes = match.group(1).strip()
-          else:
-              notes = f'Release {version}'
-          Path('dist/artifacts/RELEASE_NOTES.md').write_text(notes, encoding='utf-8')
-          "
-
-      - name: Generate Checksums and Manifest
-        working-directory: dist/artifacts
-        run: |
-          sha256sum * > SHA256SUMS.txt
-          cat <<EOF > release-manifest.json
-          {
-            "product": "ALXPRGS SSO",
-            "version": "${{ needs.verify-tag-and-sha.outputs.version }}",
-            "tag": "${{ github.event.inputs.tag }}",
-            "commit_sha": "${{ needs.verify-tag-and-sha.outputs.commit_sha }}",
-            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "files": $(ls -1 | grep -v 'release-manifest.json' | jq -R -s -c 'split("\n")[:-1]')
-          }
-          EOF
+          python -m pip install -r requirements-lock.txt
+          python scripts/build_release_artifacts.py build --outdir dist/artifacts --tag "$RELEASE_TAG" --require-clean
+          python scripts/build_release_artifacts.py verify --outdir dist/artifacts --expected-sha "$RELEASE_SHA"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
@@ -177,11 +145,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout repository at exact commit
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
-
       - name: Download Artifacts
         uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806 # v4.1.9
         with:
@@ -189,27 +152,69 @@ jobs:
           path: release-files
 
       - name: Verify Artifact Integrity Against Checksums
-        working-directory: release-files
+        env:
+          RELEASE_SHA: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
         run: |
+          set -euo pipefail
+          test "$(jq -r .commit_sha release-files/release-manifest.json)" = "$RELEASE_SHA"
+          test "$(jq -r .source_tree_dirty release-files/release-manifest.json)" = false
+          cd release-files
           sha256sum -c SHA256SUMS.txt
+          expected=$(jq -r '.artifacts | keys[]' release-manifest.json | sort)
+          actual=$(find . -maxdepth 1 -type f ! -name SHA256SUMS.txt ! -name release-manifest.json -printf '%f\n' | sort)
+          test "$expected" = "$actual"
+          test "$(sha256sum release-manifest.json | awk '{print $1}')" = "$(awk '$2 == "release-manifest.json" {print $1}' SHA256SUMS.txt)"
 
       - name: Create or Update Draft Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag }}
+          TAG: ${{ needs.verify-tag-and-sha.outputs.tag }}
           IS_PRE: ${{ needs.verify-tag-and-sha.outputs.is_prerelease }}
         run: |
-          echo "Managing draft release for $TAG..."
-          EXISTING_DRAFT=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || echo "NOT_FOUND")
-          if [ "$EXISTING_DRAFT" = "true" ]; then
-            echo "Existing draft release found for $TAG. Updating artifacts..."
-            gh release upload "$TAG" release-files/* --clobber
+          set -euo pipefail
+          SUMS_SHA=$(sha256sum release-files/SHA256SUMS.txt | cut -d ' ' -f 1)
+          MARKER="ALXPRGS-GOAL09:$TAG:${{ needs.verify-tag-and-sha.outputs.commit_sha }}:$SUMS_SHA"
+          cp release-files/RELEASE_NOTES.md release-body.md
+          printf '\n<!-- %s -->\n' "$MARKER" >> release-body.md
+          if gh release view "$TAG" --json isDraft,body,assets > release-state.json 2>/dev/null; then
+            IS_DRAFT=$(jq -r .isDraft release-state.json)
+            if [ "$IS_DRAFT" != "true" ] || ! jq -e --arg marker "$MARKER" '.body | contains($marker)' release-state.json >/dev/null; then
+              echo "Existing release is published or belongs to another artifact set; refusing overwrite"
+              exit 1
+            fi
+            mkdir -p existing-release
+            if [ "$(jq '.assets | length' release-state.json)" -gt 0 ]; then
+              gh release download "$TAG" --dir existing-release
+            fi
+            expected=$(find release-files -maxdepth 1 -type f -printf '%f\n' | sort)
+            present=$(find existing-release -maxdepth 1 -type f -printf '%f\n' | sort)
+            foreign=$(comm -13 <(printf '%s\n' "$expected") <(printf '%s\n' "$present"))
+            if [ -n "$foreign" ]; then echo "Draft contains an unexpected asset"; exit 1; fi
+            for asset in existing-release/*; do
+              [ -f "$asset" ] || continue
+              name=${asset##*/}
+              if ! cmp -s "$asset" "release-files/$name"; then
+                echo "Draft asset content differs from verified build: $name"
+                exit 1
+              fi
+            done
+            comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$present") > missing-assets.txt
+            missing=()
+            while IFS= read -r name; do missing+=("release-files/$name"); done < missing-assets.txt
+            if [ "${#missing[@]}" -gt 0 ]; then gh release upload "$TAG" "${missing[@]}"; fi
           else
-            echo "Creating new draft release for $TAG..."
+            prerelease_args=()
+            if [ "$IS_PRE" = "true" ]; then prerelease_args+=(--prerelease); fi
             gh release create "$TAG" release-files/* \
-              --title "ALXPRGS SSO $TAG" \
-              --notes-file release-files/RELEASE_NOTES.md \
-              --draft \
-              $([ "$IS_PRE" = "true" ] && echo "--prerelease")
+              --title "ALXPRGS SSO $TAG" --notes-file release-body.md --draft "${prerelease_args[@]}"
           fi
-          echo "Draft release successfully prepared for $TAG. Manual review required before final publishing."
+          mkdir -p downloaded-release
+          gh release download "$TAG" --dir downloaded-release
+          (cd downloaded-release && sha256sum -c SHA256SUMS.txt)
+          expected=$(find release-files -maxdepth 1 -type f -printf '%f\n' | sort)
+          actual=$(find downloaded-release -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [ "$expected" != "$actual" ]; then
+            echo "Uploaded asset set differs from verified build"
+            exit 1
+          fi
+          echo "Draft release verified; publication requires separate owner instruction."

@@ -228,8 +228,8 @@ def decode_jwt(
     """
     try:
         unverified_header = jwt.get_unverified_header(token)
-    except Exception as e:
-        raise OAuthErrorException("invalid_token", f"Некорректный заголовок JWT: {e}", 401)
+    except Exception:
+        raise OAuthErrorException("invalid_token", "Некорректный заголовок JWT", 401) from None
 
     kid = unverified_header.get("kid")
     pub_key: rsa.RSAPublicKey | None = None
@@ -240,7 +240,7 @@ def decode_jwt(
         pub_key = _retired_public_keys[kid]
     else:
         raise OAuthErrorException(
-            "invalid_token", f"Неизвестный идентификатор ключа подписи (kid: '{kid}')", 401
+            "invalid_token", "Неизвестный идентификатор ключа подписи (kid)", 401
         )
 
     options = {"verify_exp": verify_exp}
@@ -256,12 +256,12 @@ def decode_jwt(
 
     try:
         return jwt.decode(token, pub_key, **kwargs)
-    except jwt.ExpiredSignatureError as e:
-        raise OAuthErrorException("invalid_token", f"Срок действия токена истёк: {e}", 401)
-    except jwt.InvalidTokenError as e:
+    except jwt.ExpiredSignatureError:
+        raise OAuthErrorException("invalid_token", "Срок действия токена истёк", 401) from None
+    except jwt.InvalidTokenError:
         raise OAuthErrorException(
-            "invalid_token", f"Недействительная подпись или атрибуты токена: {e}", 401
-        )
+            "invalid_token", "Недействительная подпись или атрибуты токена", 401
+        ) from None
 
 
 def verify_pkce(code_verifier: str, code_challenge: str, method: str = "S256") -> bool:

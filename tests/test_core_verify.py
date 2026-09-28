@@ -1,9 +1,13 @@
 import os
 import sys
 
+import jwt
+import pytest
+
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.config import get_settings
+from app.core.exceptions import OAuthErrorException
 from app.core.security import (
     create_jwt,
     decode_jwt,
@@ -40,6 +44,20 @@ def test_core_security() -> None:
     challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
     assert verify_pkce(verifier, challenge, "S256")
     assert not verify_pkce("wrong_verifier", challenge, "S256")
+
+
+def test_jwt_failure_does_not_echo_attacker_kid() -> None:
+    tainted = "untrusted-sensitive-marker"
+    token = jwt.encode(
+        {"sub": "synthetic", "iss": "https://auth.alxprgs.tech"},
+        b"s" * 32,
+        algorithm="HS256",
+        headers={"kid": tainted},
+    )
+    with pytest.raises(OAuthErrorException) as failure:
+        decode_jwt(token)
+    assert failure.value.status_code == 401
+    assert tainted not in str(failure.value.detail)
 
 
 if __name__ == "__main__":

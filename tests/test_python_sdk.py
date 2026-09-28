@@ -6,21 +6,8 @@ from unittest.mock import patch
 
 import jwt
 import pytest
-
-try:
-    from alxprgs_sso import (
-        InvalidTokenError,
-        SSOClient,
-        TokenExpiredError,
-        UserClaims,
-    )
-    from alxprgs_sso.fastapi import SSOFastAPISecurity
-except ImportError:
-    pytest.skip(
-        "Python SDK 'alxprgs_sso' is not installed in the current environment; "
-        "SDK tests are executed in the isolated wheel environment (sdk-build-and-test).",
-        allow_module_level=True,
-    )
+from alxprgs_sso import InvalidTokenError, SSOClient, TokenExpiredError, UserClaims
+from alxprgs_sso.fastapi import SSOFastAPISecurity
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -64,6 +51,29 @@ def _create_signed_jwt(
     p["exp"] = now + expires_in_seconds
     p["iss"] = "https://auth.alxprgs.tech"
     return jwt.encode(p, private_key, algorithm="RS256", headers={"kid": kid})
+
+
+def test_sdk_errors_do_not_echo_untrusted_kid_or_claims() -> None:
+    private_key, server_jwks, kid = _generate_test_jwks_and_key()
+    client = SSOClient(server_url="https://auth.alxprgs.tech", client_id="test_client_id")
+    tainted = "untrusted-sensitive-marker"
+    unknown_kid = _create_signed_jwt(
+        {"sub": "subject", "aud": "test_client_id", "token_use": "access_token"},
+        private_key,
+        tainted,
+    )
+    wrong_use = _create_signed_jwt(
+        {"sub": "subject", "aud": "test_client_id", "token_use": tainted},
+        private_key,
+        kid,
+    )
+    with patch.object(client, "get_jwks", return_value=server_jwks):
+        with pytest.raises(InvalidTokenError) as unknown:
+            client.verify_access_token(unknown_kid)
+        with pytest.raises(InvalidTokenError) as use:
+            client.verify_access_token(wrong_use)
+    assert tainted not in str(unknown.value)
+    assert tainted not in str(use.value)
 
 
 def test_sdk_pkce_authorization_url_generation():
@@ -244,7 +254,9 @@ def test_sdk_web_flow_and_id_token_verification():
     assert "code_challenge_method=S256" in auth_url
 
     # 2. create_logout_url
-    logout_url = client.create_logout_url(post_logout_redirect_uri="https://app.alxprgs.tech/")
+    logout_url = client.create_logout_url(
+        "synthetic_id_token", post_logout_redirect_uri="https://app.alxprgs.tech/"
+    )
     assert logout_url.startswith("https://auth.alxprgs.tech/oauth/logout")
     assert "post_logout_redirect_uri=https%3A%2F%2Fapp.alxprgs.tech%2F" in logout_url
 
@@ -316,6 +328,7 @@ async def test_sdk_handle_web_callback_csrf_and_success():
             expected_state="legitimate_state",
             code_verifier="verifier",
             redirect_uri=redirect_uri,
+            expected_nonce="legitimate_nonce",
         )
     assert "state" in str(exc_csrf.value).lower()
 
@@ -377,3 +390,40 @@ async def test_sdk_handle_web_callback_csrf_and_success():
             assert session_info.user.email == "web@alxprgs.tech"
             assert session_info.id_token_claims is not None
             assert session_info.id_token_claims["nonce"] == test_nonce
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_missing_nonce_or_id_token_before_session():
+    from unittest.mock import AsyncMock
+
+    from alxprgs_sso.models import TokenResponse
+
+    client = SSOClient(
+        "http://localhost:8000", "test_web_client", expected_issuer="https://auth.alxprgs.tech"
+    )
+    with patch.object(client, "exchange_code_for_tokens", new_callable=AsyncMock) as exchange:
+        with pytest.raises(InvalidTokenError, match="nonce"):
+            await client.handle_web_callback(
+                "code", "state", "state", "verifier", "http://localhost:8001/callback"
+            )
+        exchange.assert_not_awaited()
+        exchange.return_value = TokenResponse(
+            access_token="invalid", expires_in=300, token_type="Bearer"
+        )
+        with pytest.raises(InvalidTokenError, match="ID Token"):
+            await client.handle_web_callback(
+                "code", "state", "state", "verifier", "http://localhost:8001/callback", "nonce"
+            )
+
+
+def test_http_transport_does_not_disable_id_token_issuer_check():
+    private_key, jwks, kid = _generate_test_jwks_and_key()
+    token = _create_signed_jwt(
+        {"sub": "subject", "aud": "test_web_client", "nonce": "nonce", "token_use": "id_token"},
+        private_key,
+        kid,
+    )
+    client = SSOClient("http://localhost:8000", "test_web_client")
+    with patch.object(client, "get_jwks", return_value=jwks):
+        with pytest.raises(InvalidTokenError):
+            client.verify_id_token(token, expected_nonce="nonce")

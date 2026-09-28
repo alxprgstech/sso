@@ -77,10 +77,10 @@ class SSOClient:
                 self._cached_jwks = data
                 self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
                 return data
-        except Exception as e:
+        except Exception:
             if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
                 return self._cached_jwks
-            raise ConfigurationError(f"Не удалось загрузить JWKS из {jwks_url}: {e}")
+            raise ConfigurationError("Не удалось загрузить JWKS") from None
 
     async def get_jwks_async(self, force_refresh: bool = False) -> dict[str, Any]:
         """
@@ -104,27 +104,29 @@ class SSOClient:
                 self._cached_jwks = data
                 self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
                 return data
-        except Exception as e:
+        except Exception:
             if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
                 return self._cached_jwks
-            raise ConfigurationError(f"Не удалось загрузить JWKS из {jwks_url}: {e}")
+            raise ConfigurationError("Не удалось загрузить JWKS") from None
 
     def _get_signing_key(self, token_or_header: str | dict[str, Any]) -> Any:
         if isinstance(token_or_header, str):
             try:
                 unverified_header = jwt.get_unverified_header(token_or_header)
-            except Exception as e:
-                raise InvalidTokenError(f"Некорректный заголовок JWT: {e}")
+            except Exception:
+                raise InvalidTokenError("Некорректный заголовок JWT") from None
         else:
             unverified_header = token_or_header
 
         kid = unverified_header.get("kid")
+        if not isinstance(kid, str) or not kid:
+            raise InvalidTokenError("В заголовке JWT отсутствует обязательный kid")
         jwks_data = self.get_jwks()
         jwk_set = PyJWKSet.from_dict(jwks_data)
 
         signing_key = None
         for key in jwk_set.keys:
-            if key.key_id == kid or not kid:
+            if key.key_id == kid:
                 signing_key = key
                 break
 
@@ -138,7 +140,7 @@ class SSOClient:
                     break
 
         if not signing_key:
-            raise InvalidTokenError(f"Ключ подписи с kid='{kid}' не найден в JWKS сервера")
+            raise InvalidTokenError("Ключ подписи с указанным kid не найден в JWKS сервера")
         return signing_key
 
     # --------------------------------------------------------------------------
@@ -184,10 +186,10 @@ class SSOClient:
                 audience=target_audience,
                 issuer=target_issuer,
             )
-        except jwt.ExpiredSignatureError as e:
-            raise TokenExpiredError(f"Срок действия токена истёк: {e}")
-        except jwt.InvalidTokenError as e:
-            raise InvalidTokenError(f"Недействительная подпись или атрибуты токена: {e}")
+        except jwt.ExpiredSignatureError:
+            raise TokenExpiredError("Срок действия токена истёк") from None
+        except jwt.InvalidTokenError:
+            raise InvalidTokenError("Недействительная подпись или атрибуты токена") from None
 
         # Инвариант SSO-03 / G8-SEC: Строго требовать access_token (ID Token и токены без token_use запрещены)
         token_use = payload.get("token_use")
@@ -195,7 +197,7 @@ class SSOClient:
             if token_use == "id_token":
                 raise InvalidTokenError("Недопустимо использовать ID Token в качестве Access Token")
             raise InvalidTokenError(
-                f"Недопустимый token_use='{token_use}'. Токен не является валидным Access Token"
+                "Недопустимый token_use. Токен не является валидным Access Token"
             )
 
         return UserClaims(
@@ -286,11 +288,7 @@ class SSOClient:
             "verify_iss": True,
             "require": ["exp", "sub", "aud", "iss"],
         }
-        target_issuer = self.expected_issuer or (
-            self.server_url
-            if self.server_url.startswith("https://") or "auth.alxprgs.tech" in self.server_url
-            else None
-        )
+        target_issuer = self.expected_issuer or self.server_url
         try:
             payload = jwt.decode(
                 id_token,
@@ -300,10 +298,10 @@ class SSOClient:
                 audience=self.client_id,
                 issuer=target_issuer,
             )
-        except jwt.ExpiredSignatureError as e:
-            raise TokenExpiredError(f"Срок действия ID токена истёк: {e}")
-        except jwt.InvalidTokenError as e:
-            raise InvalidTokenError(f"Недействительный ID токен: {e}")
+        except jwt.ExpiredSignatureError:
+            raise TokenExpiredError("Срок действия ID токена истёк") from None
+        except jwt.InvalidTokenError:
+            raise InvalidTokenError("Недействительный ID токен") from None
 
         if payload.get("token_use") != "id_token":
             raise InvalidTokenError("Токен не является валидным ID Token (token_use != 'id_token')")
@@ -333,7 +331,9 @@ class SSOClient:
         3. Валидирует полученный ID Token и значение nonce.
         4. Валидирует Access Token и извлекает типизированные UserClaims.
         """
-        if not secrets.compare_digest(state, expected_state):
+        if not expected_nonce:
+            raise InvalidTokenError("Для OIDC callback требуется ожидаемый nonce")
+        if not state or not expected_state or not secrets.compare_digest(state, expected_state):
             raise InvalidTokenError("Неверный параметр state: возможна попытка CSRF-атаки")
 
         tokens = await self.exchange_code_for_tokens(
@@ -342,12 +342,12 @@ class SSOClient:
             code_verifier=code_verifier,
         )
 
-        id_token_claims = None
-        if tokens.id_token:
-            id_token_claims = self.verify_id_token(
-                id_token=tokens.id_token,
-                expected_nonce=expected_nonce,
-            )
+        if not tokens.id_token:
+            raise InvalidTokenError("OIDC token response не содержит обязательный ID Token")
+        id_token_claims = self.verify_id_token(
+            id_token=tokens.id_token,
+            expected_nonce=expected_nonce,
+        )
 
         claims = self.verify_access_token(tokens.access_token)
 
@@ -362,6 +362,7 @@ class SSOClient:
 
     def create_logout_url(
         self,
+        id_token_hint: str,
         post_logout_redirect_uri: str | None = None,
         state: str | None = None,
     ) -> str:
@@ -369,7 +370,9 @@ class SSOClient:
         Формирует URL выхода RP-Initiated Logout (SSO-07).
         """
         base = f"{self.server_url}/oauth/logout"
-        params: dict[str, str] = {}
+        if not id_token_hint:
+            raise ConfigurationError("Для RP logout требуется ID Token текущей сессии")
+        params: dict[str, str] = {"id_token_hint": id_token_hint}
         if post_logout_redirect_uri:
             params["post_logout_redirect_uri"] = post_logout_redirect_uri
         if state:
@@ -401,15 +404,7 @@ class SSOClient:
         async with httpx.AsyncClient(verify=self.verify_ssl, timeout=15.0) as client:
             resp = await client.post(token_url, data=data)
             if resp.status_code != 200:
-                err_body = resp.text
-                try:
-                    err_json = resp.json()
-                    err_desc = (
-                        err_json.get("error_description") or err_json.get("error") or err_body
-                    )
-                except Exception:
-                    err_desc = err_body
-                raise SSOError(f"Ошибка обмена кода авторизации: {err_desc}")
+                raise SSOError(f"Ошибка обмена кода авторизации (HTTP {resp.status_code})")
 
             payload = resp.json()
             return TokenResponse(**payload)

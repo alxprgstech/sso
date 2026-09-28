@@ -1,3 +1,4 @@
+import { errorMessage } from "../utils/error";
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
@@ -53,8 +54,8 @@ export const DashboardPage: React.FC = () => {
     try {
       const data = await api.setupTotp();
       setTotpSetupData(data);
-    } catch (err: any) {
-      setTotpError(err.message || "Не удалось настроить TOTP");
+    } catch (err: unknown) {
+      setTotpError(errorMessage(err, "Не удалось настроить TOTP"));
     } finally {
       setTotpLoading(false);
     }
@@ -71,8 +72,8 @@ export const DashboardPage: React.FC = () => {
       setTotpSetupData(null);
       setTotpCode("");
       await refreshUser();
-    } catch (err: any) {
-      setTotpError(err.message || "Неверный код TOTP");
+    } catch (err: unknown) {
+      setTotpError(errorMessage(err, "Неверный код TOTP"));
     } finally {
       setTotpLoading(false);
     }
@@ -88,8 +89,8 @@ export const DashboardPage: React.FC = () => {
       setTotpSetupData(null);
       setRecoveryCodes(null);
       await refreshUser();
-    } catch (err: any) {
-      setTotpError(err.message || "Ошибка при отключении TOTP");
+    } catch (err: unknown) {
+      setTotpError(errorMessage(err, "Ошибка при отключении TOTP"));
     } finally {
       setTotpLoading(false);
     }
@@ -103,8 +104,8 @@ export const DashboardPage: React.FC = () => {
       const data = await api.generateRecoveryCodes();
       setRecoveryCodes(data.recovery_codes);
       setRecoverySuccess("Резервные коды успешно сформированы. Сохраните их в безопасном месте!");
-    } catch (err: any) {
-      setRecoveryError(err.message || "Ошибка генерации резервных кодов");
+    } catch (err: unknown) {
+      setRecoveryError(errorMessage(err, "Ошибка генерации резервных кодов"));
     } finally {
       setRecoveryLoading(false);
     }
@@ -117,8 +118,8 @@ export const DashboardPage: React.FC = () => {
     try {
       const res = await api.requestEmailVerification();
       setEmailSuccess(res.message || "Письмо с подтверждением отправлено");
-    } catch (err: any) {
-      setEmailError(err.message || "Ошибка отправки подтверждения");
+    } catch (err: unknown) {
+      setEmailError(errorMessage(err, "Ошибка отправки подтверждения"));
     } finally {
       setEmailLoading(false);
     }
@@ -135,8 +136,8 @@ export const DashboardPage: React.FC = () => {
       setEmailSuccess(res.message || "Email успешно подтвержден!");
       setEmailToken("");
       await refreshUser();
-    } catch (err: any) {
-      setEmailError(err.message || "Неверный или просроченный токен верификации");
+    } catch (err: unknown) {
+      setEmailError(errorMessage(err, "Неверный или просроченный токен верификации"));
     } finally {
       setEmailLoading(false);
     }
@@ -147,8 +148,8 @@ export const DashboardPage: React.FC = () => {
     try {
       const data = await api.getSessions();
       setSessions(data);
-    } catch (err: any) {
-      setSessionError(err.message || "Не удалось загрузить список сессий");
+    } catch (err: unknown) {
+      setSessionError(errorMessage(err, "Не удалось загрузить список сессий"));
     } finally {
       setSessionsLoading(false);
     }
@@ -185,8 +186,8 @@ export const DashboardPage: React.FC = () => {
       setPasskeySuccess(res.message || "Passkey успешно зарегистрирован");
       setPasskeyName("");
       await fetchPasskeys();
-    } catch (err: any) {
-      setPasskeyError(err.message || "Ошибка при регистрации Passkey");
+    } catch (err: unknown) {
+      setPasskeyError(errorMessage(err, "Ошибка при регистрации Passkey"));
     } finally {
       setPasskeyLoading(false);
     }
@@ -200,8 +201,8 @@ export const DashboardPage: React.FC = () => {
       await api.deletePasskeyCredential(id);
       setPasskeySuccess("Passkey успешно удален");
       await fetchPasskeys();
-    } catch (err: any) {
-      setPasskeyError(err.message || "Ошибка при удалении Passkey");
+    } catch (err: unknown) {
+      setPasskeyError(errorMessage(err, "Ошибка при удалении Passkey"));
     } finally {
       setPasskeyLoading(false);
     }
@@ -229,8 +230,8 @@ export const DashboardPage: React.FC = () => {
       setNewPassword("");
       setConfirmPassword("");
       await fetchSessions();
-    } catch (err: any) {
-      setPasswordError(err.message || "Ошибка смены пароля");
+    } catch (err: unknown) {
+      setPasswordError(errorMessage(err, "Ошибка смены пароля"));
     } finally {
       setPasswordLoading(false);
     }
@@ -240,8 +241,8 @@ export const DashboardPage: React.FC = () => {
     try {
       await api.revokeSession(sessionId);
       await fetchSessions();
-    } catch (err: any) {
-      alert(err.message || "Не удалось завершить сессию");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Не удалось завершить сессию"));
     }
   };
 
@@ -251,8 +252,8 @@ export const DashboardPage: React.FC = () => {
       const res = await api.revokeOtherSessions();
       alert(`Отозвано сессий: ${res.revoked_count}`);
       await fetchSessions();
-    } catch (err: any) {
-      alert(err.message || "Не удалось отозвать сессии");
+    } catch (err: unknown) {
+      alert(errorMessage(err, "Не удалось отозвать сессии"));
     }
   };
 

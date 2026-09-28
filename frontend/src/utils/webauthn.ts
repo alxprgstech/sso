@@ -29,77 +29,79 @@ export function base64UrlToBuffer(base64url: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-export function prepareCreationOptions(serverOptions: any): CredentialCreationOptions {
-  const opts = typeof serverOptions === "string" ? JSON.parse(serverOptions) : serverOptions;
-  const rawPublicKey = opts.publicKey || opts;
-  const publicKey = { ...rawPublicKey };
+type EncodedDescriptor = Omit<PublicKeyCredentialDescriptor, "id"> & { id: string | BufferSource };
+type EncodedUser = Omit<PublicKeyCredentialUserEntity, "id"> & { id: string | BufferSource };
+export type EncodedCreationOptions = Omit<PublicKeyCredentialCreationOptions, "challenge" | "user" | "excludeCredentials"> & {
+  challenge: string | BufferSource;
+  user: EncodedUser;
+  excludeCredentials?: EncodedDescriptor[];
+};
+export type EncodedRequestOptions = Omit<PublicKeyCredentialRequestOptions, "challenge" | "allowCredentials"> & {
+  challenge: string | BufferSource;
+  allowCredentials?: EncodedDescriptor[];
+};
 
-  if (typeof publicKey.challenge === "string") {
-    publicKey.challenge = base64UrlToBuffer(publicKey.challenge);
-  }
-
-  if (publicKey.user && typeof publicKey.user.id === "string") {
-    publicKey.user = {
-      ...publicKey.user,
-      id: base64UrlToBuffer(publicKey.user.id),
-    };
-  }
-
-  if (Array.isArray(publicKey.excludeCredentials)) {
-    publicKey.excludeCredentials = publicKey.excludeCredentials.map((c: any) => ({
-      ...c,
-      id: typeof c.id === "string" ? base64UrlToBuffer(c.id) : c.id,
-    }));
-  }
-
-  return { publicKey };
+function unwrap<T>(options: string | T | { publicKey: T }): T {
+  const parsed: T | { publicKey: T } = typeof options === "string" ? JSON.parse(options) : options;
+  return "publicKey" in (parsed as { publicKey?: T })
+    ? (parsed as { publicKey: T }).publicKey
+    : parsed as T;
 }
 
-export function serializeCreationResponse(cred: any): any {
-  const response: any = {
-    clientDataJSON: bufferToBase64Url(cred.response.clientDataJSON),
-    attestationObject: bufferToBase64Url(cred.response.attestationObject),
-  };
-  if (typeof cred.response.getTransports === "function") {
-    response.transports = cred.response.getTransports();
-  }
+export function prepareCreationOptions(serverOptions: string | EncodedCreationOptions | { publicKey: EncodedCreationOptions }): CredentialCreationOptions {
+  const raw = unwrap(serverOptions);
   return {
-    id: cred.id,
-    rawId: bufferToBase64Url(cred.rawId),
-    type: cred.type,
-    response,
+    publicKey: {
+      ...raw,
+      challenge: typeof raw.challenge === "string" ? base64UrlToBuffer(raw.challenge) : raw.challenge,
+      user: { ...raw.user, id: typeof raw.user.id === "string" ? base64UrlToBuffer(raw.user.id) : raw.user.id },
+      excludeCredentials: raw.excludeCredentials?.map((credential) => ({
+        ...credential,
+        id: typeof credential.id === "string" ? base64UrlToBuffer(credential.id) : credential.id,
+      })),
+    },
   };
 }
 
-export function prepareRequestOptions(serverOptions: any): CredentialRequestOptions {
-  const opts = typeof serverOptions === "string" ? JSON.parse(serverOptions) : serverOptions;
-  const rawPublicKey = opts.publicKey || opts;
-  const publicKey = { ...rawPublicKey };
-
-  if (typeof publicKey.challenge === "string") {
-    publicKey.challenge = base64UrlToBuffer(publicKey.challenge);
+export function serializeCreationResponse(cred: Credential): object {
+  const publicKey = cred as PublicKeyCredential;
+  const attestation = publicKey.response as AuthenticatorAttestationResponse;
+  const response: { clientDataJSON: string; attestationObject: string; transports?: string[] } = {
+    clientDataJSON: bufferToBase64Url(attestation.clientDataJSON),
+    attestationObject: bufferToBase64Url(attestation.attestationObject),
+  };
+  if (typeof attestation.getTransports === "function") {
+    response.transports = attestation.getTransports();
   }
-
-  if (Array.isArray(publicKey.allowCredentials)) {
-    publicKey.allowCredentials = publicKey.allowCredentials.map((c: any) => ({
-      ...c,
-      id: typeof c.id === "string" ? base64UrlToBuffer(c.id) : c.id,
-    }));
-  }
-
-  return { publicKey };
+  return { id: publicKey.id, rawId: bufferToBase64Url(publicKey.rawId), type: publicKey.type, response };
 }
 
-export function serializeRequestResponse(assertion: any): any {
+export function prepareRequestOptions(serverOptions: string | EncodedRequestOptions | { publicKey: EncodedRequestOptions }): CredentialRequestOptions {
+  const raw = unwrap(serverOptions);
   return {
-    id: assertion.id,
-    rawId: bufferToBase64Url(assertion.rawId),
-    type: assertion.type,
+    publicKey: {
+      ...raw,
+      challenge: typeof raw.challenge === "string" ? base64UrlToBuffer(raw.challenge) : raw.challenge,
+      allowCredentials: raw.allowCredentials?.map((credential) => ({
+        ...credential,
+        id: typeof credential.id === "string" ? base64UrlToBuffer(credential.id) : credential.id,
+      })),
+    },
+  };
+}
+
+export function serializeRequestResponse(assertion: Credential): object {
+  const publicKey = assertion as PublicKeyCredential;
+  const auth = publicKey.response as AuthenticatorAssertionResponse;
+  return {
+    id: publicKey.id,
+    rawId: bufferToBase64Url(publicKey.rawId),
+    type: publicKey.type,
     response: {
-      clientDataJSON: bufferToBase64Url(assertion.response.clientDataJSON),
-      authenticatorData: bufferToBase64Url(assertion.response.authenticatorData),
-      signature: bufferToBase64Url(assertion.response.signature),
-      userHandle: assertion.response.userHandle ? bufferToBase64Url(assertion.response.userHandle) : null,
+      clientDataJSON: bufferToBase64Url(auth.clientDataJSON),
+      authenticatorData: bufferToBase64Url(auth.authenticatorData),
+      signature: bufferToBase64Url(auth.signature),
+      userHandle: auth.userHandle ? bufferToBase64Url(auth.userHandle) : null,
     },
   };
 }

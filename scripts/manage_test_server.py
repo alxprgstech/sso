@@ -274,11 +274,13 @@ def stop_server(
 
     listening_pid = get_pid_listening_on_port(port, host) if port else None
 
-    pids_to_kill = set()
-    if pid and pid > 0:
-        pids_to_kill.add(pid)
-    if listening_pid and listening_pid > 0:
-        pids_to_kill.add(listening_pid)
+    if listening_pid and listening_pid != pid:
+        print(
+            f"[STOP-ERROR] Порт {port} принадлежит процессу, не записанному в PID-файл; отказ от остановки!"
+        )
+        return 1
+
+    pids_to_kill = {pid} if pid and pid > 0 else set()
 
     if not pids_to_kill:
         if port and is_port_in_use(port, host):
@@ -340,9 +342,12 @@ def stop_server(
             if not is_port_in_use(port, host):
                 port_free = True
                 break
-            # Принудительно завершаем остаточный слушающий процесс
+            # Завершаем только процесс, записанный для этого запуска.
             rem_pid = get_pid_listening_on_port(port, host)
-            if rem_pid:
+            if rem_pid and rem_pid != pid:
+                print(f"[STOP-ERROR] Порт {port} перехвачен чужим процессом; отказ от остановки!")
+                return 1
+            if rem_pid == pid:
                 if sys.platform == "win32":
                     subprocess.run(
                         ["taskkill", "/F", "/T", "/PID", str(rem_pid)],

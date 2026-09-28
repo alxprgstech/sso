@@ -1,3 +1,4 @@
+import { errorMessage } from "../utils/error";
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
@@ -59,8 +60,8 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
       setTimeout(() => {
         onNavigateToLogin();
       }, 2000);
-    } catch (err: any) {
-      setError(err.message || "Ошибка при регистрации учётной записи.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Ошибка при регистрации учётной записи."));
     } finally {
       setLoading(false);
     }

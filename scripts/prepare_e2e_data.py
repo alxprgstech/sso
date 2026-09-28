@@ -34,7 +34,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from tests.db_guard import (
     get_test_database_url,
-    initialize_test_database_marker,
     mask_dsn,
     verify_test_database_marker,
 )
@@ -78,8 +77,7 @@ async def prepare_e2e_data() -> None:
     engine = create_async_engine(db_url, echo=False)
 
     async with AsyncSession(engine) as session:
-        # 0. Обеспечиваем защиту тестовой БД через db_guard маркер
-        await initialize_test_database_marker(session)
+        # Marker provisioning is a separate fresh-database operation.
         await verify_test_database_marker(session)
 
         # 1. Обеспечиваем наличие базовых ролей

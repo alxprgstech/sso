@@ -155,45 +155,6 @@ async def verify_test_database_marker(conn: AsyncConnection | AsyncSession) -> N
         )
 
 
-async def initialize_test_database_marker(conn: AsyncConnection | AsyncSession) -> None:
-    """
-    Инициализирует таблицу маркера в подтвержденной тестовой базе данных.
-    Перед созданием маркера дополнительно проверяет, что база не является рабочей.
-    """
-    res_db = await conn.execute(text("SELECT current_database()"))
-    current_db = (res_db.scalar_one() or "").lower()
-
-    if current_db in FORBIDDEN_DATABASES or "test" not in current_db:
-        raise TestDatabaseSafetyError(
-            f"ОШИБКА G4-DB: Попытка создания маркера тестовой среды на недопустимой базе '{current_db}'. Отказано."
-        )
-
-    create_table_sql = text(
-        f"""
-        CREATE TABLE IF NOT EXISTS {MARKER_TABLE_NAME} (
-            marker_id VARCHAR(64) PRIMARY KEY,
-            environment VARCHAR(64) NOT NULL,
-            is_safe_to_truncate BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-    await conn.execute(create_table_sql)
-
-    upsert_marker_sql = text(
-        f"""
-        INSERT INTO {MARKER_TABLE_NAME} (marker_id, environment, is_safe_to_truncate)
-        VALUES (:mid, :env, TRUE)
-        ON CONFLICT (marker_id) DO UPDATE
-            SET environment = EXCLUDED.environment,
-                is_safe_to_truncate = TRUE,
-                updated_at = CURRENT_TIMESTAMP;
-        """
-    )
-    await conn.execute(upsert_marker_sql, {"mid": MARKER_ID, "env": EXPECTED_ENVIRONMENT})
-
-
 async def safe_truncate_test_tables(session: AsyncSession) -> None:
     """
     Безопасная очистка изменяемых таблиц тестовой базы данных.

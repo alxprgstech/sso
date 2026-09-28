@@ -3,7 +3,7 @@
 - Обозначение документа: ALXPRGS.SSO.REL-01
 - Версия: 1.0.0
 - Дата: 2026-09-24T11:40:00+03:00
-- Статус: Утверждён
+- Статус: процесс описан; теговый dry-run и удалённый CI нынешнего дерева не проверены (GOAL-09)
 
 ---
 
@@ -91,16 +91,15 @@ python scripts/bump_version.py set 0.2.0
    - Проверяет принадлежность коммита ветке `main`.
    - Проверяет строгое совпадение версии в корневом `VERSION` с версией тега.
 3. **Сборка артефактов**:
-   - Backend sdist & wheel (`dist/backend/`).
-   - SDK sdist & wheel (`dist/sdk/`).
-   - Архив собранного фронтенда (`alxprgs-sso-frontend-vX.Y.Z.tar.gz`).
-   - Файл манифеста `release-manifest.json` (версия, commit SHA, список файлов).
-   - Файл контрольных сумм `SHA256SUMS.txt`.
+   - Backend и SDK wheel/sdist, архивы frontend и миграций, `MIGRATION.md`, `RELEASE_NOTES.md`, `release-manifest.json`, `SHA256SUMS.txt` в одном комплекте `dist/artifacts/`.
+   - В именах prerelease Python-пакетов `-rc.N` переводится в PEP 440 `rcN`; продуктовая версия и frontend-архив сохраняют SemVer.
 4. **Публикация Draft Release**:
    - Создается черновик релиза (Draft Release).
    - Загружаются все собранные артефакты и контрольные суммы.
-   - Только после успешной загрузки всех файлов релиз переводится в статус опубликованного.
+   - После загрузки проверяются все имена и контрольные суммы; релиз остаётся **draft**. Публикация требует отдельного поручения владельца.
    - Права на запись (`contents: write`) изолированы исключительно в финальном шаге публикации.
+
+Локальная проверка без публикации: `python scripts/build_release_artifacts.py build --outdir <пустая-директория>`, затем `python scripts/build_release_artifacts.py verify --outdir <та-же-директория>`. Она не заменяет теговый запуск: manifest dirty-дерева имеет `source_tree_dirty=true`. На 26.09.2026 нынешний код прошёл только такой нетегированный dry-run; удалённый workflow и полный PostgreSQL/browser CI не запускались. Границы доказательств — в [акте GOAL-09](acceptance-goal-09.md).
 
 ---
 

@@ -97,7 +97,7 @@ export interface AuditEventItem {
   user_id: string | null;
   ip_address: string | null;
   user_agent: string | null;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   created_at: string;
 }
 
@@ -109,4 +109,3 @@ export interface TOTPSetupResponse {
 export interface RecoveryCodesResponse {
   recovery_codes: string[];
 }
-

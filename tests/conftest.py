@@ -25,9 +25,9 @@ from app.models.system import SystemConfiguration
 from tests.db_guard import (
     TestDatabaseSafetyError,
     get_test_database_url,
-    initialize_test_database_marker,
     mask_dsn,
     safe_truncate_test_tables,
+    verify_test_database_marker,
 )
 
 
@@ -83,8 +83,9 @@ async def pg_engine() -> AsyncGenerator[AsyncEngine, None]:
     try:
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-            # Инициализируем/обновляем маркер владения тестовой базы данных
-            await initialize_test_database_marker(conn)
+            # The marker must be provisioned separately on a proven fresh test DB.
+            # A fixture must never promote an arbitrary database to a truncate target.
+            await verify_test_database_marker(conn)
     except Exception as exc:
         if isinstance(exc, pytest.fail.Exception):
             raise

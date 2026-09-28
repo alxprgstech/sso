@@ -1,7 +1,7 @@
 import os
 import sys
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -21,14 +21,15 @@ import examples.client1.app as client1_module
 import examples.client2.app as client2_module
 
 
-def test_demo_clients_routes_and_login_redirect():
+def test_demo_clients_routes_and_login_redirect(monkeypatch: pytest.MonkeyPatch):
     """
     Проверка работы демонстрационных клиентов (SDK-06):
     - Client 1 (Analytics): главная страница и редирект на /oauth/authorize;
     - Client 2 (Documentation): главная страница и редирект на /oauth/authorize.
     """
-    c1 = TestClient(client1_module.app)
-    c2 = TestClient(client2_module.app)
+    monkeypatch.setenv("DEMO_ALLOW_HTTP_LOCALHOST", "1")
+    c1 = TestClient(client1_module.app, base_url="http://localhost")
+    c2 = TestClient(client2_module.app, base_url="http://localhost")
 
     # 1. Client 1
     r1_index = c1.get("/")
@@ -56,12 +57,10 @@ def test_demo_clients_routes_and_login_redirect():
 
 
 @pytest.mark.asyncio
-async def test_seamless_sso_between_two_clients():
+async def test_oidc_service_issues_isolated_codes_for_two_clients_unit():
     """
-    Инвариант SSO-01, SSO-02, SDK-06:
-    Бесшовный Single Sign-On между двумя независимыми клиентами (Client 1 и Client 2).
-    Пользователь, аутентифицированный в SSO-сервере, получает доступ к обоим сервисам
-    без повторного ввода пароля.
+    Unit-проверка выдачи отдельных codes/tokens для двух клиентов с mock DB.
+    Реальный вход без повторного пароля проверяется только browser E2E.
     """
     settings = get_settings()
 
@@ -104,6 +103,7 @@ async def test_seamless_sso_between_two_clients():
     ]
 
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
 
     # 3. Инициализируем SDK для обоих клиентов
     sdk1 = SSOClient(
@@ -184,28 +184,28 @@ async def test_seamless_sso_between_two_clients():
         with pytest.raises(InvalidTokenError):
             sdk1.verify_access_token(tokens_2.access_token, expected_audience=client1_id)
 
-    # Бесшовный единый вход подтверждён!
+    # Здесь проверены лишь сервисные операции; браузерная SSO-сессия не создавалась.
 
 
-def test_client_web_session_cookie_lifecycle_and_csrf():
+def test_client_web_session_cookie_lifecycle_and_csrf(monkeypatch: pytest.MonkeyPatch):
     """
     Инварианты SDK-06, SSO-01, FINAL-09:
     Тестирование полного жизненного цикла веб-сессии в демонстрационном клиенте:
-    1. Инициация входа /login с выставлением подписанной cookie client1_auth_flow.
+    1. Инициация входа /login с непрозрачной cookie flow.
     2. Отклонение callback без cookie или с несовпадающим state (защита от CSRF).
-    3. Успешный callback с установкой HttpOnly подписанной сессионной cookie client1_session.
+    3. Успешный callback с установкой HttpOnly непрозрачной сессионной cookie.
     4. Доступ к защищенному маршруту /dashboard по сессионной cookie.
     5. Завершение сессии /logout с очисткой cookie и редиректом на сервер авторизации.
     """
     from alxprgs_sso.models import UserClaims, WebSessionInfo
 
-    c1 = TestClient(client1_module.app)
+    monkeypatch.setenv("DEMO_ALLOW_HTTP_LOCALHOST", "1")
+    c1 = TestClient(client1_module.app, base_url="http://localhost")
 
     # 1. /login
     login_res = c1.get("/login", follow_redirects=False)
     assert login_res.status_code == 302
-    assert "client1_auth_flow" in login_res.cookies
-    auth_flow_cookie = login_res.cookies["client1_auth_flow"]
+    assert "demo_client_analytics_app_flow" in login_res.cookies
 
     # Распарсим state из URL
     location = login_res.headers["Location"]
@@ -214,18 +214,21 @@ def test_client_web_session_cookie_lifecycle_and_csrf():
     expected_state = query_params["state"][0]
 
     # 2. Попытка CSRF: несовпадающий state
-    c1.cookies.set("client1_auth_flow", auth_flow_cookie)
     csrf_res = c1.get(f"/callback?code=mock_code&state=fake_state_{uuid.uuid4().hex}")
     assert csrf_res.status_code == 400
-    assert "CSRF" in csrf_res.text
+    assert "Invalid" in csrf_res.text
 
     # Попытка запроса без cookie сессии авторизации
-    c1_no_cookie = TestClient(client1_module.app)
+    c1_no_cookie = TestClient(client1_module.app, base_url="http://localhost")
     no_cookie_res = c1_no_cookie.get(f"/callback?code=mock_code&state={expected_state}")
     assert no_cookie_res.status_code == 400
-    assert "Отсутствует сессия авторизации" in no_cookie_res.text
+    assert "Invalid" in no_cookie_res.text
 
-    # 3. Успешный callback с валидным state и подписанной cookie
+    # A mismatched callback consumes the flow. A new browser flow is needed.
+    new_login = c1.get("/login", follow_redirects=False)
+    expected_state = parse_qs(urlparse(new_login.headers["Location"]).query)["state"][0]
+
+    # 3. Успешный callback с валидным state и непрозрачной cookie
     mock_session_info = WebSessionInfo(
         user=UserClaims(
             sub="user_12345",
@@ -251,7 +254,7 @@ def test_client_web_session_cookie_lifecycle_and_csrf():
         )
         assert callback_res.status_code == 302
         assert callback_res.headers["Location"] == "/dashboard"
-        assert "client1_session" in callback_res.cookies
+        assert "demo_client_analytics_app_session" in callback_res.cookies
 
         # 4. Проверяем /dashboard с полученной сессионной cookie
         dashboard_res = c1.get("/dashboard")
@@ -259,7 +262,17 @@ def test_client_web_session_cookie_lifecycle_and_csrf():
         assert "test_analyst" in dashboard_res.text
         assert "analyst@alxprgs.tech" in dashboard_res.text
 
-        # 5. Logout
-        logout_res = c1.get("/logout", follow_redirects=False)
-        assert logout_res.status_code == 302
-        assert "oauth/logout" in logout_res.headers["Location"]
+        # 5. Replay and forged cookies cannot restore the server-side session.
+        assert c1.get(f"/callback?code=valid_code&state={expected_state}").status_code == 400
+        forged = TestClient(client1_module.app, base_url="http://localhost")
+        forged.cookies.set("demo_client_analytics_app_session", "forged")
+        assert forged.get("/api/me").status_code == 401
+
+        # 6. Local logout requires CSRF and revokes server-side access.
+        session_id = c1.cookies["demo_client_analytics_app_session"]
+        csrf = client1_module.sessions.get_session(session_id).csrf
+        assert c1.post("/logout", data={"csrf": "wrong"}).status_code == 403
+        logout_res = c1.post("/logout", data={"csrf": csrf}, follow_redirects=False)
+        assert logout_res.status_code == 303
+        c1.cookies.set("demo_client_analytics_app_session", session_id)
+        assert c1.get("/api/me").status_code == 401

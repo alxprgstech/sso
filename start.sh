@@ -88,48 +88,46 @@ if [ ! -f "$ENV_FILE" ]; then
 
     if command -v openssl >/dev/null 2>&1; then
         SESSION_SECRET=$(openssl rand -hex 64)
-        TOTP_KEY=$(openssl rand -base64 32)
+        TOTP_KEY=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n')
         DB_PASSWORD=$(openssl rand -hex 24)
     else
         SESSION_SECRET=$(head -c 64 /dev/urandom | xxd -p | tr -d '\n' || od -An -tx1 -N64 /dev/urandom | tr -d ' \n')
-        TOTP_KEY=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+        TOTP_KEY=$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n')
         DB_PASSWORD=$(head -c 24 /dev/urandom | xxd -p | tr -d '\n' || od -An -tx1 -N24 /dev/urandom | tr -d ' \n')
     fi
 
-    if [ -f "$ENV_EXAMPLE" ]; then
-        cp "$ENV_EXAMPLE" "$ENV_FILE"
-    else
-        cat <<EOF > "$ENV_FILE"
-ENVIRONMENT=development
-DEBUG=false
-HOST=0.0.0.0
-PORT=8000
-BASE_URL=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
-OIDC_ISSUER=https://auth.alxprgs.tech
-DATABASE_URL=postgresql+psycopg://sso_user:PASSWORD_PLACEHOLDER@db:5432/sso_db
-DATABASE_URL_SYNC=postgresql+psycopg://sso_user:PASSWORD_PLACEHOLDER@db:5432/sso_db
-SESSION_SECRET_KEY=SESSION_SECRET_PLACEHOLDER
-TOTP_ENCRYPTION_KEY=TOTP_KEY_PLACEHOLDER
-FEATURE_TOTP_ENABLED=false
-FEATURE_PASSKEY_ENABLED=false
-FEATURE_RECOVERY_CODES_ENABLED=false
-FEATURE_EMAIL_VERIFICATION_ENABLED=false
-REQUIRE_VERIFIED_EMAIL=false
-POSTGRES_USER=sso_user
-POSTGRES_PASSWORD=PASSWORD_PLACEHOLDER
-POSTGRES_DB=sso_db
-EOF
+    if [ ! -f "$ENV_EXAMPLE" ]; then
+        echo -e "${RED}[ERROR] Не найден обязательный шаблон .env.example.${NC}" >&2
+        exit 1
     fi
 
-    # Замена плейсхолдеров
+    for key in DEBUG BASE_URL FRONTEND_URL DATABASE_URL DATABASE_URL_SYNC POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB SESSION_SECRET_KEY TOTP_ENCRYPTION_KEY FEATURE_TOTP_ENABLED FEATURE_PASSKEY_ENABLED FEATURE_RECOVERY_CODES_ENABLED FEATURE_EMAIL_VERIFICATION_ENABLED REQUIRE_VERIFIED_EMAIL; do
+        count=$(grep -c "^${key}=" "$ENV_EXAMPLE" || true)
+        if [ "$count" -ne 1 ]; then
+            echo -e "${RED}[ERROR] Некорректный шаблон .env.example: ожидается ровно одна строка ${key}.${NC}" >&2
+            exit 1
+        fi
+    done
+
+    umask 077
+    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    DB_URL="postgresql+psycopg://sso_user:${DB_PASSWORD}@db:5432/sso_db"
     sed -i.bak \
-        -e "s|SESSION_SECRET_KEY=.*|SESSION_SECRET_KEY=${SESSION_SECRET}|g" \
-        -e "s|TOTP_ENCRYPTION_KEY=.*|TOTP_ENCRYPTION_KEY=${TOTP_KEY}|g" \
-        -e "s|sso_password|${DB_PASSWORD}|g" \
-        -e "s|PASSWORD_PLACEHOLDER|${DB_PASSWORD}|g" \
-        -e "s|SESSION_SECRET_PLACEHOLDER|${SESSION_SECRET}|g" \
-        -e "s|TOTP_KEY_PLACEHOLDER|${TOTP_KEY}|g" \
+        -e 's|^DEBUG=.*|DEBUG=false|' \
+        -e 's|^BASE_URL=.*|BASE_URL=http://localhost:3000|' \
+        -e 's|^FRONTEND_URL=.*|FRONTEND_URL=http://localhost:3000|' \
+        -e "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|" \
+        -e "s|^DATABASE_URL_SYNC=.*|DATABASE_URL_SYNC=${DB_URL}|" \
+        -e 's|^POSTGRES_USER=.*|POSTGRES_USER=sso_user|' \
+        -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${DB_PASSWORD}|" \
+        -e 's|^POSTGRES_DB=.*|POSTGRES_DB=sso_db|' \
+        -e "s|^SESSION_SECRET_KEY=.*|SESSION_SECRET_KEY=${SESSION_SECRET}|" \
+        -e "s|^TOTP_ENCRYPTION_KEY=.*|TOTP_ENCRYPTION_KEY=${TOTP_KEY}|" \
+        -e 's|^FEATURE_TOTP_ENABLED=.*|FEATURE_TOTP_ENABLED=false|' \
+        -e 's|^FEATURE_PASSKEY_ENABLED=.*|FEATURE_PASSKEY_ENABLED=false|' \
+        -e 's|^FEATURE_RECOVERY_CODES_ENABLED=.*|FEATURE_RECOVERY_CODES_ENABLED=false|' \
+        -e 's|^FEATURE_EMAIL_VERIFICATION_ENABLED=.*|FEATURE_EMAIL_VERIFICATION_ENABLED=false|' \
+        -e 's|^REQUIRE_VERIFIED_EMAIL=.*|REQUIRE_VERIFIED_EMAIL=false|' \
         "$ENV_FILE"
     rm -f "${ENV_FILE}.bak"
 

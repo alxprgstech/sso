@@ -618,18 +618,31 @@ async def test_seamless_cross_client_sso_and_rp_logout_pg(
     )
     assert t2_res.status_code == 200
 
-    # 7. RP-Initiated Logout через Клиент 1 (/oauth/logout)
+    # 7. RP-Initiated Logout: no hint or an unregistered return URI must not
+    # consume the SSO session. The valid return URI is registered exactly.
+    no_hint = await pg_client.get(
+        "/oauth/logout",
+        params={"post_logout_redirect_uri": "http://localhost:8001/callback"},
+        follow_redirects=False,
+    )
+    assert no_hint.status_code == 400
+    bad_redirect = await pg_client.get(
+        "/oauth/logout",
+        params={"id_token_hint": id_token1, "post_logout_redirect_uri": "https://outside.example/"},
+        follow_redirects=False,
+    )
+    assert bad_redirect.status_code == 400
     logout_res = await pg_client.get(
         "/oauth/logout",
         params={
             "id_token_hint": id_token1,
-            "post_logout_redirect_uri": "http://localhost:8001/",
+            "post_logout_redirect_uri": "http://localhost:8001/callback",
             "state": "logout_state_1",
         },
         follow_redirects=False,
     )
     assert logout_res.status_code == 302
-    assert "http://localhost:8001/?state=logout_state_1" in logout_res.headers["Location"]
+    assert "http://localhost:8001/callback?state=logout_state_1" in logout_res.headers["Location"]
 
     # 8. Проверяем в PostgreSQL, что сессия SSO удалена
     cnt_sess = await pg_session.execute(text("SELECT count(*) FROM sessions"))

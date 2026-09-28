@@ -1,3 +1,4 @@
+import { errorMessage } from "../utils/error";
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
@@ -42,8 +43,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
           window.location.href = returnTo;
         }
       }
-    } catch (err: any) {
-      setError(err.message || "Ошибка аутентификации");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Ошибка аутентификации"));
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
         try {
           await api.verifyTotpLogin(cleanCode, mfaToken);
           loginSuccess = true;
-        } catch (totpErr: any) {
+        } catch (totpErr: unknown) {
           if (mfaMethods.includes("recovery_code")) {
             await api.verifyRecoveryCodeLogin(cleanCode, mfaToken);
             loginSuccess = true;
@@ -92,8 +93,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
           window.location.href = returnTo;
         }
       }
-    } catch (err: any) {
-      setError(err.message || "Неверный код подтверждения");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Неверный код подтверждения"));
     } finally {
       setLoading(false);
     }
@@ -115,8 +116,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
       if (returnTo) {
         window.location.href = returnTo;
       }
-    } catch (err: any) {
-      setError(err.message || "Ошибка входа по Passkey");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Ошибка входа по Passkey"));
     } finally {
       setLoading(false);
     }

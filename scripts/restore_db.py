@@ -58,54 +58,61 @@ def main():
     try:
         if args.docker:
             print(f"[*] Restoring via Docker container '{args.container}'...")
-            cmd = ["docker", "exec", "-i", args.container, "psql", "-U", args.user, "-d", args.db]
+            cmd = [
+                "docker",
+                "exec",
+                "-i",
+                args.container,
+                "psql",
+                "-X",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-U",
+                args.user,
+                "-d",
+                args.db,
+            ]
             with open(backup_path, "rb") as f:
                 subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, check=True)
         else:
             psql_path = shutil.which("psql")
             if not psql_path:
-                print("[!] 'psql' not found in PATH, attempting docker fallback...")
-                cmd = [
-                    "docker",
-                    "exec",
-                    "-i",
-                    args.container,
-                    "psql",
-                    "-U",
-                    args.user,
-                    "-d",
-                    args.db,
-                ]
-                with open(backup_path, "rb") as f:
-                    subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, check=True)
-            else:
-                env = os.environ.copy()
-                if "POSTGRES_PASSWORD" in os.environ:
-                    env["PGPASSWORD"] = os.environ["POSTGRES_PASSWORD"]
-                cmd = [
-                    psql_path,
-                    "-h",
-                    args.host,
-                    "-p",
-                    str(args.port),
-                    "-U",
-                    args.user,
-                    "-d",
-                    args.db,
-                    "-f",
-                    str(backup_path),
-                ]
-                print(f"[*] Executing psql on {args.host}:{args.port}...")
-                subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
+                raise RuntimeError(
+                    "psql is not in PATH; use --docker only for an explicitly verified container"
+                )
+            env = os.environ.copy()
+            if "POSTGRES_PASSWORD" in os.environ:
+                env["PGPASSWORD"] = os.environ["POSTGRES_PASSWORD"]
+            cmd = [
+                psql_path,
+                "-X",
+                "-w",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-h",
+                args.host,
+                "-p",
+                str(args.port),
+                "-U",
+                args.user,
+                "-d",
+                args.db,
+                "-f",
+                str(backup_path),
+            ]
+            print(f"[*] Executing psql on {args.host}:{args.port}...")
+            subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
 
         print("[+] Database restored successfully!")
 
     except subprocess.CalledProcessError as e:
-        err_msg = e.stderr.decode() if e.stderr else str(e)
-        print(f"[x] Restore failed: {err_msg}", file=sys.stderr)
+        print(
+            f"[x] Restore failed (exit {e.returncode}); inspect the server privately",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except Exception as e:
-        print(f"[x] Unexpected restore error: {e}", file=sys.stderr)
+        print(f"[x] Restore failed: {type(e).__name__}", file=sys.stderr)
         sys.exit(1)
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 from datetime import datetime, timezone
+
 from authlib.oauth2.rfc6749.util import extract_basic_authorization, scope_to_list
 from fastapi import APIRouter, Depends, Form, Header, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_cookie_name
 from app.config import Settings, get_settings
 from app.core.exceptions import OAuthErrorException
-from app.core.security import hash_token
+from app.core.security import decode_jwt, hash_token
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
@@ -289,15 +290,32 @@ async def logout(
     RP-Initiated Logout (SSO-07).
     Завершает сессию SSO и перенаправляет обратно в клиентское приложение.
     """
+    if not id_token_hint:
+        raise OAuthErrorException("invalid_request", "id_token_hint обязателен для выхода RP", 400)
+    # The first decode verifies signature, issuer and time. The audience is then
+    # checked explicitly against the active client selected by that signed claim.
+    hint_claims = decode_jwt(id_token_hint)
+    audience = hint_claims.get("aud")
+    if hint_claims.get("token_use") != "id_token" or not isinstance(audience, str):
+        raise OAuthErrorException("invalid_token", "Требуется действительный ID Token клиента", 401)
+    hint_claims = decode_jwt(id_token_hint, audience=audience)
+    client = await OIDCService.get_and_validate_client(db, client_id=audience, require_secret=False)
+    if post_logout_redirect_uri:
+        OIDCService.validate_redirect_uri(client, post_logout_redirect_uri)
+
     cookie_name = get_cookie_name(settings, request)
     raw_token = request.cookies.get(cookie_name)
     if raw_token:
         token_hash = hash_token(raw_token)
         stmt = select(Session).where(Session.session_token_hash == token_hash)
         sess = (await db.execute(stmt)).scalar_one_or_none()
-        if sess:
+        if sess and str(sess.user_id) == str(hint_claims.get("sub")):
             await db.delete(sess)
             await db.commit()
+        elif sess:
+            raise OAuthErrorException(
+                "invalid_token", "ID Token не относится к текущей SSO-сессии", 401
+            )
 
     target = post_logout_redirect_uri or settings.FRONTEND_URL
     if state and post_logout_redirect_uri:

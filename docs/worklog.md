@@ -2146,3 +2146,115 @@
 
 
 
+
+### TASK-076 — Начало исправлений после ревью
+- Время/начало: 2026-09-26T13:12:26.8564282+03:00. Исполнитель: Codex. Требования: G8-SEC/SDK/CI/REL/OPS/FINAL.
+- План: устранить шесть замечаний ревью, сохранить изменения Antigravity; не выпускать продукт и не выполнять push.
+- Среда: исходное дерево чистое; системный Python возвращает отказ в доступе, docker отсутствует в PATH. Проверки среды продолжаются, это не успешные тесты.
+
+
+### TASK-076 cancelled / TASK-077 начало — Уточнение объёма пользователем
+- Время: 2026-09-26T13:16:14.5950937+03:00. Исполнитель: Codex.
+- Пользователь поручил только подготовку GOAL для Codex, а не реализацию. TASK-076 отменена до изменения кода; TASK-077 начата.
+- Подготовка окружения завершилась отказом сети WinError 10013 при загрузке hatchling; это не доказательство отсутствия версии пакета. Созданная в этой попытке .venv-review удалена после проверки абсолютного пути внутри workspace. Установка завершилась exit 1, фоновой работы не осталось в этой exec-сессии.
+- Следующий шаг: сохранить GOAL-09, обновить документы и проверить ссылки. Старые журнальные записи не переписываются.
+
+
+### TASK-077 — Задание для Codex подготовлено
+- Время/завершение: 2026-09-26T13:19:58.9950276+03:00. Исполнитель: Codex. Статус: done (только постановка).
+- Файлы: GOAL-09-codex-review-remediation.md, docs/plan.md, docs/status.md, docs/worklog.md.
+- Результат: шесть пакетов C9-01..06 с конкретными наблюдениями, условиями проверки и запретом ложной приёмки; сохранены требования GOAL/GOAL-08, определены границы автономности и текст запуска.
+- Проверки: все локальные Markdown-ссылки нового задания существуют. Код/тесты/workflows не изменялись; тестовая кампания не выполнялась.
+- Следующий шаг: отдельный запуск Codex по GOAL-09. Реализация остаётся незавершённой; прежние утверждения полной приёмки помечены в status как исторические и оспоренные.
+
+### TASK-078 — Начало исполнения GOAL-09 и корректирующая запись
+- Время/начало: 2026-09-26T13:22:34+03:00. Исполнитель: Codex. Требования: C9-01..06, DOC-TRACK-01..07, GOAL §8.
+- База: HEAD `4f7537bd7c9d88149b1e909bc6c52167714ecb31`; незакоммиченные GOAL-09 и документы пользователя сохранены, исходный diff документов имеет hash `66c2a16e776a4b35540f383983f4913feab4220f`.
+- Файлы: `docs/plan.md`, `docs/status.md`, `docs/acceptance.md`, `docs/worklog.md`. Запланированы TASK-078..083 с критериями. Историческое заявление TASK-075/актов GOAL-08 о полной приёмке исправлено новым текущим срезом, старые записи не переписаны.
+- Проверка: чтением кода подтверждены опасные операции до маркера и `DROP DATABASE ... FORCE` в `tests/test_ops_backup_restore_totp.py`, Docker fallback в backup/restore, отсутствие `ON_ERROR_STOP` в restore; `tests/test_db_guard.py` отсутствует. Опасный тест не запускался. Следующий шаг: матрица GOAL-09 и защита операций.
+
+### TASK-079..083 — Промежуточный смысловой результат и блокер runtime
+- Время: 2026-09-26T13:48:09+03:00. Исполнитель: Codex. Требования: C9-01..06, FINAL-02/03/06..10, SDK-03, OPS, CI, REL.
+- Файлы: `tests/test_ops_backup_restore_totp.py`, `tests/test_ops_safety_unit.py`, `scripts/backup_db.py`, `scripts/restore_db.py`; `packages/python-sdk/alxprgs_sso/client.py`, `examples/`, `backend/app/api/oidc.py`, `tests/test_python_sdk.py`, `tests/test_sso_cross_clients.py`, `tests/integration/test_oidc_pg.py`; `frontend/e2e/multi_client_sso.spec.ts`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `docs/acceptance-goal-09.md`, `docs/adr/0006-demo-client-sessions.md`, `examples/README.md`.
+- Изменения: безопасный изолированный backup/restore без FORCE/fallback; обязательный ID token/nonce/issuer и зарегистрированный logout return; серверные одноразовые flow и непрозрачные сессии с TTL/CSRF для demo; реальный двухклиентский browser fixture; reusable CI на SHA и release gate, команды pip-audit/detect-secrets/npm audit. Непроверенные сценарии не объявляются успешными.
+- Проверки: Ruff по затронутым Python-файлам exit 0; `compileall` exit 0; `npx playwright test --list e2e/multi_client_sso.spec.ts` exit 0, 1 тест обнаружен; `npm run typecheck` exit 0; `npm test` exit 0, 7/7 утилитных тестов. Первоначальный `--list` завершился exit 1 из-за `test.use({trace})` внутри describe, исправлено переносом в top-level и повторно exit 0.
+- Блокер: встроенный Python 3.12.14 обнаружен, но без серверных/test зависимостей; `.venv` launcher не запускается. Попытка install из `requirements-lock.txt` завершилась exit 1 (`No matching distribution found for alembic==1.20.0`), npm registry чтение завершилось EACCES. О наличии/отсутствии версии по этим ошибкам вывод не сделан. PG/pg_dump/psql/Docker в PATH нет. Следующий шаг: продолжить независимый обзор/исправления, затем доступный registry и изолированная PG среда для обязательных прогонов.
+
+### TASK-079..083 — Коррекция времени начала
+- Время: 2026-09-26T13:48:09+03:00. Исполнитель: Codex. В предыдущем обновлении плана были записаны округлённые времена начала TASK-079..083 как точные. Они не измерялись и заменены интервалами между фактическими показаниями часов среды; точное время неизвестно. Статус и результаты проверок не меняются.
+
+### TASK-082 — Обнаруженная уязвимость frontend toolchain
+- Время: 2026-09-26T13:53:46+03:00. Исполнитель: Codex. Требования: C9-04, CI/SEC.
+- Проверки: `npm run build` выполнена успешно в разрешённой среде; `npm audit --audit-level=high` выполнилась и завершилась exit 1: 1 high и 1 moderate, цепочка Vite/esbuild, advisory GHSA-67mh-4wv8-2f99. Это действительный провал проверки, не проблема доступа к registry.
+- План: обновить Vite и React plugin до проверенных совместимых версий, обновить lock, повторить сборку и audit. До повторной проверки C9-04 не принимается.
+
+### TASK-079/080/082 — Изолированные проверки и фронтенд
+- Время: 2026-09-26T14:12:22+03:00. Исполнитель: Codex. Требования: C9-01/02/04, SDK-03, FINAL-03/06/08.
+- Файлы: `frontend/package.json`, `frontend/package-lock.json`, `frontend/eslint.config.js`, `frontend/tsconfig.tests.json`, `frontend/src/App.component.test.tsx`, типизация `frontend/src/`, `.github/workflows/ci.yml`, `tests/test_python_sdk.py`, `tests/test_sso_cross_clients.py`.
+- Результат: Vite 8.3.1 и plugin-react 6.1.1 зафиксированы после npm audit; добавлены ESLint, Vitest/jsdom, шесть компонентных тестов и typecheck тестов. Исправлены тестовые ожидания nonce и cookie, не ослабляя проверки. SDK wheel/sdist собраны и wheel установлен отдельно.
+- Проверки: `npm ci`, `npm run typecheck`, `npm test` (7/7), `npm run build` на Vite 8.3.1, `npm audit --audit-level=high` (0 уязвимостей), `npm run lint`, `npm run typecheck:tests`, `npm run test:components` (6/6) — exit 0. Python lock установлен во временный venv; `pytest -q -p no:cacheprovider tests/test_python_sdk.py tests/test_ops_safety_unit.py tests/test_sso_cross_clients.py` — 26 passed; чистая установка SDK wheel и `packages/python-sdk/tests/test_sdk_isolated.py` — 3 passed. `pip-audit --strict -r requirements-lock.txt` — exit 0, known vulnerabilities не найдены на момент проверки.
+- Ограничения: PostgreSQL/pg_dump/psql не найдены, PG integration и browser E2E не запускались. `detect-secrets scan` нашёл 57 потенциальных значений в 15 файлах (включая исторические fixtures/docs); автоматическое принятие находок недопустимо. CI secret gate пока не пройден, значения не выведены в журнал. Следующий шаг: разобрать находки без раскрытия, закрепить полный Python test/build resolution, затем release dry-run и матрица.
+
+### TASK-079..083 — Продолжение локальной проверки
+
+- Время: 2026-09-26T22:25:18+03:00. Исполнитель: Codex. Требования: C9-01..06, FINAL-06..10, CI/REL/OPS.
+- Изменения: полный Python lock установлен в чистый временный venv с editable backend/SDK без разрешения новых зависимостей; CI получает тот же lock, проверяет `pip check` и вызывает PostgreSQL client/маркер на свежем сервисе. Выполнен локальный release dry-run без тега, публикации и push; добавлены проверка manifest/архивов, негативные тесты артефактов и draft. RC-версия теперь использует PEP 440 в именах Python пакетов. Из publish job с write token убрано исполнение скриптов репозитория. Добавлены ESLint и компонентные тесты, обновлён frontend lock после обнаруженного high advisory.
+- Фактические проверки: чистый Python lock/install/pip check — exit 0; SDK wheel в отдельном venv — 3/3; `pip-audit --strict -r requirements-lock.txt` — exit 0, 0 известных находок; `npm audit --audit-level=high` после обновления — exit 0, 0 находок; `detect-secrets 1.5.0` — 58 кандидатов в 16 исторических файлах, 0 новых относительно baseline, синтетический контроль обнаружен; приватная оценка каждого сигнала ещё нужна. Bundle build/verify локально — exit 0, `source_tree_dirty=true`; это не релизный dry-run по тегу. Адрес комплекта — временная директория `sso-goal09-release-a`, вне репозитория.
+- `pytest` на 5 затронутых unit-файлах — 43 passed. `ruff check` — exit 0; `ruff format --check` — 93 файла formatted; `mypy` — 35 source files, 0 issues; frontend lint/typecheck/typecheck:tests и 6 component tests — exit 0. Широкий локальный pytest без integration и опасного backup/restore завершился exit 1: 126 passed, 12 errors без `TEST_DATABASE_URL`/PostgreSQL и 2 Windows lifecycle failures при проверке stop/port. Это не засчитывается как общий проход. Порты 52396 и 58555 после теста не слушаются; чужие процессы не завершались вручную.
+- Ограничения: PostgreSQL, pg_dump/psql и Docker не обнаружены в PATH; реальный PG restore/browser/lifecycle/race/soak на нынешнем дереве не пройдены. Удалённый CI/публикация не запускались. Следующий шаг: исправить наблюдаемые lifecycle риски, обновить общую матрицу и точку продолжения; затем отдельный PostgreSQL и разрешённый итоговый remote CI.
+
+### TASK-078..083 — Уточнение приёмки и дополнительных защитных случаев
+
+- Время: 2026-09-26T22:58:07+03:00. Исполнитель: Codex. Требования: C9-01/02/04/05/06, SDK/CI/REL/OPS, DOC-TRACK.
+- Файлы: `scripts/manage_test_server.py`, `tests/test_server_lifecycle.py`, `tests/test_ops_safety_unit.py`, `packages/python-sdk/alxprgs_sso/client.py`, `tests/test_python_sdk.py`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/release_bundle.py`, `docs/acceptance-goal-09.md/json`, `docs/plan.md`, `docs/status.md`, `README.md`, `docs/operations.md`, `docs/releases.md`, `docs/secret-scan.md`, `.secrets.baseline`.
+- Результат: stop отказывается завершать listener с PID, отличным от собственного pidfile; partial database setup фиксируется без неявного DROP. SDK больше не отражает чужой `kid`, claim или текст JWT/JWKS исключения в публичных ошибках. Удалён module-level skip SDK unit. Release RC имена wheel/sdist используют PEP 440; publish job с write token не запускает код репозитория. Текущий акт сопоставляет шесть C9, исходные FINAL-01..11 и 16 критериев GOAL; прежний 16/16 не перенесён.
+- Проверки: затронутый unit subset `pytest -q -p no:cacheprovider tests/test_python_sdk.py tests/test_ops_safety_unit.py tests/test_sso_cross_clients.py tests/test_release_bundle.py tests/test_draft_assets.py tests/test_server_lifecycle.py::test_stop_refuses_foreign_listener_before_kill` — 46 passed, 1 стороннее предупреждение. `ruff check` после import fix — требуется финальный повтор, `ruff format --check` — 93 файла. YAML обоих workflows и JSON акта синтаксически разобраны, JSON имеет 16/6/11 mapping; `bump_version.py check`, invariant scanner и frontend build — exit 0; `git diff --check` — exit 0 (только предупреждения CRLF). Реальный Windows lifecycle после исправления не повторялся.
+- Сканер на новом акте сначала дал 3 новых сигнала (1 строка запуска scanner в CI, 2 публичных hash ревизии в JSON), значения этих трёх строк рассмотрены как ложноположительные и fingerprints внесены в baseline. Повторный `check_secret_scan.py --self-test` — exit 0, 61 кандидат в 17 файлах, 0 новых. Исходные 58 сигналов остаются на приватный разбор; baseline не объявлен полной очисткой.
+- Блокер и следующий шаг: явный отдельный PostgreSQL 16 и pg_dump/psql отсутствуют; remote CI требует будущего разрешённого commit/push. Сначала PG migrations/restore/полный suite, затем browser/lifecycle/race/soak, после этого финальный remote SHA gate. Никакой тег/публикация/push не выполнялись.
+
+### TASK-079/080/082 — Дополнительная проверка перед остановкой локальной части
+
+- Время: 2026-09-26T23:01:53+03:00. Исполнитель: Codex. Требования: C9-01/02/04, SDK/OPS.
+- Изменения: `scripts/init_fresh_ci_test_marker.py` теперь до SQL требует точный localhost:5432 / sso_user / alxprgs_sso_test для выделенного CI service; добавлен regression test отказа при remote DSN. Убрано отражение недоверенных данных JWT/JWKS в ошибках SDK; тестирует неизвестный `kid` и чужой `token_use`. Удалён условный skip SDK unit при отсутствии установленного пакета: CI устанавливает wheel/editable и должен явно падать при отсутствии SDK.
+- Проверки: последний затронутый unit subset — 47 passed; Ruff check и format check всего Python дерева — exit 0 (93 файла). Secret scanner — 61 кандидат, 0 новых, synthetic control отвергнут. Поиск служб PostgreSQL/Docker и client binaries в типовых Program Files, слушателей 5432/5433 не нашёл; `wsl --list --quiet` — exit 1 `Wsl/EnumerateDistros/Service/E_ACCESSDENIED`. Это не утверждение, что на машине вообще нет PostgreSQL; безопасная тестовая среда не установлена.
+- Следующий шаг: предоставить выделенную PostgreSQL среду и pg_dump/psql; до этого полный PG/browser/soak запуск невозможен без подмены предмета проверки. Точный порядок в `docs/status.md` и `docs/acceptance-goal-09.md`.
+
+### TASK-078/080/083 — Финальная независимая локальная сверка
+
+- Время: 2026-09-26T23:07:18+03:00. Исполнитель: Codex. Требования: C9-02/05/06, DOC-TRACK/SDK/REL.
+- Изменения: `tests/test_demo_sessions.py` проверяет одноразовый flow, неверную привязку, абсолютный/idle TTL, отзыв и потерю process-local сессии после restart; `tests/test_release_bundle.py` проверяет отсутствующий, но синтаксически допустимый тег. `docs/acceptance-goal-09.md/json` содержат все 16 критериев, 6 C9, исходные FINAL-01..11 и инвентарь ID GOAL без фиктивного `passed`.
+- Проверки: последний unit subset — 50 passed, 1 стороннее предупреждение; `ruff check` — exit 0, `ruff format --check` — 94 файла; `npx playwright test --list e2e/multi_client_sso.spec.ts` — exit 0, обнаружен 1 Chromium test (browser не запускался); проверены Markdown-ссылки 8 обновлённых документов — 0 отсутствующих; JSON акт синтаксически валиден (16/6/11); `git diff --check` — exit 0. Изменений production/deploy нет.
+- Блокер: тот же выделенный PostgreSQL/pg_dump/psql и будущий разрешённый remote CI на итоговом SHA. Общий GOAL-09 не завершён; точка продолжения в `docs/status.md`. Ничего не отправлено и не опубликовано.
+
+### TASK-080 — Запрет отражения недоверенных токенов в серверных ошибках
+
+- Время: 2026-09-26T23:12:29+03:00. Исполнитель: Codex. Требования: C9-02, SSO-03, SEC.
+- Изменения: `backend/app/core/security.py` перестал включать недоверенный JWT `kid` и текст исключений парсинга/проверки в `OAuthErrorException`; `tests/test_core_verify.py` проверяет отказ 401 без отражения атакующего значения. SDK уже применял ту же политику. Это не меняет алгоритм, подпись, issuer, audience или сроки.
+- Проверки: текущий затронутый unit subset с `test_core_verify.py` — 52 passed, 1 предупреждение сторонней Starlette; Ruff и format — exit 0, 94 файла; `check_secret_scan.py --self-test` — 61 кандидат, 0 новых. PG/browser не запускались.
+- Следующий шаг: выделенный PostgreSQL, клиентские инструменты и обязательные runtime проверки согласно точке продолжения; remote CI после отдельного разрешения владельца на commit/push.
+
+### TASK-084 — Начало исправления Windows-мастера запуска
+
+- Время: 2026-09-28T14:44:32+03:00. Исполнитель: Codex. Требования: SETUP-01, SETUP-02, TEST-SETUP-04.
+- Наблюдение: после создания `.env` `start.ps1` выдаёт `CommandNotFoundException` для имени `docker compose`. В скрипте `$composeCmd = @("docker", "compose")` вызывается как `& $composeCmd`; PowerShell воспринимает массив как одно имя команды. Та же ошибка есть в проверке занятого порта и запуске мастера администратора.
+- План: исправить все вызовы, проверить через изолированный тест с подставной Docker-командой. Пользовательский `.env` и существующие незакоммиченные изменения сохранить. Проверки пока не проводились; следующий шаг — правка скрипта и теста.
+
+### TASK-084 — Исправление и проверка Windows-мастера запуска
+
+- Время: 2026-09-28T14:48:09+03:00. Исполнитель: Codex. Требования: SETUP-01, SETUP-02, TEST-SETUP-04.
+- Изменения: в `start.ps1` имя `docker`/`docker-compose` отделено от аргумента `compose`; исправлены вызовы `ps`, `up`, `exec` и подсказки для логов. `tests/test_start_ps1.py` запускает копию мастера в Windows PowerShell с подставной Docker-командой для обоих вариантов Compose, не трогая пользовательские контейнеры и `.env`. Обновлены `docs/plan.md`, `docs/status.md`.
+- Проверки: `unittest discover -s tests -p test_start_ps1.py -v` — 1 тест с 2 подслучаями успешно; PowerShell Parser — 0 ошибок; `py_compile` — успешно; `git diff --check` — exit 0 с уведомлениями о будущей нормализации CRLF. Начальные попытки через `python` и репозиторный `.venv` не запустились из-за недоступной команды и повреждённого launcher; повторено с встроенным Python. Реальный Docker/Compose запуск не проверен: `docker` в PATH среды Codex отсутствует.
+- Блокер для живой проверки: доступная среда с Docker Desktop/Compose. Следующий шаг владельца — повторить `./start.ps1`; при следующем сбое сохранить текст ошибки без содержимого `.env`. Общая приёмка GOAL-09 остаётся в прежнем статусе.
+
+### TASK-085 — Начало исправления генерации `.env`
+
+- Время: 2026-09-28T14:50:08+03:00. Исполнитель: Codex. Требования: SETUP-02, SETUP-04.
+- Наблюдение: пользователь показал повреждённую кодировку комментариев в созданном `.env`; `start.ps1` читает UTF-8 шаблон через `Get-Content` без указания кодировки. Также шаблон содержит host URL с `localhost` и одну демонстрационную переменную `POSTGRES_PASSWORD`, а замена в мастере меняет только `sso_password` внутри URL, оставляя пароль контейнера прежним. Windows и Bash генераторы наследуют разные несовместимые значения шаблона.
+- План: сделать явное UTF-8 чтение/запись, заменять точные ключи на согласованные значения, проверить результат изолированно. Пользовательский `.env` с опубликованными значениями не читать в вывод и не добавлять в Git. Следующий шаг — реализация и тесты.
+
+### TASK-085 — Генерация `.env` исправлена; подготовка коммита
+
+- Время: 2026-09-28T14:58:42+03:00. Исполнитель: Codex. Требования: SETUP-02, SETUP-04.
+- Изменения: `start.ps1` читает строгий UTF-8 и записывает UTF-8 без BOM, заменяет точные конфигурационные ключи и отвергает неполный шаблон; `start.sh` получает те же значения. `.env.example` согласован с Compose, README объясняет замену старого файла только до первого запуска БД. Добавлены `tests/test_start_ps1.py`, `tests/test_start_sh.py`; обновлены `docs/plan.md`, `docs/status.md`, `docs/acceptance-registration-setup.md`.
+- Проверки: `unittest discover -s tests -p 'test_start_*.py' -v` — 3/3 успешно (Windows PowerShell plugin/fallback, генерация Windows/Bash); `bash -n start.sh`, PowerShell Parser, `py_compile` — успешно; `git diff --check` — exit 0; `scripts/scan_secrets_and_deps.py` — exit 0. `.env` игнорируется Git и не читался в вывод. Это не полный secret audit и не живой Compose-запуск.
+- Дополнительное наблюдение: `JWT_PRIVATE_KEY_PEM` остаётся пустым, backend в development создаёт временный ключ в памяти. Это не исправлено генерацией `.env`; заведена TASK-086, а неточное утверждение старого акта отмечено. Следующий шаг — коммит разрешённых изменений после проверки индекса Git; общий GOAL-09 остаётся незавершённым.

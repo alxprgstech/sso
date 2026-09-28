@@ -1,0 +1,106 @@
+"""Regression checks for the Windows first-run command and configuration."""
+
+import base64
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows PowerShell startup script")
+class StartPowerShellTests(unittest.TestCase):
+    def run_start(self, tmp_path: Path, fallback: bool) -> tuple[subprocess.CompletedProcess[str], Path]:
+        shell = shutil.which("powershell.exe")
+        self.assertIsNotNone(shell, "Windows PowerShell is required for this check")
+        source = Path(__file__).resolve().parents[1] / "start.ps1"
+        script = tmp_path / "start.ps1"
+        shutil.copyfile(source, script)
+        log = tmp_path / "docker-args.txt"
+
+        # Stop at Compose up; no real daemon, containers, or HTTP server are used.
+        ps_script = f"""
+$logPath = '{str(log).replace("'", "''")}'
+function docker {{
+    $commandLine = 'docker ' + ($args -join ' ')
+    Add-Content -LiteralPath $logPath -Value $commandLine
+    if ($args[0] -eq 'compose' -and $args[1] -eq 'version' -and ${str(fallback).lower()}) {{
+        $global:LASTEXITCODE = 1
+    }} elseif ($args[0] -eq 'compose' -and $args[1] -eq 'up') {{
+        $global:LASTEXITCODE = 17
+    }} else {{
+        $global:LASTEXITCODE = 0
+        if ($args[0] -eq 'compose' -and $args[1] -eq 'ps') {{ 'owned-frontend' }}
+    }}
+}}
+function docker-compose {{
+    Add-Content -LiteralPath $logPath -Value ('docker-compose ' + ($args -join ' '))
+    if ($args[0] -eq 'up') {{ $global:LASTEXITCODE = 17 }}
+    else {{ $global:LASTEXITCODE = 0; if ($args[0] -eq 'ps') {{ 'owned-frontend' }} }}
+}}
+& '{str(script).replace("'", "''")}' -NonInteractive -NoBrowser
+"""
+        result = subprocess.run(
+            [shell, "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-NonInteractive", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+            check=False,
+        )
+        return result, log
+
+    def test_start_passes_compose_as_separate_arguments(self) -> None:
+        for fallback in (False, True):
+            with self.subTest(fallback=fallback), tempfile.TemporaryDirectory() as directory:
+                tmp_path = Path(directory)
+                (tmp_path / ".env").write_text("# Keep this file unchanged\n", encoding="utf-8")
+                result, log = self.run_start(tmp_path, fallback)
+                expected = (
+                    "docker-compose up -d --build" if fallback else "docker compose up -d --build"
+                )
+                self.assertTrue(log.exists(), f"stdout={result.stdout!r}; stderr={result.stderr!r}")
+                self.assertIn(expected, log.read_text(encoding="utf-8").splitlines())
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Docker Compose (TEST-SETUP-04)", result.stdout)
+                self.assertNotIn("CommandNotFoundException", result.stderr)
+                self.assertEqual(
+                    (tmp_path / ".env").read_text(encoding="utf-8"),
+                    "# Keep this file unchanged\n",
+                )
+
+    def test_generated_env_is_utf8_and_compose_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp_path = Path(directory)
+            template = Path(__file__).resolve().parents[1] / ".env.example"
+            shutil.copyfile(template, tmp_path / ".env.example")
+            result, log = self.run_start(tmp_path, False)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertTrue(log.exists(), result.stderr)
+            raw = (tmp_path / ".env").read_bytes()
+            self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+            generated = raw.decode("utf-8", errors="strict")
+            self.assertIn(template.read_text(encoding="utf-8").splitlines()[1], generated)
+            values = dict(re.findall(r"^([A-Z_]+)=(.*)$", generated, flags=re.MULTILINE))
+            db_password = values["POSTGRES_PASSWORD"]
+            self.assertRegex(db_password, r"^[0-9a-f]{48}$")
+            url = f"postgresql+psycopg://sso_user:{db_password}@db:5432/sso_db"
+            self.assertEqual(values["DATABASE_URL"], url)
+            self.assertEqual(values["DATABASE_URL_SYNC"], url)
+            self.assertEqual(values["BASE_URL"], "http://localhost:3000")
+            self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
+            self.assertEqual(values["DEBUG"], "false")
+            self.assertRegex(values["SESSION_SECRET_KEY"], r"^[0-9a-f]{128}$")
+            self.assertEqual(len(base64.urlsafe_b64decode(values["TOTP_ENCRYPTION_KEY"])), 32)
+            for name in (
+                "FEATURE_TOTP_ENABLED",
+                "FEATURE_PASSKEY_ENABLED",
+                "FEATURE_RECOVERY_CODES_ENABLED",
+                "FEATURE_EMAIL_VERIFICATION_ENABLED",
+                "REQUIRE_VERIFIED_EMAIL",
+            ):
+                self.assertEqual(values[name], "false")
+            self.assertNotIn(db_password, result.stdout + result.stderr)

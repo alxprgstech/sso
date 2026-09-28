@@ -5,17 +5,17 @@ import { sanitizeReturnTo } from "./security.ts";
 describe("Frontend Security Utils: sanitizeReturnTo (G8-SEC, FINAL-04)", () => {
   before(() => {
     // Mock window for Node.js test environment
-    (globalThis as any).window = {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
       location: {
         origin: "http://localhost:5173",
         host: "localhost:5173",
         hostname: "localhost",
       },
-    };
+    } });
   });
 
   after(() => {
-    delete (globalThis as any).window;
+    Reflect.deleteProperty(globalThis, "window");
   });
 
   test("allows valid relative URLs", () => {
