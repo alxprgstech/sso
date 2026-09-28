@@ -35,7 +35,11 @@ client = TestClient(app)
 
 
 def test_enabled_local_profile_reads_flags_and_rejects_recovery_without_totp(monkeypatch):
-    for name in ("FEATURE_TOTP_ENABLED", "FEATURE_PASSKEY_ENABLED", "FEATURE_RECOVERY_CODES_ENABLED"):
+    for name in (
+        "FEATURE_TOTP_ENABLED",
+        "FEATURE_PASSKEY_ENABLED",
+        "FEATURE_RECOVERY_CODES_ENABLED",
+    ):
         monkeypatch.setenv(name, "true")
     monkeypatch.setenv("WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setenv("WEBAUTHN_ORIGIN", "http://localhost:3000")

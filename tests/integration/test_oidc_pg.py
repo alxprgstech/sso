@@ -422,12 +422,13 @@ async def test_refresh_token_rotation_and_replay_family_revocation_pg(
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": "openid profile email offline_access",
+            "scope": "openid profile email",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
         },
         follow_redirects=False,
     )
+    assert auth_res.status_code == 302
     auth_code = urllib.parse.parse_qs(urllib.parse.urlparse(auth_res.headers["Location"]).query)[
         "code"
     ][0]

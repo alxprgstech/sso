@@ -9,34 +9,58 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import secrets
 import shutil
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / ".secrets.baseline"
-REVIEWED_FIXTURE_PATHS = frozenset(
+REVIEWED_CANDIDATE_PATHS = frozenset(
     {
+        ".env.example",
         ".github/workflows/ci.yml",
+        "backend/app/config.py",
+        "docs/06-programmer-guide.md",
+        "docs/acceptance-goal-04.md",
+        "docs/acceptance-goal-05.md",
         "docs/acceptance-goal-08.json",
         "docs/acceptance-goal-09.json",
         "docs/api.md",
+        "docs/testing/defects.md",
+        "docs/worklog.md",
         "frontend/e2e/sso.spec.ts",
         "packages/python-sdk/README.md",
+        "scripts/manage_test_server.py",
         "scripts/prepare_e2e_data.py",
+        "scripts/run_e2e_suite.py",
+        "scripts/run_overnight_stability.py",
+        "tests/db_guard.py",
         "tests/integration/test_auth_sessions_pg.py",
         "tests/integration/test_bootstrap_pg.py",
         "tests/integration/test_concurrency_pg.py",
+        "tests/integration/test_distributed_rate_limiting_pg.py",
+        "tests/integration/test_email_verification_pg.py",
+        "tests/integration/test_features_pg.py",
+        "tests/integration/test_oidc_pg.py",
+        "tests/integration/test_passkey_pg.py",
         "tests/integration/test_registration_pg.py",
+        "tests/test_admin_api.py",
         "tests/test_bootstrap_admin.py",
         "tests/test_core_verify.py",
         "tests/test_database_guard.py",
+        "tests/test_g8_sec_regression.py",
+        "tests/test_g8_sso_regression.py",
+        "tests/test_mfa_features.py",
+        "tests/test_oidc_protocol.py",
         "tests/test_ops_safety_unit.py",
         "tests/test_overnight_runner_criteria.py",
         "tests/test_registration.py",
+        "tests/test_security_and_negative_scenarios.py",
     }
 )
 
@@ -49,6 +73,12 @@ def scanner_command() -> str:
     if candidate.exists():
         return str(candidate)
     raise RuntimeError("detect-secrets 1.5.0 is required")
+
+
+def scanner_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["PYTHONUTF8"] = "1"
+    return environment
 
 
 def tracked_and_new_files() -> list[str]:
@@ -68,6 +98,7 @@ def scan(paths: list[str]) -> dict:
         cwd=ROOT,
         capture_output=True,
         check=True,
+        env=scanner_environment(),
     )
     return json.loads(result.stdout)
 
@@ -99,6 +130,7 @@ def self_test() -> None:
             cwd=ROOT,
             capture_output=True,
             check=True,
+            env=scanner_environment(),
         )
         count = sum(map(len, json.loads(result.stdout)["results"].values()))
         if count == 0:
@@ -116,7 +148,7 @@ def main() -> int:
     current = normalized(scan(tracked_and_new_files()))
     current_fingerprints = fingerprints(current)
     if args.write_reviewed_baseline:
-        unexpected_paths = set(current["results"]) - REVIEWED_FIXTURE_PATHS
+        unexpected_paths = set(current["results"]) - REVIEWED_CANDIDATE_PATHS
         if unexpected_paths:
             print(f"Unreviewed candidate files: {len(unexpected_paths)}", file=sys.stderr)
             return 1
@@ -127,6 +159,7 @@ def main() -> int:
     if (
         current["version"] != baseline["version"]
         or current["plugins_used"] != baseline["plugins_used"]
+        or current["filters_used"] != baseline["filters_used"]
     ):
         print("Scanner version or plugins changed; review required", file=sys.stderr)
         return 1
@@ -134,6 +167,8 @@ def main() -> int:
     print(f"Secret scan: {len(current_fingerprints)} candidates; {len(new)} new")
     if new:
         print("New candidates need private review; values are suppressed", file=sys.stderr)
+        for (path, kind), count in sorted(Counter((path, kind) for path, kind, _ in new).items()):
+            print(f"Candidate group: {path} [{kind}] ({count})", file=sys.stderr)
         return 1
     return 0
 

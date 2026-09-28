@@ -12,7 +12,9 @@ from pathlib import Path
 
 @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell startup script")
 class StartPowerShellTests(unittest.TestCase):
-    def run_start(self, tmp_path: Path, fallback: bool) -> tuple[subprocess.CompletedProcess[str], Path]:
+    def run_start(
+        self, tmp_path: Path, fallback: bool
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
         shell = shutil.which("powershell.exe")
         self.assertIsNotNone(shell, "Windows PowerShell is required for this check")
         source = Path(__file__).resolve().parents[1] / "start.ps1"
@@ -43,7 +45,15 @@ function docker-compose {{
 & '{str(script).replace("'", "''")}' -NonInteractive -NoBrowser
 """
         result = subprocess.run(
-            [shell, "-NoProfile", "-ExecutionPolicy", "RemoteSigned", "-NonInteractive", "-Command", ps_script],
+            [
+                shell,
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "RemoteSigned",
+                "-NonInteractive",
+                "-Command",
+                ps_script,
+            ],
             capture_output=True,
             text=True,
             encoding="utf-8",

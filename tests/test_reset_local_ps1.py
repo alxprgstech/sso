@@ -15,7 +15,9 @@ class ResetLocalPowerShellTests(unittest.TestCase):
     ) -> tuple[subprocess.CompletedProcess[str], list[str], bool]:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            shutil.copyfile(Path(__file__).resolve().parents[1] / "reset-local.ps1", root / "reset-local.ps1")
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "reset-local.ps1", root / "reset-local.ps1"
+            )
             (root / "docker-compose.yml").write_text("volumes:\n  sso_db_data:\n", encoding="utf-8")
             env_file = root / ".env"
             env_file.write_text("keep-me\n", encoding="utf-8")

@@ -28,7 +28,7 @@ class StartBashTests(unittest.TestCase):
             docker = bin_dir / "docker"
             docker.write_text(
                 "#!/bin/sh\n"
-                "case \"$*\" in\n"
+                'case "$*" in\n'
                 "  'compose up -d --build') exit 17 ;;\n"
                 "  'compose ps -q frontend') echo owned-frontend ;;\n"
                 "esac\n"
@@ -51,7 +51,9 @@ class StartBashTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 17, result.stderr)
             generated = (tmp_path / ".env").read_bytes().decode("utf-8", errors="strict")
-            self.assertIn((root / ".env.example").read_text(encoding="utf-8").splitlines()[1], generated)
+            self.assertIn(
+                (root / ".env.example").read_text(encoding="utf-8").splitlines()[1], generated
+            )
             values = dict(re.findall(r"^([A-Z_]+)=(.*)$", generated, flags=re.MULTILINE))
             password = values["POSTGRES_PASSWORD"]
             self.assertRegex(password, r"^[0-9a-f]{48}$")

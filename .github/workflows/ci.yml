@@ -157,7 +157,7 @@ jobs:
           sudo apt-get install -y postgresql-client-16
           pg_dump --version
           psql --version
-          python scripts/init_fresh_ci_test_marker.py
+          python -m scripts.init_fresh_ci_test_marker
 
       - name: Run Backend Tests on PostgreSQL (Default-off profile)
         env:
@@ -308,7 +308,7 @@ jobs:
       - name: Mark fresh dedicated E2E database
         env:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
-        run: python scripts/init_fresh_ci_test_marker.py
+        run: python -m scripts.init_fresh_ci_test_marker
 
       - name: Install frontend dependencies and Playwright Chromium
         working-directory: frontend
