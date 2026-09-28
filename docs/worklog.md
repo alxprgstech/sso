@@ -2393,3 +2393,9 @@
 - Время/завершение: 2026-09-28T22:00:44+03:00. Исполнитель: Codex. Требования: C9-01..04, CI-01/02, SSO-05, DOC-TRACK-01..07.
 - Результат: commit `e44c57e80b41bc35e6e81658ff359f1be8c1980e` отправлен; [CI 36468921940](https://github.com/alxprgstech/sso/actions/runs/36468921940) на этом SHA завершился success во всех семи заданиях. Backend PostgreSQL default-off: 199 passed, 7 skipped; enabled: 20 passed. Playwright Chromium default-off: 5 passed; enabled: 4 passed. Security scan, Ruff, оба вызова маркера, frontend, SDK, version и CD-template также успешны. TASK-093 `done`; фактическое начало 2026-09-28T21:41:24+03:00.
 - Ограничения: первоначальные 58 fingerprint baseline по-прежнему ожидают приватной оценки владельца; общая приёмка GOAL-09 остаётся `blocked`. Следующий шаг — зафиксировать эту запись и акт отдельным документационным commit, затем повторить CI на его итоговом SHA.
+
+### TASK-092/093 — Подтверждение на документационном SHA
+
+- Время: 2026-09-28T22:07:51+03:00. Исполнитель: Codex. Требования: CI-01/02, C9-04, DOC-TRACK-01..07.
+- Проверка: commit `84ad9aae3e9b9219a67b7df7a5eca53ddbf4ae30` содержит итоговый акт, журнал, план и статус; [CI 36469783369](https://github.com/alxprgstech/sso/actions/runs/36469783369) на этом SHA завершился success во всех семи заданиях. Перед commit документации локальный secret scan с синтетическим контролем — 116/0, JSON valid, `git diff --check` — exit 0.
+- Статус: TASK-092/093 `done`, GOAL-09 `blocked` из-за других приёмочных пунктов и первоначальных 58 baseline-сигналов без приватной оценки. Следующий шаг — сохранить этот факт в учёте; последующая проверка документирующего commit выполняется как контроль итогового дерева.

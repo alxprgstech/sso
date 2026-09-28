@@ -1,12 +1,12 @@
 {
   "goal": "GOAL-09",
-  "updated_at": "2026-09-28T22:00:44+03:00",
+  "updated_at": "2026-09-28T22:07:51+03:00",
   "base_sha": "1f630fa8304d2f38ab1f56aeaa58523a73483fcb",
   "source_tree_dirty": true,
   "initial_user_diff_hash": "66c2a16e776a4b35540f383983f4913feab4220f",
   "final_sha": null,
   "overall_status": "blocked",
-  "remote_ci_url": "https://github.com/alxprgstech/sso/actions/runs/36468921940",
+  "remote_ci_url": "https://github.com/alxprgstech/sso/actions/runs/36469783369",
   "local_test_coverage_rate": null,
   "historical_goal_08_is_current_evidence": false,
   "environment": {
@@ -43,6 +43,7 @@
     {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA d85e99879586cad6c885756c1faa8c284991c8cc", "exit_code": 1, "result": "run 36467660052: full backend PostgreSQL, security, frontend, SDK, version and CD jobs passed; Playwright failed because nonce interception did not occur"},
     {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA 68cde8628d38ff3467cc10e9c43932d3c154075b", "exit_code": 1, "result": "run 36468328992: backend PostgreSQL, security and other jobs passed; Playwright route missed second URL after login redirect; browser flow correction pending rerun"},
     {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA e44c57e80b41bc35e6e81658ff359f1be8c1980e", "exit_code": 0, "result": "run 36468921940: all seven jobs passed; backend default-off 199 passed/7 skipped, enabled 20 passed; Playwright default-off 5 passed, enabled 4 passed; security, Ruff and marker passed"},
+    {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA 84ad9aae3e9b9219a67b7df7a5eca53ddbf4ae30", "exit_code": 0, "result": "run 36469783369: all seven jobs passed again on documentation commit"},
     {"command": "python scripts/build_release_artifacts.py build --outdir <fresh temporary directory>; python scripts/build_release_artifacts.py verify --outdir <same directory>", "environment": "dirty untagged local tree", "exit_code": 0, "result": "bundle verified; manifest source_tree_dirty=true; not release tag proof"}
   ],
   "c9": [
@@ -63,7 +64,7 @@
     {"number": 7, "requirements": "UI-01..04, FINAL-05/09", "implementation": "React frontend", "test": "CI frontend and Chromium passed; visual QA and remaining UI criteria pending", "status": "blocked"},
     {"number": 8, "requirements": "SDK-01..06, FINAL-03/06", "implementation": "SDK wheel and examples", "test": "CI wheel clean install and two-client demo browser passed; remaining package criteria pending", "status": "blocked"},
     {"number": 9, "requirements": "CI/SEC", "implementation": "GitHub Actions CI", "test": "CI 36468921940 all seven jobs passed; original 58 baseline findings private review pending", "status": "blocked"},
-    {"number": 10, "requirements": "VER/CI", "implementation": "version script and workflows", "test": "version and full CI on e44c57e passed; final documentation SHA and release tag pending", "status": "blocked"},
+    {"number": 10, "requirements": "VER/CI", "implementation": "version script and workflows", "test": "version and full CI on e44c57e and 84ad9aa passed; release tag and other acceptance pending", "status": "blocked"},
     {"number": 11, "requirements": "REL, FINAL-07", "implementation": "release workflow and bundle", "test": "local untagged dry-run passed; tagged gate pending", "status": "blocked"},
     {"number": 12, "requirements": "CD", "implementation": "commented CD template", "test": "local and CI comment-only gate passed; activation not requested", "status": "blocked"},
     {"number": 13, "requirements": "OPS", "implementation": "isolated backup/restore", "test": "safety unit and CI PG restore passed; required operational cycles pending", "status": "blocked"},

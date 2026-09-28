@@ -1,5 +1,7 @@
 # GOAL-09 — текущий протокол проверки
 
+Дополнение 2026-09-28T22:07:51+03:00: [CI 36469783369](https://github.com/alxprgstech/sso/actions/runs/36469783369) на документационном `84ad9aa` прошёл все семь заданий повторно. TASK-092/093 `done`; итоговая приёмка GOAL-09 остаётся `blocked` до отдельных обязательных проверок и приватного разбора первоначальных 58 secret-сигналов.
+
 Дополнение 2026-09-28T22:00:44+03:00: [CI 36468921940](https://github.com/alxprgstech/sso/actions/runs/36468921940) на `e44c57e` завершился success по всем семи заданиям. Backend PostgreSQL default-off: 199 passed, 7 skipped; enabled: 20 passed. Playwright Chromium default-off: 5 passed; enabled: 4 passed. Security scan, Ruff, оба вызова маркера, frontend, SDK, version и CD-template прошли. TASK-092/093 завершены. Этот акт фиксируется отдельным документационным commit; его SHA ещё требует CI. Первоначальные 58 baseline-сигналов ожидают приватного обзора владельца; общая приёмка GOAL-09 остаётся `blocked`.
 
 Дополнение 2026-09-28T21:56:28+03:00: [CI 36468328992](https://github.com/alxprgstech/sso/actions/runs/36468328992) на `68cde86` снова подтвердил backend PostgreSQL, security и прочие задания, но браузерный nonce-перехват не сработал. Причина: Playwright route обрабатывает первый URL при редиректе, тогда как тест начинал с `/login`. Три отрицательных сценария теперь берут настоящий `/login` редирект через общий browser request-контекст без follow redirects и открывают изменённый `/oauth/authorize` в той же странице. Повторный CI ожидается; общая приёмка `blocked`.
@@ -52,7 +54,7 @@
 | 7 | UI-01..04, FINAL-05/09; React и E2E | Frontend CI и Chromium default-off/enabled прошли; visual QA и прочие критерии UI не закрыты. | `blocked` |
 | 8 | SDK-01..06, FINAL-03/06; wheel/sdist и demo | CI SDK clean install и двухклиентский Chromium прошли; остальная приёмка пакета ожидается. | `blocked` |
 | 9 | CI/SEC; `.github/workflows/ci.yml`, audits | CI 36468921940 прошёл все семь заданий; 58 первоначальных secret кандидатов ждут приватной оценки. | `blocked` |
-| 10 | VER/CI; version script, PR/main workflows | Version и весь CI на `e44c57e` прошли; итоговый документационный SHA и релизный тег ожидают проверки. | `blocked` |
+| 10 | VER/CI; version script, PR/main workflows | Version и весь CI на `e44c57e` и `84ad9aa` прошли; релизный тег и прочая приёмка ожидают проверки. | `blocked` |
 | 11 | REL, FINAL-07; release bundle/workflow | Нетегированный build/verify и 15 release/lifecycle unit прошли; full SHA gate и remote dry-run отсутствуют. | `blocked` |
 | 12 | CD; закомментированный template и invariant scanner | Локальный и удалённый comment-only gate прошли; активация CD не запрошена. | `blocked` |
 | 13 | OPS; отдельный backup/restore, TOTP, logout | Safety unit и PG restore тест прошли в CI; эксплуатационные циклы не завершены. | `blocked` |
