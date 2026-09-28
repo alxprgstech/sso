@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -134,6 +135,8 @@ def main() -> int:
     print(f"Secret scan: {len(current_fingerprints)} candidates; {len(new)} new")
     if new:
         print("New candidates need private review; values are suppressed", file=sys.stderr)
+        for (path, kind), count in sorted(Counter((path, kind) for path, kind, _ in new).items()):
+            print(f"Candidate group: {path} [{kind}] ({count})", file=sys.stderr)
         return 1
     return 0
 

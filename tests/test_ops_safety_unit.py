@@ -1,6 +1,8 @@
 """Preflight safety checks: no database connection is allowed for invalid input."""
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,6 +17,23 @@ from tests.test_ops_backup_restore_totp import (
     run_checked,
     verify_base,
 )
+
+
+def test_ci_marker_module_invocation_reaches_guard_without_database() -> None:
+    environment = os.environ.copy()
+    environment.pop("TEST_DATABASE_URL", None)
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.init_fresh_ci_test_marker"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "Test database marker rejected: OpsSafetyError" in result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
 
 
 @pytest.mark.parametrize(

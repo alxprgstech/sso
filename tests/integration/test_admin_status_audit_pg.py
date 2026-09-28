@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import secrets
 
 import httpx
 import pytest
@@ -16,11 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def test_status_counts_and_audit_export_pg(
     pg_session: AsyncSession, pg_client: httpx.AsyncClient
 ):
+    password = secrets.token_urlsafe(24)
     code, _ = await execute_bootstrap(
         session=pg_session,
         username="status_admin",
         email="status_admin@example.test",
-        password="MasterAdminPassword123!",
+        password=password,
         registration_mode="closed",
     )
     assert code == 0
@@ -67,7 +69,7 @@ async def test_status_counts_and_audit_export_pg(
 
     login = await pg_client.post(
         "/api/v1/auth/login",
-        json={"username": "status_admin", "password": "MasterAdminPassword123!"},
+        json={"username": "status_admin", "password": password},
     )
     assert login.status_code == 200
     csrf = login.json()["csrf_token"]
@@ -80,7 +82,7 @@ async def test_status_counts_and_audit_export_pg(
     changed = await pg_client.post(
         "/api/v1/admin/system/registration-mode",
         headers={"X-CSRF-Token": csrf},
-        json={"mode": "open", "current_admin_password": "MasterAdminPassword123!"},
+        json={"mode": "open", "current_admin_password": password},
     )
     assert changed.status_code == 200
     assert changed.json()["total_users"] == 5
