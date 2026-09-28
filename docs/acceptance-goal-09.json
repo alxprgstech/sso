@@ -1,12 +1,12 @@
 {
   "goal": "GOAL-09",
-  "updated_at": "2026-09-28T21:51:23+03:00",
+  "updated_at": "2026-09-28T21:56:28+03:00",
   "base_sha": "1f630fa8304d2f38ab1f56aeaa58523a73483fcb",
   "source_tree_dirty": true,
   "initial_user_diff_hash": "66c2a16e776a4b35540f383983f4913feab4220f",
   "final_sha": null,
   "overall_status": "blocked",
-  "remote_ci_url": "https://github.com/alxprgstech/sso/actions/runs/36467660052",
+  "remote_ci_url": "https://github.com/alxprgstech/sso/actions/runs/36468328992",
   "local_test_coverage_rate": null,
   "historical_goal_08_is_current_evidence": false,
   "environment": {
@@ -41,12 +41,13 @@
     {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA 3715b5eba94c66f97de9f3ab4eceb33d0cfe4455", "exit_code": 1, "result": "run 36445914754 failed: secret scan 116/55 before UTF-8 baseline update; backend default-off two failed tests; Playwright default-off one failed test"},
     {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA 0d5ae4d", "exit_code": 1, "result": "run 36466541048: security scan, Ruff, marker and other four jobs passed; backend 197 passed, 7 skipped, 2 failed; Playwright wrong-nonce scenario received 200 instead of 400"},
     {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA d85e99879586cad6c885756c1faa8c284991c8cc", "exit_code": 1, "result": "run 36467660052: full backend PostgreSQL, security, frontend, SDK, version and CD jobs passed; Playwright failed because nonce interception did not occur"},
+    {"command": "GitHub Actions workflow_dispatch ci.yml, ref codex/ci-repair-pr9", "environment": "remote Linux, head SHA 68cde8628d38ff3467cc10e9c43932d3c154075b", "exit_code": 1, "result": "run 36468328992: backend PostgreSQL, security and other jobs passed; Playwright route missed second URL after login redirect; browser flow correction pending rerun"},
     {"command": "python scripts/build_release_artifacts.py build --outdir <fresh temporary directory>; python scripts/build_release_artifacts.py verify --outdir <same directory>", "environment": "dirty untagged local tree", "exit_code": 0, "result": "bundle verified; manifest source_tree_dirty=true; not release tag proof"}
   ],
   "c9": [
     {"id": "C9-01", "implementation": ["tests/test_ops_backup_restore_totp.py", "scripts/backup_db.py", "scripts/restore_db.py"], "test": "CI 36467660052 full backend PostgreSQL job passed after fixture correction; remaining C9-01 acceptance pending", "status": "blocked"},
     {"id": "C9-02", "implementation": ["packages/python-sdk/alxprgs_sso/client.py", "examples/demo_app.py", "examples/demo_sessions.py", "backend/app/api/oidc.py"], "test": "SDK unit and isolated wheel passed; PG HTTP pending", "status": "in_progress"},
-    {"id": "C9-03", "implementation": ["frontend/e2e/multi_client_sso.spec.ts"], "test": "CI Chromium authorize interception missed; exact pathname predicate added, rerun pending", "status": "blocked"},
+    {"id": "C9-03", "implementation": ["frontend/e2e/multi_client_sso.spec.ts"], "test": "CI Chromium route missed redirect's second URL; flow now starts without following redirects, rerun pending", "status": "blocked"},
     {"id": "C9-04", "implementation": ["requirements-lock.txt", "frontend/package-lock.json", ".github/workflows/ci.yml", "scripts/check_secret_scan.py"], "test": "TASK-092 remote security scan, Ruff and marker passed in run 36466541048; full backend and Playwright jobs failed; original 58 historical candidates await private review", "status": "blocked"},
     {"id": "C9-05", "implementation": [".github/workflows/release.yml", "scripts/release_bundle.py"], "test": "untagged local bundle and negative unit passed; tagged remote gate pending", "status": "blocked"},
     {"id": "C9-06", "implementation": ["docs/acceptance-goal-09.md", "docs/acceptance-goal-09.json", "docs/plan.md", "docs/status.md", "docs/worklog.md"], "test": "matrix created; overall acceptance pending", "status": "in_progress"}

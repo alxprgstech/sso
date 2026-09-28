@@ -6,9 +6,17 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const clientProcesses: ChildProcessWithoutNullStreams[] = [];
 const clientOrigins = ["http://localhost:8001", "http://localhost:8002"];
-const isAuthorizationRequest = (url: URL): boolean =>
-  url.pathname === "/oauth/authorize";
 test.use({ trace: "off" }); // Authorization codes and ID tokens must not enter a retained trace.
+
+async function startAuthorization(page: Page, clientOrigin: string): Promise<URL> {
+  const response = await page.request.get(`${clientOrigin}/login`, { maxRedirects: 0 });
+  expect(response.status()).toBe(302);
+  const location = response.headers()["location"];
+  expect(location).toBeTruthy();
+  const authorizeUrl = new URL(location);
+  expect(authorizeUrl.pathname).toBe("/oauth/authorize");
+  return authorizeUrl;
+}
 
 async function startClient(python: string, module: string, port: number, clientSecret: string): Promise<void> {
   const probe = await fetch(`http://localhost:${port}/`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
@@ -107,46 +115,24 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     expect((await page.request.get(`${clientOrigins[1]}/api/me`)).status()).toBe(200);
 
     // A real authorization response with the wrong nonce must fail in the SDK callback.
-    let nonceTampered = false;
-    await page.route(isAuthorizationRequest, async (route) => {
-      const altered = new URL(route.request().url());
-      altered.searchParams.set("nonce", "synthetic-wrong-nonce");
-      nonceTampered = true;
-      await route.continue({ url: altered.toString() });
-    });
-    const wrongNonce = await page.goto(`${clientOrigins[0]}/login`);
-    const finalLocation = new URL(page.url());
-    expect(
-      nonceTampered,
-      `Authorization interception missed; navigation ended at ${finalLocation.origin}${finalLocation.pathname}`,
-    ).toBe(true);
-    expect(
-      wrongNonce?.status(),
-      `Wrong-nonce navigation ended at ${finalLocation.origin}${finalLocation.pathname}`,
-    ).toBe(400);
+    const wrongNonceUrl = await startAuthorization(page, clientOrigins[0]);
+    wrongNonceUrl.searchParams.set("nonce", "synthetic-wrong-nonce");
+    const wrongNonce = await page.goto(wrongNonceUrl.toString());
+    expect(wrongNonce?.status()).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
-    await page.unroute(isAuthorizationRequest);
 
     // The authorization server issues a code, but the client's original PKCE verifier cannot redeem it.
-    await page.route(isAuthorizationRequest, async (route) => {
-      const altered = new URL(route.request().url());
-      altered.searchParams.set("code_challenge", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-      await route.continue({ url: altered.toString() });
-    });
-    const wrongPkce = await page.goto(`${clientOrigins[0]}/login`);
+    const wrongPkceUrl = await startAuthorization(page, clientOrigins[0]);
+    wrongPkceUrl.searchParams.set("code_challenge", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    const wrongPkce = await page.goto(wrongPkceUrl.toString());
     expect(wrongPkce?.status()).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
-    await page.unroute(isAuthorizationRequest);
 
-    await page.route(isAuthorizationRequest, async (route) => {
-      const altered = new URL(route.request().url());
-      altered.searchParams.set("redirect_uri", `${clientOrigins[0]}/unregistered`);
-      await route.continue({ url: altered.toString() });
-    });
-    const wrongRedirect = await page.goto(`${clientOrigins[0]}/login`);
+    const wrongRedirectUrl = await startAuthorization(page, clientOrigins[0]);
+    wrongRedirectUrl.searchParams.set("redirect_uri", `${clientOrigins[0]}/unregistered`);
+    const wrongRedirect = await page.goto(wrongRedirectUrl.toString());
     expect(wrongRedirect?.status()).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
-    await page.unroute(isAuthorizationRequest);
 
     // Local logout does not end SSO; a fresh flow can complete without a password.
     await page.goto(`${clientOrigins[0]}/login`);
