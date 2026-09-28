@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const clientProcesses: ChildProcessWithoutNullStreams[] = [];
 const clientOrigins = ["http://localhost:8001", "http://localhost:8002"];
+const isAuthorizationRequest = (url: URL): boolean =>
+  url.pathname === "/oauth/authorize";
 test.use({ trace: "off" }); // Authorization codes and ID tokens must not enter a retained trace.
 
 async function startClient(python: string, module: string, port: number, clientSecret: string): Promise<void> {
@@ -106,24 +108,27 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
 
     // A real authorization response with the wrong nonce must fail in the SDK callback.
     let nonceTampered = false;
-    await page.route("**/oauth/authorize?**", async (route) => {
+    await page.route(isAuthorizationRequest, async (route) => {
       const altered = new URL(route.request().url());
       altered.searchParams.set("nonce", "synthetic-wrong-nonce");
       nonceTampered = true;
       await route.continue({ url: altered.toString() });
     });
     const wrongNonce = await page.goto(`${clientOrigins[0]}/login`);
-    expect(nonceTampered).toBe(true);
     const finalLocation = new URL(page.url());
+    expect(
+      nonceTampered,
+      `Authorization interception missed; navigation ended at ${finalLocation.origin}${finalLocation.pathname}`,
+    ).toBe(true);
     expect(
       wrongNonce?.status(),
       `Wrong-nonce navigation ended at ${finalLocation.origin}${finalLocation.pathname}`,
     ).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
-    await page.unroute("**/oauth/authorize?**");
+    await page.unroute(isAuthorizationRequest);
 
     // The authorization server issues a code, but the client's original PKCE verifier cannot redeem it.
-    await page.route("**/oauth/authorize?**", async (route) => {
+    await page.route(isAuthorizationRequest, async (route) => {
       const altered = new URL(route.request().url());
       altered.searchParams.set("code_challenge", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
       await route.continue({ url: altered.toString() });
@@ -131,9 +136,9 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     const wrongPkce = await page.goto(`${clientOrigins[0]}/login`);
     expect(wrongPkce?.status()).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
-    await page.unroute("**/oauth/authorize?**");
+    await page.unroute(isAuthorizationRequest);
 
-    await page.route("**/oauth/authorize?**", async (route) => {
+    await page.route(isAuthorizationRequest, async (route) => {
       const altered = new URL(route.request().url());
       altered.searchParams.set("redirect_uri", `${clientOrigins[0]}/unregistered`);
       await route.continue({ url: altered.toString() });
@@ -141,7 +146,7 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     const wrongRedirect = await page.goto(`${clientOrigins[0]}/login`);
     expect(wrongRedirect?.status()).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
-    await page.unroute("**/oauth/authorize?**");
+    await page.unroute(isAuthorizationRequest);
 
     // Local logout does not end SSO; a fresh flow can complete without a password.
     await page.goto(`${clientOrigins[0]}/login`);

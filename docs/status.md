@@ -1,5 +1,7 @@
 # Актуальный статус — GOAL-09 заблокирован обязательными runtime-проверками
 
+- Обновление 2026-09-28T21:51:23+03:00, Codex: [CI `d85e998`](https://github.com/alxprgstech/sso/actions/runs/36467660052) подтвердил полный backend PostgreSQL job и Security & Dependencies Scan; Playwright failed потому, что обработчик nonce-подмены не перехватил `/oauth/authorize`. В E2E предикат перехвата уточнён по точному pathname для nonce/PKCE/redirect сценариев. Повторный CI ожидается; TASK-093 `in_progress`, общая приёмка `blocked`.
+
 - Обновление 2026-09-28T21:45:40+03:00, Codex: TASK-093 `in_progress`. Backend refresh-тест использовал неподдерживаемый `offline_access`, а restore-fixture не заполняла обязательный `user_roles.id`; исправления внесены. Для Playwright nonce-сценария добавлена диагностика фактического перехвата и конечного origin/path без параметров. Ruff check/format, frontend typecheck:tests и diff check прошли. Повторный PostgreSQL/browser CI на новом SHA ожидается; общая приёмка `blocked`.
 
 - Обновление 2026-09-28T21:41:24+03:00, Codex: TASK-092 `done`: [CI на `0d5ae4d`](https://github.com/alxprgstech/sso/actions/runs/36466541048) подтвердил Security & Dependencies Scan, Ruff и оба запуска маркера БД. Три исходных сбоя устранены. Задания backend и Playwright failed на следующих тестах; TASK-093 `in_progress` для их диагностики. Первоначальные 58 сигналов baseline ждут приватной оценки; общая приёмка `blocked`.
