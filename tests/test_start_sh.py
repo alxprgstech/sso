@@ -60,6 +60,8 @@ class StartBashTests(unittest.TestCase):
             self.assertEqual(values["DATABASE_URL_SYNC"], expected)
             self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
             self.assertEqual(values["BASE_URL"], "http://localhost:3000")
+            self.assertEqual(values["WEBAUTHN_RP_ID"], "localhost")
+            self.assertEqual(values["WEBAUTHN_ORIGIN"], "http://localhost:3000")
             self.assertEqual(len(base64.urlsafe_b64decode(values["TOTP_ENCRYPTION_KEY"])), 32)
             for name in (
                 "FEATURE_TOTP_ENABLED",

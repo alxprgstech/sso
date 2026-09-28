@@ -1,9 +1,10 @@
 import { errorMessage } from "../utils/error";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
 import { SessionInfo, TOTPSetupResponse } from "../types/api";
 import { prepareCreationOptions, serializeCreationResponse } from "../utils/webauthn";
+import { QRCodeSVG } from "qrcode.react";
 
 export const DashboardPage: React.FC = () => {
   const { user, capabilities, refreshUser } = useAuth();
@@ -15,6 +16,38 @@ export const DashboardPage: React.FC = () => {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const passwordTriggerRef = useRef<HTMLButtonElement>(null);
+  const currentPasswordRef = useRef<HTMLInputElement>(null);
+  const passwordDialogRef = useRef<HTMLDivElement>(null);
+
+  const closePasswordModal = () => {
+    if (passwordLoading) return;
+    setShowPasswordModal(false);
+    setPasswordError(null);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    window.setTimeout(() => passwordTriggerRef.current?.focus(), 0);
+  };
+
+  useEffect(() => {
+    if (!showPasswordModal) return;
+    currentPasswordRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closePasswordModal();
+      if (event.key === "Tab") {
+        const focusable = Array.from(passwordDialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)") || []);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showPasswordModal, passwordLoading]);
 
   // Состояние сессий
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -34,6 +67,7 @@ export const DashboardPage: React.FC = () => {
   const [totpLoading, setTotpLoading] = useState(false);
   const [totpSuccess, setTotpSuccess] = useState<string | null>(null);
   const [totpError, setTotpError] = useState<string | null>(null);
+  const [totpCopyMessage, setTotpCopyMessage] = useState<string | null>(null);
 
   // Состояние Recovery Codes (SEC-FLAG-02)
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
@@ -51,6 +85,7 @@ export const DashboardPage: React.FC = () => {
     setTotpLoading(true);
     setTotpError(null);
     setTotpSuccess(null);
+    setTotpCopyMessage(null);
     try {
       const data = await api.setupTotp();
       setTotpSetupData(data);
@@ -58,6 +93,16 @@ export const DashboardPage: React.FC = () => {
       setTotpError(errorMessage(err, "Не удалось настроить TOTP"));
     } finally {
       setTotpLoading(false);
+    }
+  };
+
+  const handleCopyTotpSecret = async () => {
+    if (!totpSetupData) return;
+    try {
+      await navigator.clipboard.writeText(totpSetupData.secret);
+      setTotpCopyMessage("Ключ скопирован");
+    } catch {
+      setTotpCopyMessage("Не удалось скопировать ключ. Выделите его и скопируйте вручную.");
     }
   };
 
@@ -71,6 +116,7 @@ export const DashboardPage: React.FC = () => {
       setTotpSuccess(res.message || "TOTP успешно активирован");
       setTotpSetupData(null);
       setTotpCode("");
+      setTotpCopyMessage(null);
       await refreshUser();
     } catch (err: unknown) {
       setTotpError(errorMessage(err, "Неверный код TOTP"));
@@ -230,6 +276,8 @@ export const DashboardPage: React.FC = () => {
       setNewPassword("");
       setConfirmPassword("");
       await fetchSessions();
+      setShowPasswordModal(false);
+      window.setTimeout(() => passwordTriggerRef.current?.focus(), 0);
     } catch (err: unknown) {
       setPasswordError(errorMessage(err, "Ошибка смены пароля"));
     } finally {
@@ -301,14 +349,20 @@ export const DashboardPage: React.FC = () => {
 
       {/* 2. Смена пароля */}
       <div className="bg-white shadow rounded-xl p-6 border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-900 border-b pb-4 mb-4">Смена пароля</h2>
+        <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-gray-900">Смена пароля</h2><button ref={passwordTriggerRef} type="button" onClick={() => { setPasswordSuccess(null); setShowPasswordModal(true); }} className="py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">Изменить пароль</button></div>
         {passwordSuccess && (
-          <div className="mb-4 bg-green-50 border-l-4 border-green-500 p-3 rounded text-sm text-green-700">
+          <div role="status" className="mt-4 bg-green-50 border-l-4 border-green-500 p-3 rounded text-sm text-green-700">
             {passwordSuccess}
           </div>
         )}
+      </div>
+
+      {showPasswordModal && (
+      <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) closePasswordModal(); }}>
+      <div ref={passwordDialogRef} role="dialog" aria-modal="true" aria-labelledby="change-password-title" className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between mb-4"><h2 id="change-password-title" className="text-xl font-bold">Смена пароля</h2><button type="button" onClick={closePasswordModal} disabled={passwordLoading} aria-label="Закрыть окно смены пароля">✕</button></div>
         {passwordError && (
-          <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
+          <div role="alert" className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
             {passwordError}
           </div>
         )}
@@ -316,6 +370,7 @@ export const DashboardPage: React.FC = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700">Текущий пароль</label>
             <input
+              ref={currentPasswordRef}
               type="password"
               required
               value={currentPassword}
@@ -343,15 +398,11 @@ export const DashboardPage: React.FC = () => {
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             />
           </div>
-          <button
-            type="submit"
-            disabled={passwordLoading}
-            className="py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-          >
-            {passwordLoading ? "Обновление..." : "Сохранить новый пароль"}
-          </button>
+          <div className="flex gap-3"><button type="submit" disabled={passwordLoading} className="py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">{passwordLoading ? "Обновление..." : "Сохранить новый пароль"}</button><button type="button" onClick={closePasswordModal} disabled={passwordLoading} className="py-2 px-4 rounded-lg text-sm bg-gray-100">Отмена</button></div>
         </form>
       </div>
+      </div>
+      )}
 
       {/* 3. Активные сессии */}
       <div className="bg-white shadow rounded-xl p-6 border border-gray-100">
@@ -467,11 +518,19 @@ export const DashboardPage: React.FC = () => {
                     </button>
                   </div>
                 ) : totpSetupData ? (
-                  <form onSubmit={handleConfirmTotp} className="space-y-2 bg-gray-50 p-3 rounded-lg border">
-                    <div className="text-xs text-gray-700">Секретный ключ (введите в приложение аутентификатора):</div>
-                    <div className="text-xs font-mono font-bold bg-white p-2 rounded border break-all select-all text-blue-900">
-                      {totpSetupData.secret}
+                  <form onSubmit={handleConfirmTotp} className="space-y-3 bg-gray-50 p-3 rounded-lg border">
+                    <div className="text-xs text-gray-700">Отсканируйте QR-код приложением-аутентификатором:</div>
+                    <div className="flex justify-center" data-testid="totp-qr-code">
+                      <QRCodeSVG value={totpSetupData.otpauth_url} size={192} level="M" marginSize={4} title="QR-код для подключения ALXPRGS SSO" />
                     </div>
+                    <div className="text-xs text-gray-600">Или введите секретный ключ вручную:</div>
+                    <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1 text-xs font-mono font-bold bg-white p-2 rounded border break-all select-all text-blue-900" data-testid="totp-secret">
+                        {totpSetupData.secret}
+                      </div>
+                      <button type="button" onClick={handleCopyTotpSecret} className="text-xs bg-white border border-gray-300 px-3 py-2 rounded hover:bg-gray-100" data-testid="copy-totp-secret-button">Копировать</button>
+                    </div>
+                    {totpCopyMessage && <div role="status" className="text-xs text-gray-700">{totpCopyMessage}</div>}
                     <div className="text-xs text-gray-600">Введите 6-значный код для подтверждения:</div>
                     <div className="flex gap-2">
                       <input

@@ -92,6 +92,8 @@ function docker-compose {{
             self.assertEqual(values["DATABASE_URL_SYNC"], url)
             self.assertEqual(values["BASE_URL"], "http://localhost:3000")
             self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
+            self.assertEqual(values["WEBAUTHN_RP_ID"], "localhost")
+            self.assertEqual(values["WEBAUTHN_ORIGIN"], "http://localhost:3000")
             self.assertEqual(values["DEBUG"], "false")
             self.assertRegex(values["SESSION_SECRET_KEY"], r"^[0-9a-f]{128}$")
             self.assertEqual(len(base64.urlsafe_b64decode(values["TOTP_ENCRYPTION_KEY"])), 32)

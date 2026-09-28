@@ -45,6 +45,8 @@ def test_non_admin_user_rejected_rbac():
         r = client.get("/api/v1/admin/users")
         assert r.status_code == 403
         assert r.json()["error"] == "forbidden"
+        export = client.get("/api/v1/admin/audit/export?format=jsonl")
+        assert export.status_code == 403
     finally:
         app.dependency_overrides.clear()
 

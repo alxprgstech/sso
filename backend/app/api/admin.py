@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import csv
+import io
+import json
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin_user, verify_csrf
 from app.database import get_db
@@ -260,6 +265,7 @@ async def list_audit(
     limit: int = Query(50, ge=1, le=100),
     user_id: uuid.UUID | None = Query(None),
     event_type: str | None = Query(None),
+    q: str | None = Query(None, max_length=128),
     admin: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminAuditEventResponse]:
@@ -269,6 +275,7 @@ async def list_audit(
         limit=limit,
         user_id=user_id,
         event_type=event_type,
+        query=q,
     )
     return [
         AdminAuditEventResponse(
@@ -284,6 +291,60 @@ async def list_audit(
     ]
 
 
+@router.get("/audit/export")
+async def export_audit(
+    format: str = Query("jsonl", pattern="^(jsonl|csv)$"),
+    user_id: uuid.UUID | None = Query(None),
+    event_type: str | None = Query(None),
+    q: str | None = Query(None, max_length=128),
+    admin: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Потоковая выгрузка всего отфильтрованного журнала, доступная администратору."""
+
+    async def rows() -> AsyncIterator[str]:
+        stmt = AdminService.audit_statement(user_id=user_id, event_type=event_type, query=q)
+        result = await db.stream_scalars(stmt)
+        if format == "csv":
+            yield "id,event_type,user_id,ip_address,user_agent,details,created_at\r\n"
+        async for event in result:
+            item = AdminAuditEventResponse.model_validate(event)
+            if format == "jsonl":
+                yield item.model_dump_json() + "\n"
+            else:
+                buffer = io.StringIO()
+                writer = csv.writer(buffer)
+
+                def safe(value: str) -> str:
+                    return (
+                        "'" + value if value.startswith(("=", "+", "-", "@", "\t", "\r")) else value
+                    )
+
+                writer.writerow(
+                    [
+                        str(item.id),
+                        safe(item.event_type),
+                        str(item.user_id) if item.user_id else "",
+                        safe(item.ip_address or ""),
+                        safe(item.user_agent or ""),
+                        json.dumps(item.details, ensure_ascii=False),
+                        item.created_at.isoformat(),
+                    ]
+                )
+                yield buffer.getvalue()
+
+    filename = f"alxprgs-audit.{format}"
+    media_type = "application/x-ndjson" if format == "jsonl" else "text/csv; charset=utf-8"
+    return StreamingResponse(
+        rows(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 # ==============================================================================
 # 4. СОСТОЯНИЕ СИСТЕМЫ И РЕЖИМ РЕГИСТРАЦИИ (REG-02, SETUP-05)
 # ==============================================================================
@@ -296,11 +357,14 @@ async def get_system_status(
 ) -> SystemStatusResponse:
     """Получение текущего среза состояния системы и режима регистрации (REG-02)."""
     config = await SystemService.get_or_create_configuration(db)
+    total_users, total_active_admins = await AdminService.system_counts(db)
     return SystemStatusResponse(
         bootstrap_completed=config.bootstrap_completed,
         bootstrap_completed_at=config.bootstrap_completed_at,
         registration_mode=config.registration_mode,
         updated_at=config.updated_at,
+        total_users=total_users,
+        total_active_admins=total_active_admins,
     )
 
 
@@ -329,9 +393,12 @@ async def update_registration_mode(
         ip_address=ip,
         user_agent=ua,
     )
+    total_users, total_active_admins = await AdminService.system_counts(db)
     return SystemStatusResponse(
         bootstrap_completed=config.bootstrap_completed,
         bootstrap_completed_at=config.bootstrap_completed_at,
         registration_mode=config.registration_mode,
         updated_at=config.updated_at,
+        total_users=total_users,
+        total_active_admins=total_active_admins,
     )

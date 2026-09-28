@@ -37,6 +37,10 @@ export const AdminPage: React.FC = () => {
   const [auditEvents, setAuditEvents] = useState<AuditEventItem[]>([]);
   const [auditFilter, setAuditFilter] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditOffset, setAuditOffset] = useState(0);
+  const [selectedAudit, setSelectedAudit] = useState<AuditEventItem | null>(null);
+  const [auditExporting, setAuditExporting] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   // --- 4. Конфигурация системы и режим регистрации ---
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -74,10 +78,10 @@ export const AdminPage: React.FC = () => {
   const loadAudit = async () => {
     setAuditLoading(true);
     try {
-      const data = await api.getAuditEvents(0, 50);
+      const data = await api.getAuditEvents(auditOffset, 50, auditFilter);
       setAuditEvents(data);
     } catch (err: unknown) {
-      alert(errorMessage(err, "Ошибка загрузки аудита"));
+      setAuditError(errorMessage(err, "Ошибка загрузки аудита"));
     } finally {
       setAuditLoading(false);
     }
@@ -99,9 +103,24 @@ export const AdminPage: React.FC = () => {
   useEffect(() => {
     if (activeTab === "users") loadUsers();
     if (activeTab === "clients") loadClients();
-    if (activeTab === "audit") loadAudit();
     if (activeTab === "system") loadSystemStatus();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "audit") loadAudit();
+  }, [activeTab, auditOffset, auditFilter]);
+
+  const handleAuditExport = async (format: "jsonl" | "csv") => {
+    setAuditExporting(true);
+    setAuditError(null);
+    try {
+      await api.downloadAudit(format, auditFilter);
+    } catch (err: unknown) {
+      setAuditError(errorMessage(err, "Не удалось скачать аудит"));
+    } finally {
+      setAuditExporting(false);
+    }
+  };
 
   // Обработчики пользователей
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -452,7 +471,7 @@ export const AdminPage: React.FC = () => {
                 type="text"
                 placeholder="Фильтр по типу события или IP..."
                 value={auditFilter}
-                onChange={(e) => setAuditFilter(e.target.value)}
+                onChange={(e) => { setAuditOffset(0); setAuditFilter(e.target.value); }}
                 className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-full sm:w-64"
                 data-testid="audit-filter-input"
               />
@@ -463,8 +482,11 @@ export const AdminPage: React.FC = () => {
               >
                 Обновить
               </button>
+              <button onClick={() => handleAuditExport("jsonl")} disabled={auditExporting} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap">Скачать JSONL</button>
+              <button onClick={() => handleAuditExport("csv")} disabled={auditExporting} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap">Скачать CSV</button>
             </div>
           </div>
+          {auditError && <div role="alert" className="text-sm text-red-700">{auditError}</div>}
           {auditLoading ? (
             <div className="py-8 text-center text-sm text-gray-500">Загрузка журнала аудита...</div>
           ) : (
@@ -479,14 +501,7 @@ export const AdminPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {auditEvents
-                    .filter(
-                      (e) =>
-                        !auditFilter ||
-                        e.event_type.toLowerCase().includes(auditFilter.toLowerCase()) ||
-                        (e.ip_address && e.ip_address.includes(auditFilter))
-                    )
-                    .map((e) => (
+                  {auditEvents.map((e) => (
                       <tr key={e.id}>
                         <td className="px-4 py-2 text-xs text-gray-500 whitespace-nowrap">
                           {new Date(e.created_at).toLocaleString("ru-RU")}
@@ -497,8 +512,8 @@ export const AdminPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-2 font-mono text-xs text-gray-500">{e.ip_address || "—"}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-gray-600 truncate max-w-xs">
-                          {JSON.stringify(e.details)}
+                        <td className="px-4 py-2 font-mono text-xs text-gray-600">
+                          <button type="button" onClick={() => setSelectedAudit(e)} className="text-blue-700 underline">Показать детали</button>
                         </td>
                       </tr>
                     ))}
@@ -506,6 +521,28 @@ export const AdminPage: React.FC = () => {
               </table>
             </div>
           )}
+          <div className="flex items-center gap-3 text-sm">
+            <button type="button" disabled={auditOffset === 0 || auditLoading} onClick={() => setAuditOffset(Math.max(0, auditOffset - 50))} className="disabled:opacity-40">Назад</button>
+            <span>Страница {Math.floor(auditOffset / 50) + 1}</span>
+            <button type="button" disabled={auditEvents.length < 50 || auditLoading} onClick={() => setAuditOffset(auditOffset + 50)} className="disabled:opacity-40">Далее</button>
+          </div>
+        </div>
+      )}
+
+      {selectedAudit && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedAudit(null); }}>
+          <div role="dialog" aria-modal="true" aria-label="Детали события аудита" className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[85vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold">Детали события аудита</h2><button type="button" onClick={() => setSelectedAudit(null)} aria-label="Закрыть детали">✕</button></div>
+            <dl className="text-sm space-y-2">
+              <div><dt className="font-semibold">ID</dt><dd>{selectedAudit.id}</dd></div>
+              <div><dt className="font-semibold">Время</dt><dd>{new Date(selectedAudit.created_at).toLocaleString("ru-RU")}</dd></div>
+              <div><dt className="font-semibold">Тип</dt><dd>{selectedAudit.event_type}</dd></div>
+              <div><dt className="font-semibold">Пользователь</dt><dd>{selectedAudit.user_id || "—"}</dd></div>
+              <div><dt className="font-semibold">IP</dt><dd>{selectedAudit.ip_address || "—"}</dd></div>
+              <div><dt className="font-semibold">User Agent</dt><dd className="break-all">{selectedAudit.user_agent || "—"}</dd></div>
+              <div><dt className="font-semibold">Данные</dt><dd><pre className="whitespace-pre-wrap break-all bg-gray-50 rounded p-3">{JSON.stringify(selectedAudit.details, null, 2)}</pre></dd></div>
+            </dl>
+          </div>
         </div>
       )}
 

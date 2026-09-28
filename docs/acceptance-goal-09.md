@@ -1,5 +1,17 @@
 # GOAL-09 — текущий протокол проверки
 
+Дополнение 2026-09-28T16:52:45+03:00: компонентные проверки TASK-090 теперь 10/10, включая отсутствие QR и секрета при default-off. Browser/Compose приёмка не проводилась.
+
+Дополнение 2026-09-28T16:46:16+03:00: TASK-090 — QR-код TOTP и копирование секрета локально проверены (frontend component 9/9, backend unit 7/7, lint/typechecks/build/Ruff, npm audit при установке 0 находок). Полный browser/Compose enabled-профиль не запускался; критерий GOAL §8 по MFA остаётся `blocked`.
+
+Дополнение 2026-09-28T16:13:49+03:00: после проверки точной передачи WebAuthn origin затронутый backend unit набор — 12/12. Это не заменяет PostgreSQL или браузерную проверку.
+
+## Дополнение 2026-09-28T16:10:53+03:00 — TASK-089
+
+Исправления счётчиков состояния, конфигурации enabled MFA, локального WebAuthn origin, модальной смены пароля и аудита внесены в рабочее дерево. API аудита теперь поддерживает серверный `q` (подстрока типа события/IP) и `/api/v1/admin/audit/export?format=jsonl|csv` со всеми событиями текущего фильтра. Оба endpoint состояния возвращают `total_users` и `total_active_admins`. Default-флаги остались `false`.
+
+Доказано локально: backend unit 11/11, генерация `.env` 3/3, frontend component 8/8, Ruff check/format, frontend lint/typecheck/typecheck:tests/build — exit 0. PostgreSQL regression `test_admin_status_audit_pg.py` и `test_features_pg.py` запущены, но завершились 6 ошибками setup: `TEST_DATABASE_URL` не задан; проверки SQL/HTTP не выполнялись. Docker/Compose и браузер с виртуальным WebAuthn не запускались. Частичный результат не меняет статусы критериев §8: пункты 4, 5, 6 и 7 остаются `blocked`. Mypy затронутых backend-модулей выявил только прежние ошибки `app/models/system.py:24` и `app/core/security.py:15`; exit 1. Общая приёмка остаётся `blocked`.
+
 Обновлено: 2026-09-26T23:12:29+03:00, Codex. База: HEAD `4f7537bd7c9d88149b1e909bc6c52167714ecb31`, рабочее дерево изменено; hash исходного пользовательского diff документов `66c2a16e776a4b35540f383983f4913feab4220f`. Итогового SHA нет. Общая приёмка: **blocked**. [Акт GOAL-08](acceptance-goal-08.md) и [JSON](acceptance-goal-08.json) исторические; их `16/16` и `local_test_coverage_rate: 1.0` не доказаны для текущего дерева. `tests/test_db_guard.py` не существует; действительный путь — `tests/test_database_guard.py`. Текущий [машинный отчёт](acceptance-goal-09.json) содержит только фактические результаты.
 
 ## Пакеты C9

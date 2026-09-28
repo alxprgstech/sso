@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath("backend"))
 
+from app.api.mfa import passkey_register_verify
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     AuthorizationException,
@@ -20,6 +21,7 @@ from app.models.mfa import (
     TOTPCredential,
 )
 from app.models.user import User
+from app.schemas.mfa import PasskeyRegistrationVerifyRequest
 from app.services.mfa_service import (
     EmailVerificationService,
     RecoveryCodesService,
@@ -30,6 +32,40 @@ from app.services.mfa_service import (
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
+
+
+def test_enabled_local_profile_reads_flags_and_rejects_recovery_without_totp(monkeypatch):
+    for name in ("FEATURE_TOTP_ENABLED", "FEATURE_PASSKEY_ENABLED", "FEATURE_RECOVERY_CODES_ENABLED"):
+        monkeypatch.setenv(name, "true")
+    monkeypatch.setenv("WEBAUTHN_RP_ID", "localhost")
+    monkeypatch.setenv("WEBAUTHN_ORIGIN", "http://localhost:3000")
+    enabled = Settings(_env_file=None)
+    assert enabled.FEATURE_TOTP_ENABLED is True
+    assert enabled.FEATURE_PASSKEY_ENABLED is True
+    assert enabled.FEATURE_RECOVERY_CODES_ENABLED is True
+    assert enabled.WEBAUTHN_RP_ID == "localhost"
+    assert enabled.WEBAUTHN_ORIGIN == "http://localhost:3000"
+
+    monkeypatch.setenv("FEATURE_TOTP_ENABLED", "false")
+    with pytest.raises(ValueError, match="FEATURE_RECOVERY_CODES_ENABLED"):
+        Settings(_env_file=None)
+
+
+@pytest.mark.asyncio
+async def test_passkey_registration_route_uses_exact_configured_origin(monkeypatch):
+    verify = AsyncMock()
+    monkeypatch.setattr(WebAuthnService, "verify_registration", verify)
+    settings = Settings.model_construct(
+        WEBAUTHN_RP_ID="localhost", WEBAUTHN_ORIGIN="http://localhost:3000"
+    )
+    await passkey_register_verify(
+        payload=PasskeyRegistrationVerifyRequest(credential={"id": "synthetic"}),
+        user=User(id=uuid.uuid4()),
+        db=AsyncMock(),
+        settings=settings,
+    )
+    assert verify.await_args.kwargs["rp_id"] == "localhost"
+    assert verify.await_args.kwargs["origin"] == "http://localhost:3000"
 
 
 def test_default_features_all_disabled_in_api():
@@ -123,10 +159,14 @@ async def test_totp_service_lifecycle():
     assert len(raw_secret) > 10
     assert "otpauth://" in uri
     assert "totpuser" in uri or "test_totp" in uri
-
-    # 2. Подтверждение с верным кодом
     import pyotp
 
+    parsed_totp = pyotp.parse_uri(uri)
+    assert parsed_totp.name == user.email
+    assert parsed_totp.secret == raw_secret
+    assert parsed_totp.issuer == "ALXPRGS SSO"
+
+    # 2. Подтверждение с верным кодом
     totp_calc = pyotp.TOTP(raw_secret)
     valid_code = totp_calc.now()
 
@@ -258,12 +298,18 @@ async def test_webauthn_service_options():
     )
 
     # 1. Генерация опций регистрации
-    reg_options_json = await WebAuthnService.get_registration_options(mock_db, user)
+    configured = Settings.model_construct(
+        WEBAUTHN_RP_ID="auth.alxprgs.tech", WEBAUTHN_RP_NAME="ALXPRGS SSO"
+    )
+    reg_options_json = await WebAuthnService.get_registration_options(
+        mock_db, user, settings=configured
+    )
     assert "challenge" in reg_options_json
-    assert "rp" in reg_options_json
-    assert "alxprgs.tech" in str(reg_options_json)
+    assert reg_options_json["rp"]["id"] == "auth.alxprgs.tech"
 
     # 2. Генерация опций аутентификации
-    auth_options_json = await WebAuthnService.get_authentication_options(mock_db, user)
+    auth_options_json = await WebAuthnService.get_authentication_options(
+        mock_db, user, settings=configured
+    )
     assert "challenge" in auth_options_json
-    assert "rpId" in auth_options_json
+    assert auth_options_json["rpId"] == "auth.alxprgs.tech"

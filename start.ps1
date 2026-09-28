@@ -128,6 +128,8 @@ if (-not (Test-Path $envFile)) {
         POSTGRES_DB = "sso_db"
         SESSION_SECRET_KEY = $sessionSecret
         TOTP_ENCRYPTION_KEY = $totpKey
+        WEBAUTHN_RP_ID = "localhost"
+        WEBAUTHN_ORIGIN = "http://localhost:3000"
         FEATURE_TOTP_ENABLED = "false"
         FEATURE_PASSKEY_ENABLED = "false"
         FEATURE_RECOVERY_CODES_ENABLED = "false"

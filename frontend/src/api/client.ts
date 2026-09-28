@@ -180,8 +180,29 @@ class ApiClient {
     });
   }
 
-  async getAuditEvents(offset = 0, limit = 50): Promise<AuditEventItem[]> {
-    return this.request<AuditEventItem[]>(`/api/v1/admin/audit?offset=${offset}&limit=${limit}`);
+  async getAuditEvents(offset = 0, limit = 50, filter = ""): Promise<AuditEventItem[]> {
+    const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    if (filter.trim()) query.set("q", filter.trim());
+    return this.request<AuditEventItem[]>(`/api/v1/admin/audit?${query}`);
+  }
+
+  async downloadAudit(format: "jsonl" | "csv", filter = ""): Promise<void> {
+    const query = new URLSearchParams({ format });
+    if (filter.trim()) query.set("q", filter.trim());
+    const response = await fetch(`/api/v1/admin/audit/export?${query}`, { credentials: "include" });
+    if (!response.ok) throw new Error(`Ошибка выгрузки аудита: HTTP ${response.status}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `alxprgs-audit.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
   }
 
   // --- Passkey / WebAuthn API (G4-PASSKEY) ---

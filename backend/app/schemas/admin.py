@@ -96,3 +96,5 @@ class SystemStatusResponse(BaseModel):
     bootstrap_completed_at: datetime | None = None
     registration_mode: str
     updated_at: datetime
+    total_users: int
+    total_active_admins: int

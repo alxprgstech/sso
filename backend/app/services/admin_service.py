@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from sqlalchemy import delete, select
+from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.exceptions import AuthorizationException
@@ -15,6 +15,23 @@ from app.services.audit_service import AuditService
 
 
 class AdminService:
+    @staticmethod
+    async def system_counts(db: AsyncSession) -> tuple[int, int]:
+        total_users = (await db.execute(select(func.count(User.id)))).scalar_one()
+        active_admins = (
+            await db.execute(
+                select(func.count(func.distinct(User.id)))
+                .select_from(User)
+                .outerjoin(UserRole, UserRole.user_id == User.id)
+                .outerjoin(Role, Role.id == UserRole.role_id)
+                .where(
+                    User.is_active.is_(True),
+                    or_(User.is_superuser.is_(True), Role.name == ROLE_ADMIN),
+                )
+            )
+        ).scalar_one()
+        return total_users, active_admins
+
     # =========================================================================
     # 1. УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ (USR-01..03, USR-07, USR-08)
     # =========================================================================
@@ -346,12 +363,32 @@ class AdminService:
         limit: int = 50,
         user_id: uuid.UUID | None = None,
         event_type: str | None = None,
+        query: str | None = None,
     ) -> list[AuditEvent]:
-        stmt = select(AuditEvent).order_by(AuditEvent.created_at.desc()).offset(offset).limit(limit)
+        stmt = AdminService.audit_statement(user_id=user_id, event_type=event_type, query=query)
+        stmt = stmt.offset(offset).limit(limit)
+
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    def audit_statement(
+        user_id: uuid.UUID | None = None,
+        event_type: str | None = None,
+        query: str | None = None,
+    ) -> Select[tuple[AuditEvent]]:
+        stmt = select(AuditEvent)
         if user_id:
             stmt = stmt.where(AuditEvent.user_id == user_id)
         if event_type:
             stmt = stmt.where(AuditEvent.event_type == event_type)
-
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        if query:
+            literal = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{literal}%"
+            stmt = stmt.where(
+                or_(
+                    AuditEvent.event_type.ilike(pattern, escape="\\"),
+                    AuditEvent.ip_address.ilike(pattern, escape="\\"),
+                )
+            )
+        return stmt.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())

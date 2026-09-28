@@ -205,50 +205,29 @@ passkey_router = APIRouter(
 
 @passkey_router.post("/register/options", dependencies=[Depends(verify_csrf)])
 async def passkey_register_options(
-    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    rp_id = (
-        "localhost"
-        if request.url.hostname in ("localhost", "127.0.0.1")
-        and settings.ENVIRONMENT != "production"
-        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
-        else settings.WEBAUTHN_RP_ID
+    return await WebAuthnService.get_registration_options(
+        db, user, rp_id=settings.WEBAUTHN_RP_ID, settings=settings
     )
-    return await WebAuthnService.get_registration_options(db, user, rp_id=rp_id, settings=settings)
 
 
 @passkey_router.post("/register/verify", dependencies=[Depends(verify_csrf)])
 async def passkey_register_verify(
     payload: PasskeyRegistrationVerifyRequest,
-    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
-    rp_id = (
-        "localhost"
-        if request.url.hostname in ("localhost", "127.0.0.1")
-        and settings.ENVIRONMENT != "production"
-        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
-        else settings.WEBAUTHN_RP_ID
-    )
-    expected_origin = (
-        "http://localhost:5173"
-        if request.url.hostname in ("localhost", "127.0.0.1")
-        and settings.ENVIRONMENT != "production"
-        and settings.WEBAUTHN_ORIGIN == "https://auth.alxprgs.tech"
-        else settings.WEBAUTHN_ORIGIN
-    )
     await WebAuthnService.verify_registration(
         db,
         user,
         payload.credential,
         name=payload.name,
-        rp_id=rp_id,
-        origin=expected_origin,
+        rp_id=settings.WEBAUTHN_RP_ID,
+        origin=settings.WEBAUTHN_ORIGIN,
         settings=settings,
     )
     return {"status": "ok", "message": "Passkey успешно зарегистрирован"}
@@ -256,19 +235,11 @@ async def passkey_register_verify(
 
 @passkey_router.post("/auth/options")
 async def passkey_auth_options(
-    request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    rp_id = (
-        "localhost"
-        if request.url.hostname in ("localhost", "127.0.0.1")
-        and settings.ENVIRONMENT != "production"
-        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
-        else settings.WEBAUTHN_RP_ID
-    )
     return await WebAuthnService.get_authentication_options(
-        db, user=None, rp_id=rp_id, settings=settings
+        db, user=None, rp_id=settings.WEBAUTHN_RP_ID, settings=settings
     )
 
 
@@ -281,21 +252,6 @@ async def passkey_auth_verify(
     settings: Settings = Depends(get_settings),
 ) -> Any:
     from sqlalchemy import select
-
-    rp_id = (
-        "localhost"
-        if request.url.hostname in ("localhost", "127.0.0.1")
-        and settings.ENVIRONMENT != "production"
-        and settings.WEBAUTHN_RP_ID == "auth.alxprgs.tech"
-        else settings.WEBAUTHN_RP_ID
-    )
-    expected_origin = (
-        "http://localhost:5173"
-        if request.url.hostname in ("localhost", "127.0.0.1")
-        and settings.ENVIRONMENT != "production"
-        and settings.WEBAUTHN_ORIGIN == "https://auth.alxprgs.tech"
-        else settings.WEBAUTHN_ORIGIN
-    )
 
     if payload.mfa_token:
         user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
@@ -319,12 +275,18 @@ async def passkey_auth_verify(
             raise AuthenticationException("Passkey не найден или был удалён")
 
         user_stmt = select(User).where(User.id == cred_obj.user_id)
-        user = (await db.execute(user_stmt)).scalar_one_or_none()
-        if not user or not user.is_active:
+        found_user = (await db.execute(user_stmt)).scalar_one_or_none()
+        if not found_user or not found_user.is_active:
             raise AuthenticationException("Пользователь не найден или заблокирован")
+        user = found_user
 
     await WebAuthnService.verify_authentication(
-        db, user, payload.credential, rp_id=rp_id, origin=expected_origin, settings=settings
+        db,
+        user,
+        payload.credential,
+        rp_id=settings.WEBAUTHN_RP_ID,
+        origin=settings.WEBAUTHN_ORIGIN,
+        settings=settings,
     )
 
     ip = request.client.host if request.client else None
