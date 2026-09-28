@@ -105,13 +105,20 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     expect((await page.request.get(`${clientOrigins[1]}/api/me`)).status()).toBe(200);
 
     // A real authorization response with the wrong nonce must fail in the SDK callback.
+    let nonceTampered = false;
     await page.route("**/oauth/authorize?**", async (route) => {
       const altered = new URL(route.request().url());
       altered.searchParams.set("nonce", "synthetic-wrong-nonce");
+      nonceTampered = true;
       await route.continue({ url: altered.toString() });
     });
     const wrongNonce = await page.goto(`${clientOrigins[0]}/login`);
-    expect(wrongNonce?.status()).toBe(400);
+    expect(nonceTampered).toBe(true);
+    const finalLocation = new URL(page.url());
+    expect(
+      wrongNonce?.status(),
+      `Wrong-nonce navigation ended at ${finalLocation.origin}${finalLocation.pathname}`,
+    ).toBe(400);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(401);
     await page.unroute("**/oauth/authorize?**");
 

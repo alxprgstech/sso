@@ -203,7 +203,8 @@ def seed_source(base: URL, source: str, password: str, key: bytes, secret: str) 
         )
         conn.execute("INSERT INTO roles (id, name) VALUES (%s, 'user')", (role_id,))
         conn.execute(
-            "INSERT INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id)
+            "INSERT INTO user_roles (id, user_id, role_id) VALUES (gen_random_uuid(), %s, %s)",
+            (user_id, role_id),
         )
         conn.execute(
             "INSERT INTO totp_credentials (id, user_id, encrypted_secret, is_confirmed, confirmed_at) "
