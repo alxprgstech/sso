@@ -16,6 +16,7 @@ from app.cli.bootstrap_admin import execute_bootstrap
 from app.config import Settings, get_settings
 from app.core.rbac import ROLE_USER
 from app.main import app
+from app.services import mfa_service
 from app.services.mfa_service import EmailVerificationService, sent_emails_sink
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,6 +89,79 @@ class MockSMTPServer:
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
+async def test_email_verification_ses_provider_with_fake_client_pg(
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    submitted: list[dict[str, object]] = []
+    sample_credential = "Synthetic" + "Example2026!"
+
+    def fake_ses_send(**kwargs: object) -> str:
+        submitted.append(kwargs)
+        return "ses-message-123"
+
+    monkeypatch.setattr(mfa_service, "send_ses_email", fake_ses_send)
+
+    def _get_ses_settings() -> Settings:
+        overridden = copy.copy(get_settings())
+        overridden.ENVIRONMENT = "testing"
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
+        overridden.REQUIRE_VERIFIED_EMAIL = True
+        overridden.EMAIL_PROVIDER = "ses"
+        overridden.SMTP_HOST = ""
+        return overridden
+
+    app.dependency_overrides[get_settings] = _get_ses_settings
+    sent_emails_sink.clear()
+    try:
+        code, _ = await execute_bootstrap(
+            session=pg_session,
+            username="ses_bootstrap_admin",
+            email="ses_admin@alxprgs.tech",
+            password=sample_credential,
+            registration_mode="open",
+        )
+        assert code == 0
+        registration = await pg_client.post(
+            "/api/v1/auth/register",
+            json={
+                "username": "ses_signup_user",
+                "email": "ses_fake@alxprgs.tech",
+                "password": sample_credential,
+                "confirm_password": sample_credential,
+            },
+        )
+        assert registration.status_code == 201
+        assert len(submitted) == 1
+        login_before = await pg_client.post(
+            "/api/v1/auth/login",
+            json={"username": "ses_signup_user", "password": sample_credential},
+        )
+        assert login_before.status_code == 401
+        response = await pg_client.post(
+            "/api/v1/mfa/email/request", json={"email": "ses_fake@alxprgs.tech"}
+        )
+        assert response.status_code == 200
+        assert len(submitted) == 2
+        assert submitted[0]["region"] == "us-east-1"
+        assert submitted[0]["from_email"] == "sso@alxprgs.tech"
+        assert len(sent_emails_sink) == 2
+        token = sent_emails_sink[-1]["token"]
+        confirmed = await pg_client.post("/api/v1/mfa/email/confirm", json={"token": token})
+        assert confirmed.status_code == 200
+        replay = await pg_client.post("/api/v1/mfa/email/confirm", json={"token": token})
+        assert replay.status_code == 401
+        login_after = await pg_client.post(
+            "/api/v1/auth/login",
+            json={"username": "ses_signup_user", "password": sample_credential},
+        )
+        assert login_after.status_code == 200
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+        sent_emails_sink.clear()
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
 async def test_email_verification_full_unverified_flow_no_policy_bypass(
     pg_session: AsyncSession, pg_client: httpx.AsyncClient
 ):
@@ -109,6 +183,9 @@ async def test_email_verification_full_unverified_flow_no_policy_bypass(
         overridden = copy.copy(current)
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = True
+        overridden.ENVIRONMENT = "testing"
+        overridden.EMAIL_PROVIDER = "smtp"
+        overridden.SMTP_HOST = ""
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings
@@ -231,6 +308,8 @@ async def test_email_verification_local_smtp_delivery_and_failure_resilience(
         overridden = copy.copy(current)
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = True
+        overridden.ENVIRONMENT = "testing"
+        overridden.EMAIL_PROVIDER = "smtp"
         overridden.SMTP_HOST = "127.0.0.1"
         overridden.SMTP_PORT = 10255
         return overridden
@@ -278,6 +357,8 @@ async def test_email_verification_local_smtp_delivery_and_failure_resilience(
         overridden = copy.copy(current)
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = True
+        overridden.ENVIRONMENT = "testing"
+        overridden.EMAIL_PROVIDER = "smtp"
         overridden.SMTP_HOST = "127.0.0.1"
         overridden.SMTP_PORT = 59998
         return overridden
@@ -322,6 +403,9 @@ async def test_email_verification_negative_expired_reused_and_rate_limit(
         overridden = copy.copy(current)
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = True
+        overridden.ENVIRONMENT = "testing"
+        overridden.EMAIL_PROVIDER = "smtp"
+        overridden.SMTP_HOST = ""
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings
@@ -377,7 +461,7 @@ async def test_email_verification_negative_expired_reused_and_rate_limit(
             username = "security_email_user"
 
         fresh_token = await EmailVerificationService.send_verification(
-            pg_session, DummyUser(), "security_email@alxprgs.tech"
+            pg_session, DummyUser(), "security_email@alxprgs.tech", _get_enabled_settings()
         )
 
         # Первый вызов -> успех

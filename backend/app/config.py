@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_NAME: str = "ALXPRGS SSO"
     WEBAUTHN_ORIGIN: str = "https://auth.alxprgs.tech"
 
+    # Почтовый транспорт; четыре отложенные возможности остаются выключены по умолчанию.
+    EMAIL_PROVIDER: Literal["smtp", "ses"] = "smtp"
+    SES_REGION: str = "us-east-1"
+    SES_FROM_EMAIL: str = "sso@alxprgs.tech"
+    SES_FROM_NAME: str = "ALXPRGS"
+
     # SMTP параметры
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025
@@ -73,6 +79,27 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "no-reply@alxprgs.tech"
     SMTP_USE_TLS: bool = False
+
+    @field_validator("SES_REGION", "SES_FROM_EMAIL", "SES_FROM_NAME")
+    @classmethod
+    def validate_ses_header_values(cls, value: str) -> str:
+        if not value.strip() or "\r" in value or "\n" in value:
+            raise ValueError("Некорректное значение параметра SES")
+        return value.strip()
+
+    @field_validator("SES_FROM_EMAIL")
+    @classmethod
+    def validate_ses_from_email(cls, value: str) -> str:
+        if (
+            not value.isascii()
+            or value.count("@") != 1
+            or any(char.isspace() or char in "<>,;" for char in value)
+        ):
+            raise ValueError("SES_FROM_EMAIL должен быть ASCII email адресом")
+        local, domain = value.split("@")
+        if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+            raise ValueError("SES_FROM_EMAIL должен быть корректным email адресом")
+        return value
 
     @field_validator("TRUSTED_PROXIES", mode="after")
     @classmethod

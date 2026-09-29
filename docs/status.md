@@ -1,5 +1,17 @@
 # Актуальный статус — GOAL-09 заблокирован обязательными runtime-проверками
 
+- Обновление 2026-09-29T14:54:36+03:00, Codex: по запросу владельца TASK-094 подготовлена к commit. Локальный `.env` уже содержит включённое подтверждение и SES provider, но конфигурация запущенного контейнера и фактическая доставка не подтверждены: Docker CLI здесь недоступен. HTTP 200 у публичного запроса нейтрален; диагностика требует backend logs и безопасных категорий `audit_events`. Файл `.env` игнорируется Git. TASK-094 остаётся `blocked` по PostgreSQL/Compose проверкам.
+
+- Обновление 2026-09-29T03:51:09+03:00, Codex: TASK-094 `blocked` после завершения доступной локальной реализации и проверок. SES fake/SMTP regression/MFA/registration unit — 36 passed; скрипты запуска — 3 passed, 2 subtests; frontend 12 component и 7 utility, Ruff, mypy, lint/typecheck/build, pip check/audit, secret scan 0 новых успешны. PostgreSQL-интеграцию остановил штатный guard без `TEST_DATABASE_URL`; Compose проверить невозможно без Docker. Для разблокировки нужна выделенная безопасная PostgreSQL и среда Docker/Compose; затем обновить `docs/acceptance.md`. AWS SES реально не вызывался.
+
+- Обновление 2026-09-29T03:46:42+03:00, Codex: TASK-094 реализован локально, но PostgreSQL/Compose ещё не подтверждены. Python unit 32/32, frontend component 12/12 и utility 7/7, Ruff/mypy/lint/build, pip check/audit и secret scan 0 новых прошли. PG-фикстура остановила тест: отсутствует `TEST_DATABASE_URL`; Docker/psql/pg_dump недоступны. Задача остаётся `in_progress` до завершения доступных проверок и учёта блокера.
+
+- Обновление 2026-09-29T03:38:07+03:00, Codex: TASK-094 `in_progress`; fake SES + MFA unit 20/20 и frontend component 12/12 прошли. Ruff выявил и после этого исправлен порядок импортов; PG, аудит зависимостей и полный статический контроль ожидаются.
+
+- Обновление 2026-09-29T03:32:03+03:00, Codex: для TASK-094 внесены конфигурация и первичная реализация SES transport и публичной страницы подтверждения. Проверки кода ещё не выполнены, задача `in_progress`; далее зависимости и тесты.
+
+- Обновление 2026-09-29T03:28:42+03:00, Codex: TASK-094 `in_progress` по запросу владельца — добавление выбираемого SES v2 транспорта при сохранении SMTP по умолчанию. Исходное дерево чисто; начало, план и критерии записаны. Проверки нового кода ещё не проводились. Общая приёмка GOAL-09 остаётся `blocked` по ранее зафиксированным основаниям.
+
 - Обновление 2026-09-28T22:07:51+03:00, Codex: [CI на документационном `84ad9aa`](https://github.com/alxprgstech/sso/actions/runs/36469783369) прошёл все семь заданий. TASK-092/093 `done`; три исходных сбоя PR #9 и следующие PostgreSQL/browser отказы исправлены. Первоначальные 58 baseline-сигналов ждут приватной оценки владельца; общая приёмка GOAL-09 остаётся `blocked` по другим критериям.
 
 - Обновление 2026-09-28T22:00:44+03:00, Codex: TASK-092 и TASK-093 `done`. [CI на `e44c57e`](https://github.com/alxprgstech/sso/actions/runs/36468921940) прошёл все семь заданий: backend PostgreSQL default-off 199 passed/7 skipped и enabled 20 passed; Playwright default-off 5 и enabled 4 passed; security, Ruff, маркер, frontend, SDK, version и CD-template успешны. Документы дополняются этим результатом; CI для итогового документационного SHA ещё предстоит. Первоначальные 58 baseline-сигналов ждут приватной оценки, общая приёмка GOAL-09 `blocked`.

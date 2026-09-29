@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import secrets
 import string
@@ -15,7 +16,11 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 from app.config import Settings, get_settings
-from app.core.exceptions import AuthenticationException, AuthorizationException
+from app.core.exceptions import (
+    AuthenticationException,
+    AuthorizationException,
+    FeatureDisabledException,
+)
 from app.core.security import (
     decrypt_totp_secret,
     encrypt_totp_secret,
@@ -31,10 +36,11 @@ from app.models.mfa import (
 )
 from app.models.user import User
 from app.services.audit_service import AuditService
+from app.services.ses_email import SESEmailDeliveryError, send_ses_email
 
 settings = get_settings()
 
-# Локальный сборщик отправленных писем (in-memory mail sink, SEC-FLAG-07)
+# Локальный сборщик доступен только при ENVIRONMENT=testing.
 sent_emails_sink: list[dict[str, Any]] = []
 
 
@@ -571,11 +577,13 @@ class EmailVerificationService:
         settings: Settings | None = None,
     ) -> str:
         """
-        Выпуск токена подтверждения email и отправка письма в локальный сборщик и/или SMTP (SEC-FLAG-07, G4-EMAIL).
+        Выпуск токена подтверждения и отправка через выбранный транспорт.
         """
         import asyncio
 
         active_settings = settings or get_settings()
+        if not active_settings.FEATURE_EMAIL_VERIFICATION_ENABLED:
+            raise FeatureDisabledException(feature="FEATURE_EMAIL_VERIFICATION_ENABLED")
 
         raw_token = generate_random_token(32)
         h = hash_token(raw_token)
@@ -592,30 +600,56 @@ class EmailVerificationService:
         db.add(tok)
         await db.commit()
 
-        # Запись в локальный почтовый сборщик (mock sink, без обязательных внешних сетевых вызовов, SEC-FLAG-07)
-        sent_emails_sink.append(
-            {
-                "to": email,
-                "subject": "Подтверждение адреса электронной почты ALXPRGS SSO",
-                "token": raw_token,
-                "timestamp": now.isoformat(),
-            }
+        subject = "Подтверждение адреса электронной почты ALXPRGS SSO"
+        verification_url = f"{active_settings.FRONTEND_URL}/verify-email?token={raw_token}"
+        body = (
+            f"Здравствуйте, {user.username}!\n\n"
+            f"Для подтверждения вашего адреса электронной почты перейдите по ссылке:\n"
+            f"{verification_url}\n\n"
+            f"Код подтверждения: {raw_token}\n\n"
+            f"Ссылка действительна 24 часа. Если вы не запрашивали подтверждение, проигнорируйте письмо.\n"
         )
 
-        # Если настроен SMTP хост и порт — попытка отправки через реальный SMTP
-        if active_settings.SMTP_HOST and active_settings.SMTP_PORT:
-            verification_url = f"{active_settings.FRONTEND_URL}/verify-email?token={raw_token}"
-            body = (
-                f"Здравствуйте, {user.username}!\n\n"
-                f"Для подтверждения вашего адреса электронной почты перейдите по ссылке:\n"
-                f"{verification_url}\n\n"
-                f"Код подтверждения: {raw_token}\n\n"
-                f"Ссылка действительна 24 часа. Если вы не запрашивали подтверждение, проигнорируйте письмо.\n"
+        # Тестовый сборщик не должен удерживать сырые токены в обычном процессе.
+        if active_settings.ENVIRONMENT == "testing":
+            sent_emails_sink.append(
+                {"to": email, "subject": subject, "token": raw_token, "timestamp": now.isoformat()}
             )
+
+        if active_settings.EMAIL_PROVIDER == "ses":
+            safe_username = html.escape(user.username)
+            safe_url = html.escape(verification_url, quote=True)
+            safe_token = html.escape(raw_token)
+            html_body = (
+                f"<p>Здравствуйте, {safe_username}!</p>"
+                f'<p>Для подтверждения адреса перейдите по <a href="{safe_url}">ссылке</a>.</p>'
+                f"<p>Код подтверждения: {safe_token}</p>"
+                "<p>Ссылка действительна 24 часа. Если вы не запрашивали подтверждение, "
+                "проигнорируйте письмо.</p>"
+            )
+            try:
+                await asyncio.to_thread(
+                    send_ses_email,
+                    region=active_settings.SES_REGION,
+                    from_email=active_settings.SES_FROM_EMAIL,
+                    from_name=active_settings.SES_FROM_NAME,
+                    to_email=email,
+                    subject=subject,
+                    text_body=body,
+                    html_body=html_body,
+                )
+            except SESEmailDeliveryError as error:
+                await AuditService.log_event(
+                    db,
+                    event_type="email_delivery_failed",
+                    user_id=user.id,
+                    details={"email": email, "reason": error.reason, "provider": "ses"},
+                )
+        elif active_settings.SMTP_HOST and active_settings.SMTP_PORT:
             smtp_ok = await asyncio.to_thread(
                 EmailVerificationService._send_smtp_email,
                 to_email=email,
-                subject="Подтверждение адреса электронной почты ALXPRGS SSO",
+                subject=subject,
                 body=body,
                 settings=active_settings,
             )

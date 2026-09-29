@@ -260,7 +260,16 @@ async def test_email_verification_service():
     mock_db = AsyncMock()
 
     # 1. Запрос подтверждения
-    raw_token = await EmailVerificationService.send_verification(mock_db, user, user.email)
+    mail_settings = Settings(
+        _env_file=None,
+        ENVIRONMENT="testing",
+        FEATURE_EMAIL_VERIFICATION_ENABLED=True,
+        EMAIL_PROVIDER="smtp",
+        SMTP_HOST="",
+    )
+    raw_token = await EmailVerificationService.send_verification(
+        mock_db, user, user.email, mail_settings
+    )
     assert len(sent_emails_sink) == 1
     assert sent_emails_sink[0]["to"] == user.email
     assert raw_token == sent_emails_sink[0]["token"]

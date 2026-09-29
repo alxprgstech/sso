@@ -9,6 +9,7 @@ FastAPI бэкенд и OIDC-провайдер экосистемы ALXPRGS SSO
 - Интерактивный CLI-мастер первичной инициализации первого администратора (`bootstrap_admin`)
 - Защита от атак повторного использования (Replay Protection) и гонок на транзакциях PostgreSQL
 - Четыре отложенных механизма (TOTP, WebAuthn Passkey, Recovery Codes, Email verification) с полным отключением по умолчанию
+- Выбираемый транспорт писем подтверждения: SMTP по умолчанию или Amazon SES API v2 через стандартную цепочку AWS credentials
 
 ## Запуск
 ```bash

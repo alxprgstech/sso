@@ -161,6 +161,7 @@ jobs:
 
       - name: Run Backend Tests on PostgreSQL (Default-off profile)
         env:
+          EMAIL_PROVIDER: "smtp"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
@@ -177,6 +178,7 @@ jobs:
 
       - name: Run MFA & Feature Flags Tests (Enabled profile)
         env:
+          EMAIL_PROVIDER: "smtp"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test

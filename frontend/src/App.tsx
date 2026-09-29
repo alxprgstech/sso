@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AdminPage } from "./pages/AdminPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 
 const MainContent: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -12,6 +13,10 @@ const MainContent: React.FC = () => {
   const [authView, setAuthView] = useState<"login" | "register">(
     window.location.pathname === "/register" ? "register" : "login"
   );
+
+  if (window.location.pathname === "/verify-email") {
+    return <VerifyEmailPage />;
+  }
 
   if (isLoading) {
     return (

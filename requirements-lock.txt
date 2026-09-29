@@ -9,6 +9,8 @@ argon2-cffi==25.1.0
 ast-serialize==0.11.2
 asyncpg==0.31.0
 Authlib==1.8.0
+boto3==1.43.104
+botocore==1.43.104
 build==1.6.1
 cbor2==6.1.4
 certifi==2026.7.22
@@ -28,6 +30,7 @@ httptools==0.8.0
 httpx==0.28.1
 idna==3.20
 iniconfig==2.3.0
+jmespath==1.1.0
 joserfc==1.7.5
 libRt==0.15.0; platform_python_implementation != "PyPy"
 Mako==1.4.3
@@ -52,12 +55,15 @@ PyOTP==2.10.0
 pyproject_hooks==1.3.3
 pytest-asyncio==1.4.0
 pytest==9.1.1
+python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
 python-multipart==0.0.32
 PyYAML==6.0.3
 requests==2.34.2
 ruff==0.16.8
+s3transfer==0.19.2
 setuptools==84.0.0
+six==1.17.0
 SQLAlchemy==2.0.54
 starlette==1.7.0
 tomlkit==0.15.1

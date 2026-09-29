@@ -1,5 +1,17 @@
 # Акт и матрица приёмки программного комплекса ALXPRGS SSO
 
+## Дополнение TASK-094: транспорт SES v2 (2026-09-29)
+
+| Критерий | Текущее доказательство | Состояние |
+| --- | --- | --- |
+| SES Simple text/HTML, AWS credential chain, From и безопасные ошибки | `tests/test_ses_email.py`, fake client; затронутый Python unit набор 36 passed | локально подтверждено mock-тестами, не реальным SES |
+| SMTP по умолчанию и default-off | Fake SMTP проверил прежнее текстовое письмо и параметры транспорта; MFA/registration unit и тесты `start.ps1`/`start.sh` прошли (3 passed, 2 subtests); локальный SMTP-приёмник и PG-набор ожидают отдельной PostgreSQL | частично подтверждено |
+| Публичная ссылка без автоматического погашения | Frontend component 12 passed, utility 7 passed, lint/typechecks/build успешны | локально подтверждено компонентно |
+| Конфигурация и зависимости | `pip check`, `pip-audit --strict -r requirements-lock.txt`, Ruff, mypy, ограниченный security script, secret scan 116 исторических/0 новых | локально подтверждено |
+| PostgreSQL интеграция, Compose и реальная SES-доставка | Новый PG-тест остановлен защитной фикстурой без `TEST_DATABASE_URL`; Docker/psql/pg_dump недоступны; реальная отправка в тестах запрещена | не проверено / blocked |
+
+Эта запись не меняет общую приёмку GOAL-09 и не объявляет SES-доставку в AWS проверенной.
+
 > Коррекция 2026-09-26, GOAL-09 / TASK-078: приведённый ниже акт GOAL-08 — исторический отчёт, **не действующая общая приёмка**. Обнаружены опасный backup/restore test, фиктивный callback двух клиентов, небезопасные cookie-сессии примеров, неполные CI/release проверки и ошибочные связи FINAL-02/03 в JSON. Значение `local_test_coverage_rate: 1.0` не имеет измеренной основы; `tests/test_db_guard.py` не существует (фактический файл — `tests/test_database_guard.py`). Текущие результаты и незакрытые критерии ведутся в [GOAL-09](acceptance-goal-09.md). Пока новые проверки не выполнены, общая оценка — `in_progress`/`blocked`, а прежние `PASSED` относятся только к указанным историческим запускам.
 
 - **Текущая версия продукта**: 0.2.0 (GOAL-08 Final)

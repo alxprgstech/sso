@@ -21,6 +21,7 @@ const apiMock = vi.hoisted(() => ({
   getAuditEvents: vi.fn(),
   downloadAudit: vi.fn(),
   setupTotp: vi.fn(),
+  confirmEmailVerification: vi.fn(),
 }));
 vi.mock("./api/client", () => ({ api: apiMock }));
 
@@ -75,6 +76,28 @@ async function enterPassword() {
 }
 
 describe("server capabilities and account flows", () => {
+  it("opens a verification link without a session and waits for a user click", async () => {
+    window.history.replaceState({}, "", "/verify-email?token=synthetic-once-token");
+    apiMock.confirmEmailVerification.mockResolvedValue({ status: "ok", message: "Подтверждено" });
+    render(<App />);
+    const button = await screen.findByRole("button", { name: "Подтвердить адрес" });
+    expect(window.location.search).toBe("");
+    expect(apiMock.confirmEmailVerification).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(apiMock.confirmEmailVerification).toHaveBeenCalledWith("synthetic-once-token"));
+    expect((await screen.findByRole("status")).textContent).toContain("Адрес подтверждён");
+  });
+
+  it("shows an error for an expired verification token without exposing it", async () => {
+    window.history.replaceState({}, "", "/verify-email?token=synthetic-expired-token");
+    apiMock.confirmEmailVerification.mockRejectedValue(new Error("Ссылка недействительна"));
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Подтвердить адрес" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Ссылка недействительна");
+    expect(window.location.search).toBe("");
+    expect(screen.queryByText("synthetic-expired-token")).toBeNull();
+  });
+
   it("does not expose TOTP setup or QR when the server flag is disabled", async () => {
     apiMock.getMe.mockResolvedValue(admin);
     render(<App />);

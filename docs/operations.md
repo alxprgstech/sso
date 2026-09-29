@@ -55,6 +55,10 @@ python scripts/rotate_keys.py
 
 ### 2.2. Запуск через Docker Compose
 
+Для подтверждения почты `FEATURE_EMAIL_VERIFICATION_ENABLED` включается отдельно от выбора транспорта. `EMAIL_PROVIDER=smtp` сохраняет прежние `SMTP_*`; `EMAIL_PROVIDER=ses` использует `SES_REGION` (default `us-east-1`), `SES_FROM_EMAIL` (default `sso@alxprgs.tech`) и `SES_FROM_NAME` (default `ALXPRGS`). Compose передаёт эти параметры контейнеру backend. Не помещайте AWS access keys в `.env`, Compose, документацию или исходники. На AWS назначьте процессу IAM role с `ses:SendEmail` на ARN identity `alxprgs.tech` в `us-east-1`, по возможности ограниченной `ses:FromAddress`; локально используйте стандартный AWS profile/credential chain. Локальный Compose-контейнер должен отдельно получить стандартный источник credentials во время запуска: профиль AWS на хосте не появляется внутри контейнера автоматически. Production runtime обязан иметь доступ к SES API по HTTPS с обычной проверкой сертификата.
+
+Перед включением SES оператор проверяет статус identity и custom MAIL FROM `bounce.alxprgs.tech` в нужном регионе, статус sandbox/production access, права роли и отсутствие блокировки отправки. Если credentials отсутствуют, identity не разрешает `From`, получатель отклонён либо API недоступен, приложение фиксирует безопасную категорию `email_delivery_failed` без содержимого письма; публичный ответ остаётся нейтральным. `ses_email_accepted` с Message ID означает принятие запроса SES, а не доставку. Поздние bounce/complaint события этим приложением пока не обрабатываются. Автоматические проверки работают с fake-клиентом и локальным SMTP, без реальной отправки через AWS.
+
 ```bash
 # Сборка и запуск контейнеров в фоновом режиме
 docker compose up -d --build

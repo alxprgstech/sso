@@ -409,6 +409,9 @@ async def test_enabled_profile_email_verification_and_enforcement_pg(
         overridden = copy.copy(current)
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = True
+        overridden.ENVIRONMENT = "testing"
+        overridden.EMAIL_PROVIDER = "smtp"
+        overridden.SMTP_HOST = ""
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings

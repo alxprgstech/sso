@@ -2399,3 +2399,43 @@
 - Время: 2026-09-28T22:07:51+03:00. Исполнитель: Codex. Требования: CI-01/02, C9-04, DOC-TRACK-01..07.
 - Проверка: commit `84ad9aae3e9b9219a67b7df7a5eca53ddbf4ae30` содержит итоговый акт, журнал, план и статус; [CI 36469783369](https://github.com/alxprgstech/sso/actions/runs/36469783369) на этом SHA завершился success во всех семи заданиях. Перед commit документации локальный secret scan с синтетическим контролем — 116/0, JSON valid, `git diff --check` — exit 0.
 - Статус: TASK-092/093 `done`, GOAL-09 `blocked` из-за других приёмочных пунктов и первоначальных 58 baseline-сигналов без приватной оценки. Следующий шаг — сохранить этот факт в учёте; последующая проверка документирующего commit выполняется как контроль итогового дерева.
+### TASK-094 — Начало реализации SES transport
+
+- Время/начало: 2026-09-29T03:28:42+03:00. Исполнитель: Codex. Требования: SEC-FLAG-07, REG-09, DOC-TRACK-01..07.
+- Наблюдение: рабочее дерево чисто. Отправка находится в `EmailVerificationService.send_verification`; SMTP по умолчанию, `sent_emails_sink` удерживает сырой токен, регистрация не передаёт активные `Settings`, а ссылка `/verify-email` не обслуживается frontend.
+- План: TASK-094 в `docs/plan.md`; SES v2 как выбираемая ветка без новой универсальной абстракции, тестирование fake-клиентом и локальным SMTP.
+- Проверки: только чтение исходников и `git status --short --branch`; тесты реализации ещё не запускались. Блокеров реализации пока нет. Следующий шаг: код конфигурации и транспорта.
+
+### TASK-094 — Конфигурация, SES transport и публичная ссылка
+
+- Время: 2026-09-29T03:32:03+03:00. Исполнитель: Codex. Требования: SEC-FLAG-07, REG-09, DOC-TRACK-01..07.
+- Изменения: `backend/app/config.py`, `backend/app/services/ses_email.py`, `backend/app/services/mfa_service.py`, `backend/app/services/auth_service.py`, `backend/pyproject.toml`, `.env.example`, `docker-compose.yml`, `frontend/src/App.tsx`, `frontend/src/pages/VerifyEmailPage.tsx`. Добавлены выбор provider, SES v2 Simple text/HTML, безопасная классификация сбоев, Message ID, передача настроек регистрации, тестовый режим сборщика и публичное подтверждение без автоматического погашения токена.
+- Проверки: изменения пока не тестировались. Следующий шаг: фиксация зависимостей, тесты и прогон проверок; при выявленных ошибках исправить первопричины.
+
+### TASK-094 — Тесты транспорта и ссылка подтверждения
+
+- Время: 2026-09-29T03:38:07+03:00. Исполнитель: Codex. Требования: SEC-FLAG-07, REG-09, DOC-TRACK-01..07.
+- Изменения: `requirements-lock.txt` дополнен boto3/botocore и зависимостями после разрешения wheel-файлов `boto3==1.43.104`; добавлены `tests/test_ses_email.py`, PG fake SES сценарий и тесты страницы в `frontend/src/App.component.test.tsx`. Существующие тесты email используют явный `ENVIRONMENT=testing` для доступа к sink.
+- Проверки: `pytest -q tests/test_ses_email.py tests/test_mfa_features.py` — 20 passed (11 предупреждений, часть от существующих AsyncMock); `npm run test:components` — 12 passed; `npm run typecheck:tests` — exit 0. Первый `ruff check backend/ tests/` обнаружил один порядок импортов в новом PG тесте; исправлен, повторная проверка ожидается. Тесты AWS не делают сетевых вызовов.
+- Следующий шаг: повторить Ruff, проверить зависимости/PG-контур, выполнить документацию и остальные проверки.
+
+### TASK-094 — Статический контроль, security scan и ограничение PostgreSQL
+
+- Время: 2026-09-29T03:46:42+03:00. Исполнитель: Codex. Требования: SEC-FLAG-07, REG-09, CI-01/02, DOC-TRACK-01..07.
+- Изменения: `.github/workflows/ci.yml` явно задаёт SMTP в обоих backend-профилях; добавлены README, руководство эксплуатации, архитектура и ADR-0007. Тестовый пароль в новом PG-тесте строится из синтетических частей после двух новых срабатываний secret scanner; baseline не менялся.
+- Проверки: затронутые Python unit 32 passed; frontend component 12 passed, utility 7 passed, lint/typecheck/typecheck:tests/build успешны; Ruff lint/format, mypy и `pip check` успешны; `pip-audit --strict -r requirements-lock.txt` — известных уязвимостей нет; ограниченный security script exit 0; полный `check_secret_scan` после исправления — 116 исторических/0 новых; `git diff --check` exit 0. Первые прогоны Ruff format и secret scan выявили исправленные отклонения.
+- Блокер: новый PostgreSQL тест остановился на `TestDatabaseSafetyError: TEST_DATABASE_URL` не задан; Docker, psql, pg_dump не обнаружены. Нельзя считать PG/Compose проверенными. Следующий шаг: закончить локальные проверки и документацию; для PG нужен отдельный безопасный DSN и client tools.
+
+### TASK-094 — Завершение доступных локальных проверок и точка продолжения
+
+- Время: 2026-09-29T03:51:09+03:00. Исполнитель: Codex. Требования: SEC-FLAG-07, REG-09, CI-01/02, DOC-TRACK-01..07. Фактическое начало задачи: 2026-09-29T03:28:42+03:00; завершения нет из-за блокера обязательной PostgreSQL/Compose проверки.
+- Изменения: добавлен fake SMTP regression для прежнего текстового письма в `tests/test_ses_email.py`; уточнено получение credentials внутри локального контейнера в `docs/operations.md`; обновлены `docs/plan.md`, `docs/status.md`, `docs/acceptance.md`.
+- Проверки: `pytest -q tests/test_ses_email.py tests/test_mfa_features.py tests/test_registration.py` — 36 passed, 18 предупреждений от ранее существующих AsyncMock/Starlette; `pytest -q tests/test_start_ps1.py tests/test_start_sh.py` — 3 passed и 2 subtests; Ruff lint/format и mypy успешны; `check_secret_scan` — 116 исторических/0 новых. Ранее выполнены frontend 12 component + 7 utility, typecheck/lint/build, `pip check`, `pip-audit --strict`, ограниченный security scan. Реальная отправка SES не выполнялась.
+- Блокер и следующий шаг: `TEST_DATABASE_URL` отсутствует, Docker/Compose и клиентские инструменты PostgreSQL недоступны. На выделенном защищённом PostgreSQL запустить `pytest -v tests/integration/test_email_verification_pg.py tests/integration/test_features_pg.py tests/integration/test_registration_pg.py`; в среде с Docker выполнить `docker compose config --quiet` и `docker compose build backend`. После результатов обновить матрицу и статус TASK-094. Защиту тестовой БД не обходить.
+
+### TASK-094 — Подготовка commit и диагностика локальной отправки
+
+- Время: 2026-09-29T14:54:36+03:00. Исполнитель: Codex. Требования: SEC-FLAG-07, DOC-TRACK-01..07.
+- По запросу владельца проверены состояние дерева и только несекретные параметры локального `.env`: `FEATURE_EMAIL_VERIFICATION_ENABLED=true`, `EMAIL_PROVIDER=ses`, `SES_REGION=us-east-1`, `SES_FROM_EMAIL=sso@alxprgs.tech`. `.env` игнорируется Git и не включается в commit. Показанный HTTP 200 у `/email/request` не доказывает доставку: для неизвестного/уже подтверждённого адреса ответ намеренно нейтрален; сбой SES фиксируется в `audit_events`, а Message ID — в логе только при принятии запроса SES.
+- Проверки: `git status --short --branch` — ожидаемые файлы TASK-094 без посторонних изменений; `git diff --check` — exit 0. Docker CLI в этой среде не обнаружен, поэтому контейнерные логи не просмотрены и конфигурация запущенного контейнера не подтверждена.
+- Следующий шаг: создать commit с реализацией, затем дать владельцу команды для пересоздания backend-контейнера, просмотра логов и безопасной диагностики записей аудита. PostgreSQL/Compose проверка TASK-094 остаётся blocked.

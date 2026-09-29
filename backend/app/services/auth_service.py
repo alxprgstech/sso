@@ -360,7 +360,9 @@ class AuthService:
         if active_settings.FEATURE_EMAIL_VERIFICATION_ENABLED:
             from app.services.mfa_service import EmailVerificationService
 
-            await EmailVerificationService.send_verification(db, new_user, clean_email)
+            await EmailVerificationService.send_verification(
+                db, new_user, clean_email, active_settings
+            )
 
         await AuditService.log_event(
             db,
