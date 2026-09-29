@@ -205,3 +205,5 @@ python scripts/send_test_verification_email.py --to recipient@example.com
 ```
 
 Первый запуск проверяет письмо без AWS; второй отправляет через SES независимо от `EMAIL_PROVIDER`. Скрипт читает корневой `.env`; существующее окружение приоритетно. Используются `SES_REGION`, `SES_FROM_EMAIL`, `SES_FROM_NAME`, стандартная цепочка AWS credentials (включая `AWS_PROFILE`) и локальные AWS credential variables из `.env`. Успех означает принятие SES, а не подтверждённую доставку. Требования к verified identity и SES sandbox: [AWS](https://docs.aws.amazon.com/boto3/latest/guide/ses-verify.html), [эксплуатация](docs/operations.md).
+
+Пробный шаблон английский: имя редактируется в DISPLAY_NAME, сайт в SITE_URL. Дополнительные подстановки: {name}, {account}, {site}. Аккаунт отображается как маскированный адрес получателя. Код остаётся тестовым и не подтверждает аккаунт.

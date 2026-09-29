@@ -22,36 +22,30 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from app.services.ses_email import SESEmailDeliveryError, send_ses_email  # noqa: E402
 
-# РЕДАКТИРУЙТЕ ПИСЬМО ЗДЕСЬ. Доступные подстановки: {code}, {time}.
+# РЕДАКТИРУЙТЕ ПИСЬМО ЗДЕСЬ. Подстановки: {code}, {time}, {name}, {account}, {site}.
 # CSS-скобки при использовании format нужно удваивать: {{ и }}.
-SUBJECT = "Код подтверждения ALXPRGS"
-TEXT_TEMPLATE = """Здравствуйте!
+DISPLAY_NAME = "ALXPRGS user"
+SITE_URL = "https://auth.alxprgs.tech/"
+SUBJECT = "Your ALXPRGS verification code"
+TEXT_TEMPLATE = """Hi {name}!
 
-Ваш код подтверждения: {code}
+For your ALXPRGS account {account}, your verification code is: {code}
+Don't share this code with anyone else.
+If you didn't request this code, change your password as soon as possible at {site}.
 
-Это тестовое письмо. Код никуда не привязан и не подтверждает аккаунт.
-Время отправки: {time}
-
-Никому не сообщайте код.
+This email was sent automatically, please don't reply to it.
 """
 HTML_TEMPLATE = """<!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;background:#f1f5f9;font-family:Arial,sans-serif">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td align="center" style="padding:32px 12px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-style="max-width:560px;background:#fff;border-radius:18px">
-<tr><td style="padding:32px">
-<div style="font-weight:bold;color:#2563eb;font-size:22px">ALXPRGS</div>
-<h1 style="font-size:24px;color:#0f172a">Подтвердите почту</h1>
-<p style="color:#334155">Здравствуйте! Ваш код подтверждения:</p>
-<p style="font-size:36px;letter-spacing:10px;font-weight:bold;color:#0f172a">{code}</p>
-<p style="color:#64748b">Это тестовое письмо. Код никуда не привязан
-и не подтверждает аккаунт.</p>
-<p style="color:#64748b;font-size:13px">Время отправки: {time}<br>
-Никому не сообщайте код.</p>
-</td></tr></table></td></tr></table></body></html>
+<body style="font-family:Arial,sans-serif;font-size:14px;color:#222">
+<p>Hi <strong>{name}</strong>!</p>
+<p>For your ALXPRGS account {account}, your verification code is: {code}<br>
+Don't share this code with anyone else.<br>
+If you didn't request this code, change your password as soon as possible at
+<a href="{site}">auth.alxprgs.tech</a>.</p>
+<p>This email was sent automatically, please don't reply to it.</p>
+</body></html>
 """
 
 
@@ -72,9 +66,13 @@ def validate_address(value: str) -> str:
 
 
 def build_test_message(to_email: str, settings: MailSettings) -> EmailMessage:
+    local, domain = to_email.split("@", 1)
     values = {
         "code": f"{secrets.randbelow(1_000_000):06d}",
         "time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "name": DISPLAY_NAME,
+        "account": f"{local[:2]}*****@{domain}",
+        "site": SITE_URL,
     }
     message = EmailMessage()
     message["Subject"] = SUBJECT

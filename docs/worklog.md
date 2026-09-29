@@ -2542,3 +2542,12 @@
 - Добавлены scripts/send_test_verification_email.py и tests/test_test_verification_email_script.py, README с запуском; docs/acceptance.md отражает проверки. Код не сохраняется, персональный адрес не добавлен; используется существующий SES v2 транспорт.
 - Проверки: unittest 5 passed, Ruff check/format passed, CLI help/dry-run passed, diff check passed. Реальный SES не вызывался. .venv ссылается на отсутствующий Python 3.13; использован bundled Python.
 - Блокер: secret scan — detect-secrets 1.5.0 is required; нужен доступный scanner. Реализация завершена 2026-09-30T01:16:29.9124166+03:00. Следующий шаг: локальный коммит, сканер на рабочем стенде/CI, запуск письма владельцем.
+
+### TASK-100 — начало
+
+- Время: 2026-09-30T01:19:55.0693980+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07. План: английское пробное письмо по образцу владельца, локальные unit/Ruff/dry-run. Репозиторий чистый; TASK-099 сохранён коммитом eccba0d. Следующий шаг: редактирование шаблонов.
+
+### TASK-100 — завершение
+
+- Время: 2026-09-30T01:21:05.8138786+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07. Изменены scripts/send_test_verification_email.py и README: английские text/HTML по образцу, ALXPRGS, редактируемое имя, маскированный email, auth.alxprgs.tech.
+- Проверки: Ruff check/format passed, unittest 5 passed, dry-run passed, diff check passed. Реальная отправка не выполнялась; прежний блокер scanner TASK-099 сохраняется. Завершение: 2026-09-30T01:21:05.8138786+03:00. Следующий шаг: включить учёт в локальный коммит; владельцу изменить DISPLAY_NAME перед отправкой.

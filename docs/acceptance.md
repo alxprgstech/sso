@@ -181,3 +181,5 @@
 - Проверено 2026-09-30T01:16:29.9124166+03:00, Codex: unittest 5 passed (SES замокан), Ruff check/format passed, CLI help/dry-run passed, diff check passed.
 - Реальная отправка не проверена. .venv не запускается: отсутствует указанный Python 3.13; использован bundled Python с pure-Python зависимостями из .venv.
 - Secret scan не запустился: detect-secrets 1.5.0 is required. Общая приёмка не меняется.
+
+- TASK-100, 2026-09-30T01:21:05.8138786+03:00: английский пробный шаблон — Ruff check/format, unittest 5 и dry-run passed. Реальный SES не вызывался; прежние ограничения TASK-099 сохраняются.
