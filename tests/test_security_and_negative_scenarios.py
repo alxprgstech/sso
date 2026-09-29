@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import uuid
@@ -10,7 +11,7 @@ from fastapi import HTTPException
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.deps import generate_csrf_token, verify_csrf
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException, OAuthErrorException
 from app.core.security import hash_password, hash_token
 from app.main import app
@@ -300,19 +301,49 @@ async def test_csrf_protection_enforcement_direct():
 
 def test_deferred_features_return_404_when_disabled():
     """Все эндпоинты отложенных возможностей возвращают 404 feature_disabled при флагах=false."""
-    endpoints = [
-        ("POST", "/api/v1/mfa/totp/setup", None),
-        ("POST", "/api/v1/mfa/passkey/register/options", None),
-        ("POST", "/api/v1/mfa/recovery-codes/generate", None),
-        ("POST", "/api/v1/mfa/email/request", {"email": "user@example.com"}),
-    ]
+    from app.database import get_db
 
-    for method, path, payload in endpoints:
-        res = client.post(path, json=payload or {})
-        assert res.status_code == 404, f"Endpoint {path} did not return 404"
-        assert res.json()["error"] == "feature_disabled", (
-            f"Endpoint {path} didn't return feature_disabled"
-        )
+    def _get_default_off_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_TOTP_ENABLED = False
+        overridden.FEATURE_PASSKEY_ENABLED = False
+        overridden.FEATURE_RECOVERY_CODES_ENABLED = False
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
+        overridden.REQUIRE_VERIFIED_EMAIL = False
+        return overridden
+
+    fake_db = AsyncMock()
+    fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=0))
+    fake_db.scalar.return_value = None
+
+    async def _get_fake_db():
+        yield fake_db
+
+    app.dependency_overrides[get_settings] = _get_default_off_settings
+    app.dependency_overrides[get_db] = _get_fake_db
+    try:
+        endpoints = [
+            ("POST", "/api/v1/mfa/totp/setup", None, "FEATURE_TOTP_ENABLED"),
+            ("POST", "/api/v1/mfa/passkey/register/options", None, "FEATURE_PASSKEY_ENABLED"),
+            ("POST", "/api/v1/mfa/recovery-codes/generate", None, "FEATURE_RECOVERY_CODES_ENABLED"),
+        ]
+
+        for method, path, payload, feature in endpoints:
+            res = client.post(path, json=payload or {})
+            assert res.status_code == 404, f"Endpoint {path} did not return 404"
+            assert res.json()["error"] == "feature_disabled", (
+                f"Endpoint {path} didn't return feature_disabled"
+            )
+            assert res.json()["feature"] == feature
+
+        # Email request обязателен и доступен (не отключается флагом)
+        email_res = client.post("/api/v1/mfa/email/request", json={"email": "user@example.com"})
+        assert email_res.status_code == 200
+        assert email_res.json()["status"] == "ok"
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+        app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio

@@ -80,6 +80,8 @@ class MockSMTPServer:
 
     async def start(self):
         self.server = await asyncio.start_server(self.handle_client, self.host, self.port)
+        if self.server.sockets:
+            self.port = self.server.sockets[0].getsockname()[1]
 
     async def stop(self):
         if self.server:

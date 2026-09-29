@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.db_guard import get_test_database_url
+from tests.integration.test_email_verification_pg import MockSMTPServer
 
 # ==============================================================================
 # 1. ТЕСТЫ ВАЛИДАЦИИ ДОВЕРЕННЫХ ПРОКСИ И ЗАЩИТЫ ОТ SPOOFING (G4-LIMITS)
@@ -142,12 +143,10 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
     1. Запускаются 2 независимых процесса Uvicorn на портах 8011 и 8012.
     2. Оба процесса подключены к одной и той же тестовой PostgreSQL БД.
     3. Клиент отправляет чередующиеся запросы:
-       - Запрос 1 -> Процесс 1 (HTTP 200/400)
-       - Запрос 2 -> Процесс 2
-       - Запрос 3 -> Процесс 1
-       - Запрос 4 -> Процесс 2
-       - Запрос 5 -> Процесс 1
-       - Запрос 6 -> Процесс 2 (должен вернуть HTTP 429!)
+       - Запрос 1 -> Процесс 1 (HTTP 202)
+       - Запрос 2 -> Процесс 2 (HTTP 202)
+       - Запрос 3 -> Процесс 1 (HTTP 202)
+       - Запрос 4 -> Процесс 2 (должен вернуть HTTP 429!)
     4. Доказывается, что лимит срабатывает суммарно по PostgreSQL, а не изолированно в памяти.
     """
     test_db_url = get_test_database_url()
@@ -164,9 +163,15 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
         password="AdminPassword2026!",
         registration_mode="open",
     )
-    # Очищаем аудит для чистоты теста
+    # Очищаем аудит и незавершённые заявки для чистоты теста
+    await pg_session.execute(
+        text("DELETE FROM pending_registrations WHERE email LIKE 'dist_%@alxprgs.tech'")
+    )
     await pg_session.execute(text("DELETE FROM audit_events WHERE ip_address = '127.0.0.1'"))
     await pg_session.commit()
+
+    smtp_mock = MockSMTPServer(host="127.0.0.1", port=0)
+    await smtp_mock.start()
 
     python_exe = sys.executable
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -177,6 +182,10 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
     env["TEST_DATABASE_URL"] = test_db_url
     env["DATABASE_URL"] = test_db_url
     env["TRUSTED_PROXIES"] = "127.0.0.1,::1"
+    env["ENVIRONMENT"] = "testing"
+    env["EMAIL_PROVIDER"] = "smtp"
+    env["SMTP_HOST"] = "127.0.0.1"
+    env["SMTP_PORT"] = str(smtp_mock.port)
 
     loop_arg = ["--loop", "asyncio:SelectorEventLoop"] if sys.platform == "win32" else []
 
@@ -241,11 +250,9 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
                     err_txt = f.read()
                 pytest.fail(f"Процесс 2 на порту {port2} не запустился. Лог:\n{err_txt}")
 
-            # Отправляем 5 запросов регистрации, распределяя по процессам:
-            # Лимит: DB_MAX_ATTEMPTS_PER_WINDOW = 5
+            # Отправляем 3 запроса регистрации, распределяя по процессам:
+            # Межпроцессный лимит подтверждения email: DB_EMAIL_MAX_ATTEMPTS = 3 (G4-EMAIL, REG-07)
             urls = [
-                f"http://127.0.0.1:{port1}/api/v1/auth/register",
-                f"http://127.0.0.1:{port2}/api/v1/auth/register",
                 f"http://127.0.0.1:{port1}/api/v1/auth/register",
                 f"http://127.0.0.1:{port2}/api/v1/auth/register",
                 f"http://127.0.0.1:{port1}/api/v1/auth/register",
@@ -259,34 +266,34 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
                     "confirm_password": "Password123!",
                 }
                 res = await client.post(url, json=payload)
-                assert res.status_code == 201, (
+                assert res.status_code == 202, (
                     f"Запрос {idx} на {url} вернул {res.status_code}: {res.text}"
                 )
 
-            # 6-й запрос отправляем на Процесс 2:
-            # В памяти Процесса 2 было всего 2 запроса (запросы #2 и #4),
-            # поэтому если бы лимит был локальным, запрос бы прошёл (2 < 5).
-            # Но лимит межпроцессный через PostgreSQL (5 суммарно), поэтому Процесс 2 ОБЯЗАН вернуть 429!
-            res_6 = await client.post(
+            # 4-й запрос отправляем на Процесс 2:
+            # В памяти Процесса 2 был всего 1 запрос (запрос #2),
+            # поэтому если бы лимит был локальным, запрос бы прошёл (1 < 3 и 1 < 10).
+            # Но лимит межпроцессный через PostgreSQL (3 суммарно), поэтому Процесс 2 ОБЯЗАН вернуть 429!
+            res_4 = await client.post(
                 f"http://127.0.0.1:{port2}/api/v1/auth/register",
                 json={
-                    "username": "dist_user_6",
-                    "email": "dist_6@alxprgs.tech",
+                    "username": "dist_user_4",
+                    "email": "dist_4@alxprgs.tech",
                     "password": "Password123!",
                     "confirm_password": "Password123!",
                 },
             )
-            assert res_6.status_code == 429, (
-                f"Ожидался HTTP 429, получено {res_6.status_code}: {res_6.text}"
+            assert res_4.status_code == 429, (
+                f"Ожидался HTTP 429, получено {res_4.status_code}: {res_4.text}"
             )
-            data_6 = res_6.json()
-            err_code = data_6.get("error") or (
-                data_6.get("detail", {}).get("error")
-                if isinstance(data_6.get("detail"), dict)
+            data_4 = res_4.json()
+            err_code = data_4.get("error") or (
+                data_4.get("detail", {}).get("error")
+                if isinstance(data_4.get("detail"), dict)
                 else None
             )
             assert err_code == "rate_limit_exceeded", (
-                f"Expected error 'rate_limit_exceeded', got {data_6}"
+                f"Expected error 'rate_limit_exceeded', got {data_4}"
             )
 
     finally:
@@ -297,6 +304,7 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
             proc2.wait(timeout=5)
         except Exception:
             pass
+        await smtp_mock.stop()
         log1.close()
         log2.close()
         for p in (log1_path, log2_path):

@@ -73,12 +73,13 @@ def check_env_files() -> list[str]:
                             "FEATURE_TOTP_ENABLED",
                             "FEATURE_PASSKEY_ENABLED",
                             "FEATURE_RECOVERY_CODES_ENABLED",
-                            "FEATURE_EMAIL_VERIFICATION_ENABLED",
                             "REQUIRE_VERIFIED_EMAIL",
                         )
                         and v == "true"
                     ):
                         errors.append(f"{k} must be false in .env.example (found: {line})")
+                    if k == "FEATURE_EMAIL_VERIFICATION_ENABLED" and v == "false":
+                        errors.append(f"{k} cannot be false in .env.example (found: {line})")
     return errors
 
 
@@ -94,7 +95,7 @@ def check_default_flags_in_config() -> list[str]:
                 "FEATURE_TOTP_ENABLED: bool = False",
                 "FEATURE_PASSKEY_ENABLED: bool = False",
                 "FEATURE_RECOVERY_CODES_ENABLED: bool = False",
-                "FEATURE_EMAIL_VERIFICATION_ENABLED: bool = False",
+                "FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True",
                 "REQUIRE_VERIFIED_EMAIL: bool = False",
             ]:
                 if flag not in content:
@@ -204,7 +205,7 @@ def main() -> int:
         for err in flags_errs:
             print(f"  [FAIL] {err}")
     else:
-        print("  [OK] Все 4 флага отключены по умолчанию в config.py.")
+        print("  [OK] Все 3 отложенных флага отключены, email verification включен в config.py.")
 
     print("[4/5] Сканирование кодовой базы на утечки секретов и ключей...")
     sec_errs = check_secrets_in_code()

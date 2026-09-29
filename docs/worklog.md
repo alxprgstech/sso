@@ -2493,3 +2493,24 @@
 - Изменения: фиксация полного набора изменений по обязательному подтверждению email до создания пользователя (ADR 0008, миграция 0003 pending_registrations, сервис RegistrationService, VerificationEmailService с MIME plain/AMP/HTML и Google Actions, обновление API/схем auth и mfa, обновление UI RegisterPage/VerifyEmailPage, локальный SMTP capture, тесты и документация).
 - Проверки: git status, git diff --check (exit 0), проверка отсутствия секретов и исключения .env (git check-ignore подтверждён).
 - Результат: изменения подготовлены и зафиксированы в git commit. Статус задачи TASK-096 остаётся in_progress до проведения обязательных интеграционных тестов на PostgreSQL и Compose.
+
+### TASK-097 — Исправление сбоев CI после перехода на обязательное подтверждение email
+
+- Время: 2026-09-29T21:20:00+03:00. Исполнитель: Antigravity. Требования: CI-01/02, G4-EMAIL, REG-07, G4-LIMITS, SEC-FLAG-01..03, DOC-TRACK-01..07.
+- Основание: устранение сбоев в CI заданиях Security & Dependencies Scan (`scripts/scan_secrets_and_deps.py`) и Backend Tests & PostgreSQL Integration (`test_deferred_features_return_404_when_disabled` и `test_inter_process_distributed_rate_limiting_real_processes_pg`).
+- Изменения:
+  1. `scripts/scan_secrets_and_deps.py`: актуализирован инвариант `FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True` в `check_default_flags_in_config()`; добавлена проверка запрета `FEATURE_EMAIL_VERIFICATION_ENABLED=false` в `.env.example`.
+  2. `tests/test_security_and_negative_scenarios.py`: изолирован default-off профиль в `test_deferred_features_return_404_when_disabled()` через `dependency_overrides` для независимости от локального `.env`; эндпоинт `/api/v1/mfa/email/request` убран из списка 404 (email verification не является отключаемой функцией) и снабжён явной проверкой ответа HTTP 200 OK.
+  3. `tests/integration/test_email_verification_pg.py`: `MockSMTPServer.start()` обновлён для динамического назначения порта операционной системой при `port=0` (`self.port = self.server.sockets[0].getsockname()[1]`).
+  4. `tests/integration/test_distributed_rate_limiting_pg.py`: в тесте `test_inter_process_distributed_rate_limiting_real_processes_pg` запущен локальный `MockSMTPServer` на свободном порту (`port=0`), переменные `SMTP_PORT`, `SMTP_HOST`, `EMAIL_PROVIDER=smtp` и `ENVIRONMENT=testing` переданы процессам Uvicorn; очищаются `pending_registrations`; актуализирован контракт ответа регистрации (`202 Accepted`); проверен лимит `DB_EMAIL_MAX_ATTEMPTS = 3`: запросы 1-3 возвращают 202, запрос 4 к процессу 2 возвращает 429 `rate_limit_exceeded`, подтверждая распределённый учёт лимита в PostgreSQL. В блоке `finally` гарантирована остановка `smtp_mock`.
+- Проверки:
+  - `python scripts/scan_secrets_and_deps.py` — exit 0 ([SUCCESS]).
+  - `pytest tests/test_secret_scan_utf8.py` — 1 passed.
+  - `pytest tests/test_security_and_negative_scenarios.py` — 9/9 passed.
+  - `pytest tests/test_mfa_features.py` — 7/7 passed.
+  - `pytest tests/test_ses_email.py` — 17/17 passed.
+  - `pytest tests/integration/test_distributed_rate_limiting_pg.py -k "test_trusted_proxy_validation_and_spoofing_defense or test_fail_closed_on_database_failure"` — 2/2 passed.
+  - `ruff check backend/ tests/ packages/python-sdk/ scripts/ examples/` — All checks passed!
+  - `ruff format --check backend/ tests/ packages/python-sdk/ scripts/ examples/` — 108 files already formatted.
+  - `mypy --explicit-package-bases packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports` — Success: no issues found in 39 source files.
+- Результат: причины всех трёх сбоев CI устранены без ослабления безопасности, задача TASK-097 выполнена (`done`).

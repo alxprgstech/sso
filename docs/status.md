@@ -1,5 +1,11 @@
 # Актуальный статус — GOAL-09 заблокирован обязательными runtime-проверками
 
+- Обновление 2026-09-29T21:20:00+03:00, Antigravity: TASK-097 `done`. Устранены причины сбоев CI после перехода на обязательное подтверждение email (TASK-096):
+  1) `scripts/scan_secrets_and_deps.py` актуализирован под `FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True` и запрет false в `.env.example`, проверка exit 0 ([SUCCESS]);
+  2) `tests/test_security_and_negative_scenarios.py`: изолирован default-off профиль, `/api/v1/mfa/email/request` исключён из 404 и подтверждён статус HTTP 200 OK (9/9 passed);
+  3) `tests/integration/test_distributed_rate_limiting_pg.py`: процесс теста обеспечен MockSMTPServer на динамическом порту, переменными `SMTP_PORT` и `ENVIRONMENT=testing` для Uvicorn во избежание 503; очищаются pending-заявки; контракт обновлён на `202 Accepted` и лимит `DB_EMAIL_MAX_ATTEMPTS = 3` (3 запроса -> 202, 4-й -> 429 `rate_limit_exceeded`), остановка сервера в `finally`.
+  Ruff check/format и mypy (39 файлов) успешны. Защита приложения и строгость тестов сохранены без ослаблений.
+
 - Обновление 2026-09-29T19:44:00+03:00, Antigravity: по прямому поручению владельца все подготовленные изменения TASK-096 зафиксированы в git commit; .env исключён из репозитория. Задача TASK-096 остаётся in_progress до запуска обязательных тестов на выделенной PostgreSQL/Docker и проверки в CI. GOAL-09 заблокирован.
 
 - Обновление 2026-09-29T18:57:46+03:00, Codex: TASK-096 `in_progress`, локальная контрольная точка перед commit: 48 backend unit + 2 subtests, 14 frontend component, Ruff/mypy/frontend build и SMTP capture smoke успешны; 17 PG-тестов только собраны. PostgreSQL, Docker, браузерный CI и secret scan с отсутствующим `detect-secrets` остаются непроверенными; отдельный server lifecycle столкнулся с локальным HTTP timeout/WinError 5 для tmp. GOAL-09 не закрыт.
