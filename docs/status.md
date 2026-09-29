@@ -233,3 +233,7 @@ git tag -a v0.2.0 -m "Release v0.2.0 - ALXPRGS SSO Production Candidate"
 git push origin v0.2.0
 # Затем запустить workflow Release вручную через GitHub Actions UI для тега v0.2.0
 ```
+
+- Обновление 2026-09-30T01:11:47.5783402+03:00, Codex: TASK-099 in_progress — редактируемое пробное письмо через SES; планируются автономный CLI, случайный непривязанный код и локальные проверки. Общая приёмка GOAL-09 не меняется.
+
+- Обновление 2026-09-30T01:16:29.9124166+03:00, Codex: TASK-099 blocked проверкой secret scan (нет detect-secrets). SES CLI с редактируемыми шаблонами готов; unittest 5 passed, Ruff, help/dry-run passed. .venv требует восстановления Python 3.13; использован bundled Python. Следующий шаг: commit, scanner и запуск владельцем. Общая приёмка GOAL-09 не меняется.

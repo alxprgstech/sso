@@ -713,3 +713,11 @@
   5. Проверить выполнение `python scripts/check_secret_scan.py --self-test` (отклонение синтетического контроля и 0 новых кандидатов), `python scripts/scan_secrets_and_deps.py`, `pytest tests/test_secret_scan_utf8.py tests/test_verification_email.py` и `ruff check`.
 - Критерий: `scripts/check_secret_scan.py --self-test` возвращает exit 0 с результатом `Secret scan: 119 candidates; 0 new` и `Synthetic secret control: rejected`; `scan_secrets_and_deps.py` завершается успехом; реальные секреты не раскрываются и не коммитятся; отслеживание работы актуализировано по DOC-TRACK-01..07.
 - Результат: `tests/test_verification_email.py` добавлен в `REVIEWED_CANDIDATE_PATHS`; в `.secrets.baseline` зафиксированы 119 проверенных фингерпринтов; `scripts/check_secret_scan.py --self-test` прошёл успешно (0 новых, синтетический контроль отклонён); `scripts/scan_secrets_and_deps.py` — exit 0 ([SUCCESS]); тесты сканера и валидации почты (5/5) пройдены; ruff без замечаний.
+
+### TASK-099: Редактируемое пробное письмо через SES
+
+- Приоритет: P2. Зависимости: TASK-094. Статус: in_progress. Начало: 2026-09-30T01:11:47.5783402+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07.
+- План: добавить автономный Python CLI с редактируемыми темой/text/HTML, случайным непривязанным кодом, существующим SES транспортом и локальной конфигурацией; проверить unit/static/help; документировать запуск; сделать локальный коммит.
+- Критерий: шаблоны редактируются в .py, код не сохраняется в БД, SES используется независимо от EMAIL_PROVIDER, dry-run не обращается к AWS; проверки проходят. Реальную доставку учитывать отдельно.
+
+- TASK-099, обновление 2026-09-30T01:16:29.9124166+03:00: реализация завершена; unittest 5 passed, Ruff и CLI passed. Статус: blocked до secret scan (detect-secrets 1.5.0 is required). Завершение реализации: 2026-09-30T01:16:29.9124166+03:00. Следующий шаг: локальный коммит и scanner на рабочем стенде/CI.

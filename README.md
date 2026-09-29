@@ -192,3 +192,16 @@ npm audit --audit-level=high
 - `docs/acceptance-goal-08.md`: Исторический акт GOAL-08; не подтверждает нынешний изменённый код;
 - `docs/acceptance-goal-09.md`: Текущая матрица, реально пройденные проверки и блокеры;
 - `docs/acceptance.md`: Сводный реестр актов приёмки продукта.
+
+### Редактируемое пробное письмо SES
+
+`scripts/send_test_verification_email.py` отправляет пробное письмо в оформлении подтверждения ALXPRGS. Редактируйте `SUBJECT`, `TEXT_TEMPLATE` и `HTML_TEMPLATE` в начале файла; подстановки `{code}` и `{time}` заполняются при запуске. Text и HTML редактируются отдельно. Шестизначный случайный код не сохраняется в БД и не подтверждает аккаунт. AMP и действующей ссылки подтверждения в этом письме нет.
+
+После установки backend-зависимостей запустите из корня репозитория, заменив пример адресом получателя:
+
+```powershell
+python scripts/send_test_verification_email.py --to recipient@example.com --dry-run
+python scripts/send_test_verification_email.py --to recipient@example.com
+```
+
+Первый запуск проверяет письмо без AWS; второй отправляет через SES независимо от `EMAIL_PROVIDER`. Скрипт читает корневой `.env`; существующее окружение приоритетно. Используются `SES_REGION`, `SES_FROM_EMAIL`, `SES_FROM_NAME`, стандартная цепочка AWS credentials (включая `AWS_PROFILE`) и локальные AWS credential variables из `.env`. Успех означает принятие SES, а не подтверждённую доставку. Требования к verified identity и SES sandbox: [AWS](https://docs.aws.amazon.com/boto3/latest/guide/ses-verify.html), [эксплуатация](docs/operations.md).
