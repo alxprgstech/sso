@@ -80,8 +80,27 @@ class RegisterRequest(BaseModel):
 
 
 class RegisterResponse(BaseModel):
+    status: str = "verification_pending"
+    message: str = "Введите код из письма или откройте ссылку подтверждения."
+    challenge_id: uuid.UUID
+    expires_at: datetime
+    request_details: dict[str, str]
+
+
+class RegistrationCodeConfirmRequest(BaseModel):
+    challenge_id: uuid.UUID
+    code: str = Field(..., pattern=r"^[0-9]{6}$")
+
+
+class RegistrationLinkConfirmRequest(BaseModel):
+    token: str = Field(..., min_length=32, max_length=128)
+
+
+class RegistrationResendRequest(BaseModel):
+    challenge_id: uuid.UUID
+
+
+class RegistrationCompleteResponse(BaseModel):
     status: str = "ok"
-    message: str = "Учётная запись успешно создана. Теперь вы можете войти."
+    message: str = "Адрес подтверждён. Теперь можно войти."
     user_id: uuid.UUID
-    username: str
-    email: str

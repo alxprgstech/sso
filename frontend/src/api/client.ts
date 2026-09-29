@@ -8,6 +8,7 @@ import {
   AuditEventItem,
   RegisterRequest,
   RegisterResponse,
+  RegistrationCompleteResponse,
   SystemStatus,
   TOTPSetupResponse,
   RecoveryCodesResponse,
@@ -169,6 +170,34 @@ class ApiClient {
     });
   }
 
+  async confirmRegistrationCode(challengeId: string, code: string): Promise<RegistrationCompleteResponse> {
+    return this.request<RegistrationCompleteResponse>("/api/v1/auth/register/confirm-code", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId, code }),
+    });
+  }
+
+  async confirmRegistrationLink(token: string): Promise<RegistrationCompleteResponse> {
+    return this.request<RegistrationCompleteResponse>("/api/v1/auth/register/confirm-link", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async previewRegistrationLink(token: string): Promise<{ request_details: Record<string, string> }> {
+    return this.request<{ request_details: Record<string, string> }>("/api/v1/auth/register/preview-link", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async resendRegistration(challengeId: string): Promise<RegisterResponse> {
+    return this.request<RegisterResponse>("/api/v1/auth/register/resend", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId }),
+    });
+  }
+
   async getSystemStatus(): Promise<SystemStatus> {
     return this.request<SystemStatus>("/api/v1/admin/system/status");
   }
@@ -307,6 +336,13 @@ class ApiClient {
     return this.request<{ status: string; message: string }>("/api/v1/mfa/email/confirm", {
       method: "POST",
       body: JSON.stringify({ token }),
+    });
+  }
+
+  async confirmEmailCode(email: string, code: string): Promise<{ status: string; message: string }> {
+    return this.request<{ status: string; message: string }>("/api/v1/mfa/email/confirm-code", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
     });
   }
 }

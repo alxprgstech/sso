@@ -91,7 +91,7 @@
   1. `test_concurrent_auth_code_redemption_pg`: 5 параллельных запросов погашения одного Authorization Code PKCE через `asyncio.gather`. Проверка `SELECT FOR UPDATE`: ровно 1 успешный обмен (200), 4 отказа (400 `invalid_grant`), фиксация аудита `auth_code_replay_detected`.
   2. `test_concurrent_recovery_code_burn_pg`: параллельное погашение одного Recovery Code. Проверка атомарного `UPDATE ... WHERE is_used=False RETURNING id`: ровно 1 код 200, остальные 401, в БД `is_used=True`.
   3. `test_concurrent_refresh_token_rotation_and_replay_pg`: 10 одновременных попыток обновления сессии по одному refresh-токену. Ротация и детекция replay.
-  4. `test_concurrent_user_registration_race_pg`: параллельная регистрация пользователей с одинаковым именем. Проверка ограничения `UNIQUE` PostgreSQL: ровно 1 201 Created, остальные 409 Conflict, в БД ровно 1 запись.
+  4. `test_concurrent_user_registration_race_pg`: параллельное погашение одной заявки подтверждения. Блокировка строки PostgreSQL допускает ровно одно успешное создание пользователя (200), повтор отклоняется (401); до подтверждения пользователя нет.
   5. `test_distributed_rate_limiting_registration_pg`: проверка распределенного ограничения частоты запросов.
 - Итоговая проверка состояния PostgreSQL: отсутствие зависших блокировок (`pg_locks`), целостность записи конфигурации `system_configuration` (id=1), наличие зарегистрированных событий аудита.
 

@@ -51,11 +51,11 @@ class Settings(BaseSettings):
     SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 604800  # 7 дней
     MFA_STEP_TTL_SECONDS: int = 300  # 5 минут на подтверждение второго фактора
 
-    # ФЛАГИ ОТЛОЖЕННЫХ ВОЗМОЖНОСТЕЙ (СТРОГО FALSE ПО УМОЛЧАНИЮ)
+    # Отложенные факторы выключены по умолчанию. Email для саморегистрации обязателен.
     FEATURE_TOTP_ENABLED: bool = False
     FEATURE_PASSKEY_ENABLED: bool = False
     FEATURE_RECOVERY_CODES_ENABLED: bool = False
-    FEATURE_EMAIL_VERIFICATION_ENABLED: bool = False
+    FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True
     REQUIRE_VERIFIED_EMAIL: bool = False
 
     # Ключ шифрования TOTP (Fernet 32 байта base64)
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_NAME: str = "ALXPRGS SSO"
     WEBAUTHN_ORIGIN: str = "https://auth.alxprgs.tech"
 
-    # Почтовый транспорт; четыре отложенные возможности остаются выключены по умолчанию.
+    # Почтовый транспорт.
     EMAIL_PROVIDER: Literal["smtp", "ses"] = "smtp"
     SES_REGION: str = "us-east-1"
     SES_FROM_EMAIL: str = "sso@alxprgs.tech"
@@ -122,15 +122,12 @@ class Settings(BaseSettings):
         """
         Проверка архитектурных инвариантов зависимости флагов (SEC-FLAG-03, SEC-FLAG-05).
         """
+        if not self.FEATURE_EMAIL_VERIFICATION_ENABLED:
+            raise ValueError("Подтверждение email обязательно и не может быть отключено")
         if self.FEATURE_RECOVERY_CODES_ENABLED and not self.FEATURE_TOTP_ENABLED:
             raise ValueError(
                 "Конфигурационная ошибка: FEATURE_RECOVERY_CODES_ENABLED не может быть включен "
                 "без включения FEATURE_TOTP_ENABLED."
-            )
-        if self.REQUIRE_VERIFIED_EMAIL and not self.FEATURE_EMAIL_VERIFICATION_ENABLED:
-            raise ValueError(
-                "Конфигурационная ошибка: REQUIRE_VERIFIED_EMAIL не может быть установлен в true "
-                "при отключенном FEATURE_EMAIL_VERIFICATION_ENABLED."
             )
         return self
 

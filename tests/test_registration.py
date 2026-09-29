@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,6 +17,7 @@ from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User
 from app.services.auth_service import AuthService
 from app.services.system_service import SystemService
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -78,9 +80,20 @@ def test_registration_when_bootstrap_incomplete_rejected():
         app.dependency_overrides.pop(get_db, None)
 
 
-def test_registration_success_open_mode():
-    """REG-01, REG-04: При open-режиме создается обычный пользователь без админ-прав и без выдачи сессии."""
+def test_registration_success_open_mode(monkeypatch: pytest.MonkeyPatch):
+    """REG-01, REG-04: API возвращает заявку без user_id и без сессии."""
     mock_db = AsyncMock()
+    pending = MagicMock(
+        id=uuid.uuid4(),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        request_details={"ip": "127.0.0.1"},
+    )
+
+    async def fake_register(**kwargs):
+        assert kwargs["email"] == "valid_user@alxprgs.tech"
+        return pending
+
+    monkeypatch.setattr(AuthService, "register_user", fake_register)
 
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="open")
     role_user = Role(name=ROLE_USER, description="Standard User")
@@ -112,11 +125,12 @@ def test_registration_success_open_mode():
                 "confirm_password": "SecurePassword123!",
             },
         )
-        assert res.status_code == 201
+        assert res.status_code == 202
         data = res.json()
-        assert data["status"] == "ok"
-        assert data["username"] == "valid_user"
-        assert data["email"] == "valid_user@alxprgs.tech"
+        assert data["status"] == "verification_pending"
+        assert data["challenge_id"] == str(pending.id)
+        assert "user_id" not in data
+        mock_db.add.assert_not_called()
         # Сессионный cookie НЕ должен выдаваться (REG-01)
         assert "__Host-alx_session" not in res.cookies
         assert "alx_session" not in res.cookies
@@ -182,11 +196,19 @@ def test_registration_validation_errors():
     assert r3.status_code == 422
 
 
-def test_registration_collision_conflict_409():
+def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
     """REG-06: При совпадении логина или email возвращается единая ошибка 409 без раскрытия поля."""
     mock_db = AsyncMock()
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="open")
     existing_user = User(username="existing", email="existing@alxprgs.tech")
+
+    async def fake_register(**_kwargs):
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
+        )
+
+    monkeypatch.setattr(AuthService, "register_user", fake_register)
 
     res_cfg = MagicMock(scalar_one_or_none=MagicMock(return_value=config))
     res_rl = MagicMock(scalar_one_or_none=MagicMock(return_value=0))

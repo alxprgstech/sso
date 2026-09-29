@@ -135,22 +135,24 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
 
     await page.click('button:has-text("Зарегистрироваться")');
 
-    // Проверяем сообщение об успешной регистрации
-    await expect(
-      page.getByText("Учётная запись успешно зарегистрирована!")
-    ).toBeVisible({ timeout: 10000 });
-
-    // Ожидаем возврата на форму входа (автоматически через 2 сек или по нажатию Войти)
+    // Код берётся из локального SMTP-приёмника CI, без подмены проверки на backend.
+    await expect(page.getByLabel("Код из письма")).toBeVisible({ timeout: 10000 });
+    const mailboxPath = process.env.E2E_MAILBOX_PATH;
+    if (!mailboxPath) throw new Error("E2E_MAILBOX_PATH is required");
+    let emailCode = "";
+    await expect.poll(() => {
+      const entries = fs.readFileSync(mailboxPath, "utf8").trim().split("\n").filter(Boolean);
+      const message = entries.map((line) => JSON.parse(line) as { to: string[]; code: string })
+        .find((entry) => entry.to.includes(testEmail));
+      emailCode = message?.code ?? "";
+      return emailCode;
+    }, { timeout: 10000 }).toMatch(/^\d{6}$/);
+    await page.getByLabel("Код из письма").fill(emailCode);
+    await page.getByRole("button", { name: "Подтвердить адрес" }).click();
+    await expect(page.getByText("Адрес подтверждён, учётная запись создана. Теперь можно войти.")).toBeVisible();
+    await page.getByRole("button", { name: "Перейти ко входу" }).click();
     const loginHeader = page.getByRole("heading", { name: "Единая система входа ALXPRGS" });
-    try {
-      await expect(loginHeader).toBeVisible({ timeout: 4000 });
-    } catch {
-      const loginButton = page.locator('button:has-text("Войти")');
-      if (await loginButton.isVisible()) {
-        await loginButton.click();
-      }
-      await expect(loginHeader).toBeVisible({ timeout: 5000 });
-    }
+    await expect(loginHeader).toBeVisible();
 
     // Входим созданным пользователем
     await page.fill('input[placeholder="user@alxprgs.tech"]', testUsername);

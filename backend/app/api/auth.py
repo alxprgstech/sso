@@ -24,11 +24,17 @@ from app.schemas.auth import (
     MFAStepRequiredResponse,
     RegisterRequest,
     RegisterResponse,
+    RegistrationCodeConfirmRequest,
+    RegistrationCompleteResponse,
+    RegistrationLinkConfirmRequest,
+    RegistrationResendRequest,
     SessionInfoResponse,
     UserProfileResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
+from app.services.registration_service import RegistrationService, verify_gmail_bearer
+from app.services.verification_email import request_details
 from app.services.system_service import SystemService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
@@ -49,13 +55,13 @@ async def get_capabilities(
         totp_enabled=settings.FEATURE_TOTP_ENABLED,
         passkey_enabled=settings.FEATURE_PASSKEY_ENABLED,
         recovery_codes_enabled=settings.FEATURE_RECOVERY_CODES_ENABLED,
-        email_verification_enabled=settings.FEATURE_EMAIL_VERIFICATION_ENABLED,
+        email_verification_enabled=True,
         require_verified_email=settings.REQUIRE_VERIFIED_EMAIL,
         registration_mode=reg_mode,
     )
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_202_ACCEPTED)
 async def register(
     payload: RegisterRequest,
     request: Request,
@@ -93,7 +99,7 @@ async def register(
     ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
 
-    user = await AuthService.register_user(
+    pending = await AuthService.register_user(
         db=db,
         username=payload.username,
         email=payload.email,
@@ -101,15 +107,75 @@ async def register(
         ip_address=ip,
         user_agent=ua,
         settings=settings,
+        request_details=request_details(request, settings),
     )
 
     return RegisterResponse(
-        status="ok",
-        message="Учётная запись успешно создана. Теперь вы можете войти.",
-        user_id=user.id,
-        username=user.username,
-        email=user.email,
+        challenge_id=pending.id,
+        expires_at=pending.expires_at,
+        request_details=pending.request_details,
     )
+
+
+@router.post("/register/confirm-code", response_model=RegistrationCompleteResponse)
+async def confirm_registration_code(
+    payload: RegistrationCodeConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RegistrationCompleteResponse:
+    user = await RegistrationService.confirm(
+        db, settings=settings, challenge_id=payload.challenge_id, code=payload.code
+    )
+    return RegistrationCompleteResponse(user_id=user.id)
+
+
+@router.post("/register/confirm-link", response_model=RegistrationCompleteResponse)
+async def confirm_registration_link(
+    payload: RegistrationLinkConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RegistrationCompleteResponse:
+    user = await RegistrationService.confirm(db, settings=settings, link=payload.token)
+    return RegistrationCompleteResponse(user_id=user.id)
+
+
+@router.post("/register/preview-link")
+async def preview_registration_link(
+    payload: RegistrationLinkConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, dict[str, str]]:
+    return {"request_details": await RegistrationService.preview_link(db, payload.token)}
+
+
+@router.post(
+    "/register/resend", response_model=RegisterResponse, status_code=status.HTTP_202_ACCEPTED
+)
+async def resend_registration(
+    payload: RegistrationResendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RegisterResponse:
+    pending = await RegistrationService.resend(
+        db, payload.challenge_id, get_client_ip(request), settings
+    )
+    return RegisterResponse(
+        challenge_id=pending.id,
+        expires_at=pending.expires_at,
+        request_details=pending.request_details,
+    )
+
+
+@router.post("/register/confirm-gmail", response_model=RegistrationCompleteResponse)
+async def confirm_registration_gmail(
+    request: Request,
+    challenge_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RegistrationCompleteResponse:
+    await verify_gmail_bearer(request.headers.get("Authorization", ""), settings)
+    user = await RegistrationService.confirm(db, settings=settings, action_id=challenge_id)
+    return RegistrationCompleteResponse(user_id=user.id)
 
 
 @router.post("/login")

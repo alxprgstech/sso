@@ -5,7 +5,7 @@ import uuid
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.deps import generate_csrf_token
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.main import app
 from fastapi.testclient import TestClient
 
@@ -13,14 +13,18 @@ client = TestClient(app)
 
 
 def test_capabilities_default_off(default_db_mock):
-    """Проверка витрины возможностей: все 4 фичи выключены по умолчанию (SEC-FLAG-01)."""
-    res = client.get("/api/v1/auth/capabilities")
+    """Проверка витрины: три MFA-флага выключены, email обязателен."""
+    app.dependency_overrides[get_settings] = lambda: Settings.model_construct()
+    try:
+        res = client.get("/api/v1/auth/capabilities")
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
     assert res.status_code == 200
     data = res.json()
     assert data["totp_enabled"] is False
     assert data["passkey_enabled"] is False
     assert data["recovery_codes_enabled"] is False
-    assert data["email_verification_enabled"] is False
+    assert data["email_verification_enabled"] is True
     assert data["require_verified_email"] is False
 
 

@@ -17,7 +17,8 @@ from app.core.security import (
     verify_password,
 )
 from app.models.session import Session
-from app.models.user import PasswordCredential, User
+from app.models.registration import PendingRegistration
+from app.models.user import User
 from app.services.audit_service import AuditService
 
 settings = get_settings()
@@ -260,130 +261,18 @@ class AuthService:
         ip_address: str | None = None,
         user_agent: str | None = None,
         settings: Settings | None = None,
-    ) -> User:
-        """
-        Самостоятельная регистрация обычного пользователя (REG-01..REG-09).
-        Создает учетную запись с ролью 'user' и без сессии.
-        """
-        from app.services.system_service import SystemService
-        from app.core.rate_limit import check_registration_rate_limit
-        from app.core.rbac import ROLE_USER
-        from app.core.exceptions import AuthorizationException
-        from app.models.user import Role, UserRole
-        from fastapi import HTTPException, status
-        from sqlalchemy import func
-        from sqlalchemy.exc import IntegrityError
+        request_details: dict[str, str] | None = None,
+    ) -> PendingRegistration:
+        """Begin registration; the user is created only after mailbox verification."""
+        from app.services.registration_service import RegistrationService
 
-        # 1. Проверка доступности регистрации (REG-02, REG-03)
-        mode = await SystemService.get_registration_mode(db)
-        if mode != "open":
-            await AuditService.log_event(
-                db,
-                event_type="registration_rejected_closed",
-                ip_address=ip_address,
-                user_agent=user_agent,
-                details={"username": username},
-            )
-            raise AuthorizationException("Регистрация новых пользователей в данный момент закрыта")
-
-        # 2. Ограничение частоты запросов (REG-07)
-        await check_registration_rate_limit(db, ip_address or "127.0.0.1")
-
-        # 3. Нормализация данных (REG-05)
-        clean_username = username.strip()
-        clean_email = email.strip().lower()
-
-        # 4. Проверка существования (защита от коллизий, единый 409 без раскрытия полей REG-06)
-        stmt = select(User).where(
-            (func.lower(User.username) == clean_username.lower())
-            | (func.lower(User.email) == clean_email)
-        )
-        existing = (await db.execute(stmt)).scalar_one_or_none()
-        if existing:
-            await AuditService.log_event(
-                db,
-                event_type="registration_collision",
-                ip_address=ip_address,
-                user_agent=user_agent,
-                details={"reason": "username_or_email_conflict"},
-            )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "user_already_exists",
-                    "detail": "Учётная запись с указанными данными уже существует",
-                },
-            )
-
-        # 5. Атомарное создание пользователя и учетных данных
-        role_stmt = select(Role).where(Role.name == ROLE_USER)
-        role_user = (await db.execute(role_stmt)).scalar_one_or_none()
-        if not role_user:
-            role_user = Role(name=ROLE_USER, description="Стандартный пользователь экосистемы")
-            db.add(role_user)
-            await db.flush()
-
-        new_user = User(
-            id=uuid.uuid4(),
-            username=clean_username,
-            email=clean_email,
-            is_active=True,
-            is_superuser=False,
-            email_verified=False,
-        )
-        db.add(new_user)
-        try:
-            await db.flush()
-        except IntegrityError:
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "user_already_exists",
-                    "detail": "Учётная запись с указанными данными уже существует",
-                },
-            )
-
-        # Добавляем парольные учетные данные
-        pw_cred = PasswordCredential(
-            user_id=new_user.id,
-            password_hash=hash_password(password),
-        )
-        db.add(pw_cred)
-
-        # Привязываем роль 'user'
-        user_role = UserRole(user_id=new_user.id, role_id=role_user.id)
-        db.add(user_role)
-
-        # Если включена функция подтверждения email (REG-09)
-        active_settings = settings or get_settings()
-        if active_settings.FEATURE_EMAIL_VERIFICATION_ENABLED:
-            from app.services.mfa_service import EmailVerificationService
-
-            await EmailVerificationService.send_verification(
-                db, new_user, clean_email, active_settings
-            )
-
-        await AuditService.log_event(
+        return await RegistrationService.start(
             db,
-            event_type="user_registered",
-            user_id=new_user.id,
-            ip_address=ip_address,
+            username=username,
+            email=email,
+            password=password,
+            ip_address=ip_address or "127.0.0.1",
             user_agent=user_agent,
-            details={"username": clean_username, "email": clean_email},
+            details=request_details or {},
+            settings=settings or get_settings(),
         )
-
-        try:
-            await db.commit()
-            await db.refresh(new_user)
-        except IntegrityError:
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "error": "user_already_exists",
-                    "detail": "Учётная запись с указанными данными уже существует",
-                },
-            )
-
-        return new_user

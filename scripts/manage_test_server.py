@@ -128,9 +128,9 @@ def check_capabilities(
     )
 
     if expected_profile == "default-off":
-        if passkey is not False or totp is not False or recovery is not False or email is not False:
+        if passkey is not False or totp is not False or recovery is not False or email is not True:
             print(
-                f"[PREFLIGHT-FAIL] {label}: Ожидался профиль default-off (все флаги False), "
+                f"[PREFLIGHT-FAIL] {label}: Ожидались три выключенных MFA-флага и email=True, "
                 f"но получено: passkey={passkey}, totp={totp}, recovery={recovery}, email={email}"
             )
             return False
@@ -177,7 +177,7 @@ def start_server(
         merged_env["FEATURE_TOTP_ENABLED"] = "false"
         merged_env["FEATURE_PASSKEY_ENABLED"] = "false"
         merged_env["FEATURE_RECOVERY_CODES_ENABLED"] = "false"
-        merged_env["FEATURE_EMAIL_VERIFICATION_ENABLED"] = "false"
+        merged_env["FEATURE_EMAIL_VERIFICATION_ENABLED"] = "true"
         merged_env["REQUIRE_VERIFIED_EMAIL"] = "false"
     elif profile == "enabled":
         merged_env["FEATURE_TOTP_ENABLED"] = "true"

@@ -133,7 +133,6 @@ if (-not (Test-Path $envFile)) {
         FEATURE_TOTP_ENABLED = "false"
         FEATURE_PASSKEY_ENABLED = "false"
         FEATURE_RECOVERY_CODES_ENABLED = "false"
-        FEATURE_EMAIL_VERIFICATION_ENABLED = "false"
         REQUIRE_VERIFIED_EMAIL = "false"
     }
     foreach ($key in $replacements.Keys) {

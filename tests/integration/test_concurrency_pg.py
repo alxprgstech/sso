@@ -11,6 +11,7 @@ from app.config import Settings, get_settings
 from app.core.rate_limit import _IN_MEMORY_REQUESTS
 from app.core.security import generate_random_token, hash_token
 from app.main import app
+from app.services import registration_service
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -150,15 +151,11 @@ async def test_concurrent_auth_code_redemption_pg(
 @pytest.mark.concurrency
 @pytest.mark.asyncio
 async def test_concurrent_user_registration_race_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
     """
     QA-09, REG-06: Гонка одновременной регистрации с одинаковыми учетными данными.
-    Два параллельных запроса на регистрацию с одинаковым username и email.
-    Благодаря UNIQUE ограничению PostgreSQL и блоку try/except IntegrityError:
-    - Ровно 1 запрос завершается 201 Created.
-    - Ровно 1 запрос получает 409 Conflict с нейтральным сообщением.
-    - В таблице users в PostgreSQL создается ровно 1 пользователь.
+    Два параллельных подтверждения одной заявки создают ровно одного пользователя.
     """
     # 1. Завершаем bootstrap и переводим режим в open
     code, _ = await execute_bootstrap(
@@ -170,32 +167,41 @@ async def test_concurrent_user_registration_race_pg(
     )
     assert code == 0
 
-    # 2. Запускаем 2 параллельных запроса с разными IP (чтобы не сработал лимит на IP)
+    async def capture_message(_message, _settings):
+        return None
+
+    monkeypatch.setattr(registration_service, "deliver_message", capture_message)
+    monkeypatch.setattr(registration_service, "new_code", lambda: "000123")
+    pending = await pg_client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "race_contestant",
+            "email": "contestant@alxprgs.tech",
+            "password": "PasswordContestant2026!",
+            "confirm_password": "PasswordContestant2026!",
+        },
+    )
+    assert pending.status_code == 202
+    before = await pg_session.scalar(
+        text("SELECT COUNT(*) FROM users WHERE username = 'race_contestant'")
+    )
+    assert before == 0
+
+    # 2. Запускаем два подтверждения одновременно.
     tasks = [
         pg_client.post(
-            "/api/v1/auth/register",
-            json={
-                "username": "race_contestant",
-                "email": "contestant@alxprgs.tech",
-                "password": "PasswordContestant2026!",
-                "confirm_password": "PasswordContestant2026!",
-            },
-            headers={"X-Forwarded-For": f"198.51.100.{10 + i}"},
+            "/api/v1/auth/register/confirm-code",
+            json={"challenge_id": pending.json()["challenge_id"], "code": "000123"},
         )
-        for i in range(2)
+        for _ in range(2)
     ]
 
     responses = await asyncio.gather(*tasks)
 
-    # 3. Ровно 1 запрос 201, ровно 1 запрос 409
+    # 3. Ровно одно успешное подтверждение, второе видит погашенную заявку.
     status_codes = [r.status_code for r in responses]
-    assert status_codes.count(201) == 1, f"Ожидался 1 статус 201, получено: {status_codes}"
-    assert status_codes.count(409) == 1, f"Ожидался 1 статус 409, получено: {status_codes}"
-
-    for r in responses:
-        if r.status_code == 409:
-            err = r.json()
-            assert "user_already_exists" in str(err)
+    assert status_codes.count(200) == 1, status_codes
+    assert status_codes.count(401) == 1, status_codes
 
     # 4. Проверяем в PostgreSQL: ровно 1 пользователь с именем race_contestant
     u_count = await pg_session.execute(
@@ -415,13 +421,11 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
 @pytest.mark.postgres
 @pytest.mark.asyncio
 async def test_distributed_rate_limiting_registration_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
     """
     QA-10, REG-07: Межпроцессное ограничение частоты регистрации через PostgreSQL.
-    Превышение лимита DB_MAX_ATTEMPTS_PER_WINDOW (5 запросов с одного IP):
-    - Первые 5 запросов успешны (201 Created).
-    - 6-й запрос блокируется HTTP 429 Too Many Requests (rate_limit_exceeded).
+    Почтовый лимит 3 заявки в минуту применяется до старого лимита регистрации 5.
     """
     # 1. Открываем регистрацию
     code, _ = await execute_bootstrap(
@@ -433,12 +437,17 @@ async def test_distributed_rate_limiting_registration_pg(
     )
     assert code == 0
 
+    async def capture_message(_message, _settings):
+        return None
+
+    monkeypatch.setattr(registration_service, "deliver_message", capture_message)
+
     test_ip = "198.51.100.99"
     # Очищаем локальный in-memory счетчик для чистоты теста
     _IN_MEMORY_REQUESTS.pop(test_ip, None)
 
-    # 2. Выполняем 5 последовательных регистраций с одного IP
-    for i in range(5):
+    # 2. Выполняем 3 последовательных заявки с одного IP.
+    for i in range(3):
         res = await pg_client.post(
             "/api/v1/auth/register",
             json={
@@ -449,9 +458,9 @@ async def test_distributed_rate_limiting_registration_pg(
             },
             headers={"X-Forwarded-For": test_ip},
         )
-        assert res.status_code == 201, f"Запрос {i} завершился с ошибкой: {res.text}"
+        assert res.status_code == 202, f"Запрос {i} завершился с ошибкой: {res.text}"
 
-    # 3. 6-й запрос с того же IP должен быть отклонен HTTP 429 Too Many Requests
+    # 3. Четвёртый запрос блокируется HTTP 429.
     blocked_res = await pg_client.post(
         "/api/v1/auth/register",
         json={
@@ -465,4 +474,3 @@ async def test_distributed_rate_limiting_registration_pg(
     assert blocked_res.status_code == 429
     err_body = blocked_res.json()
     assert "rate_limit_exceeded" in str(err_body)
-    assert "Превышен лимит попыток регистрации" in str(err_body)

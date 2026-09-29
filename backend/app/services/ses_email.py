@@ -65,15 +65,16 @@ def send_ses_email(
     subject: str,
     text_body: str,
     html_body: str,
+    raw_message: bytes | None = None,
     client: Any | None = None,
 ) -> str:
     """Submit a multipart message and return the SES acceptance MessageId."""
     try:
         active_client = client if client is not None else get_ses_client(region)
-        response = active_client.send_email(
-            FromEmailAddress=formataddr((from_name, from_email), charset="utf-8"),
-            Destination={"ToAddresses": [to_email]},
-            Content={
+        content = (
+            {"Raw": {"Data": raw_message}}
+            if raw_message is not None
+            else {
                 "Simple": {
                     "Subject": {"Data": subject, "Charset": "UTF-8"},
                     "Body": {
@@ -81,7 +82,12 @@ def send_ses_email(
                         "Html": {"Data": html_body, "Charset": "UTF-8"},
                     },
                 }
-            },
+            }
+        )
+        response = active_client.send_email(
+            FromEmailAddress=formataddr((from_name, from_email), charset="utf-8"),
+            Destination={"ToAddresses": [to_email]},
+            Content=content,
         )
     except (NoCredentialsError, PartialCredentialsError) as error:
         raise SESEmailDeliveryError("credentials_unavailable") from error

@@ -18,7 +18,7 @@
    - **Operational/Эксплуатационные тесты**: Чистый запуск Docker Compose, скрипты `start.ps1` / `start.sh`, backup и restore на отдельной БД, ротация ключей.
 
 2. **Профили тестирования**:
-   - **Default-off профиль** (`FEATURE_TOTP_ENABLED=false`, `FEATURE_PASSKEY_ENABLED=false`, `FEATURE_RECOVERY_CODES_ENABLED=false`, `FEATURE_EMAIL_VERIFICATION_ENABLED=false`, `REQUIRE_VERIFIED_EMAIL=false`): проверка блокировки (404 feature_disabled), сокрытия элементов UI, отсутствия SMTP-трафика.
+   - **Профиль по умолчанию** (`FEATURE_TOTP_ENABLED=false`, `FEATURE_PASSKEY_ENABLED=false`, `FEATURE_RECOVERY_CODES_ENABLED=false`, `FEATURE_EMAIL_VERIFICATION_ENABLED=true`, `REQUIRE_VERIFIED_EMAIL=false`): проверка блокировки трёх MFA-функций (404 feature_disabled), обязательного подтверждения новой самостоятельной регистрации и отсутствия SMTP-трафика при закрытой регистрации.
    - **Enabled профиль** (все 4 флага `true`, `REQUIRE_VERIFIED_EMAIL=true`): сквозные тесты TOTP enrollment/verify/login, WebAuthn регистрация и вход с виртуальным аутентификатором, выпуск и сгорание recovery codes, подтверждение email токенами.
 
 ---

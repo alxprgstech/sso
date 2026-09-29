@@ -169,7 +169,6 @@ jobs:
           FEATURE_TOTP_ENABLED: "false"
           FEATURE_PASSKEY_ENABLED: "false"
           FEATURE_RECOVERY_CODES_ENABLED: "false"
-          FEATURE_EMAIL_VERIFICATION_ENABLED: "false"
           REQUIRE_VERIFIED_EMAIL: "false"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
@@ -186,7 +185,6 @@ jobs:
           FEATURE_TOTP_ENABLED: "true"
           FEATURE_PASSKEY_ENABLED: "true"
           FEATURE_RECOVERY_CODES_ENABLED: "true"
-          FEATURE_EMAIL_VERIFICATION_ENABLED: "true"
           REQUIRE_VERIFIED_EMAIL: "true"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
         run: |
@@ -329,6 +327,23 @@ jobs:
         run: |
           python scripts/prepare_e2e_data.py
 
+      - name: Start local SMTP capture for registration
+        run: |
+          python scripts/test_smtp_capture.py --output /tmp/sso-e2e-mailbox.jsonl --port 1025 > /tmp/sso-e2e-smtp.log 2>&1 &
+          echo $! > /tmp/sso-e2e-smtp.pid
+          python - <<'PY'
+          import socket
+          import time
+          for attempt in range(25):
+              try:
+                  with socket.create_connection(("127.0.0.1", 1025), timeout=1):
+                      break
+              except OSError:
+                  time.sleep(0.2)
+          else:
+              raise SystemExit("local SMTP capture did not start")
+          PY
+
       - name: Start Backend Server (Default-off Profile)
         env:
           DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
@@ -337,13 +352,14 @@ jobs:
           FEATURE_TOTP_ENABLED: "false"
           FEATURE_PASSKEY_ENABLED: "false"
           FEATURE_RECOVERY_CODES_ENABLED: "false"
-          FEATURE_EMAIL_VERIFICATION_ENABLED: "false"
           REQUIRE_VERIFIED_EMAIL: "false"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
           OIDC_ISSUER: "https://auth.alxprgs.tech"
           WEBAUTHN_RP_ID: "localhost"
           WEBAUTHN_ORIGIN: "http://localhost:5173"
+          SMTP_HOST: "127.0.0.1"
+          SMTP_PORT: "1025"
           PORT: "8000"
         run: |
           python scripts/manage_test_server.py start --port 8000 --pidfile /tmp/backend.pid --logfile /tmp/backend_default_off.log --profile default-off
@@ -359,6 +375,7 @@ jobs:
           E2E_CLIENT2_SECRET: docs_client_secret_123
           E2E_USERNAME: compose_admin
           E2E_PASSWORD: ComposeAdminPass2026!
+          E2E_MAILBOX_PATH: /tmp/sso-e2e-mailbox.jsonl
         run: |
           npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts
 
@@ -380,7 +397,6 @@ jobs:
           FEATURE_TOTP_ENABLED: "true"
           FEATURE_PASSKEY_ENABLED: "true"
           FEATURE_RECOVERY_CODES_ENABLED: "true"
-          FEATURE_EMAIL_VERIFICATION_ENABLED: "true"
           REQUIRE_VERIFIED_EMAIL: "false"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
@@ -409,6 +425,12 @@ jobs:
         if: always()
         run: |
           python scripts/manage_test_server.py stop --pidfile /tmp/frontend.pid --port 5173
+
+      - name: Stop local SMTP capture
+        if: always()
+        run: |
+          if [ -f /tmp/sso-e2e-smtp.pid ]; then kill "$(cat /tmp/sso-e2e-smtp.pid)" || true; fi
+          rm -f /tmp/sso-e2e-mailbox.jsonl
 
       - name: Upload Playwright and Server Logs on Failure
         if: failure()

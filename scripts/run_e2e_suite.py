@@ -68,7 +68,7 @@ def run_e2e(suite: str) -> int:
             "FEATURE_TOTP_ENABLED": "false",
             "FEATURE_PASSKEY_ENABLED": "false",
             "FEATURE_RECOVERY_CODES_ENABLED": "false",
-            "FEATURE_EMAIL_VERIFICATION_ENABLED": "false",
+            "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
             "REQUIRE_VERIFIED_EMAIL": "false",
         }
     )

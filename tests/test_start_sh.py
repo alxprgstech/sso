@@ -69,7 +69,6 @@ class StartBashTests(unittest.TestCase):
                 "FEATURE_TOTP_ENABLED",
                 "FEATURE_PASSKEY_ENABLED",
                 "FEATURE_RECOVERY_CODES_ENABLED",
-                "FEATURE_EMAIL_VERIFICATION_ENABLED",
             ):
                 self.assertEqual(values[name], "false")
             self.assertNotIn(password, result.stdout + result.stderr)

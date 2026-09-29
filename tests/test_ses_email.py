@@ -3,14 +3,15 @@ from __future__ import annotations
 import logging
 import smtplib
 import uuid
+from email import message_from_bytes
 from email.message import EmailMessage
+from email.policy import default
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from app.config import Settings
-from app.core.exceptions import FeatureDisabledException
 from app.models.user import User
-from app.services import mfa_service, ses_email
+from app.services import mfa_service, ses_email, verification_email
 from app.services.mfa_service import EmailVerificationService, sent_emails_sink
 from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError
 from pydantic import ValidationError
@@ -184,16 +185,26 @@ def test_default_smtp_keeps_text_message_and_transport_settings(
     monkeypatch.setattr(smtplib, "SMTP", LocalSMTP)
     settings = Settings(_env_file=None, SMTP_HOST="localhost", SMTP_PORT=1025)
     assert settings.EMAIL_PROVIDER == "smtp"
-    ok = EmailVerificationService._send_smtp_email(
-        "recipient@example.test", "Тема", "Текст письма", settings
+    message = verification_email.build_message(
+        to_email="recipient@example.test",
+        username="Тест",
+        code="012345",
+        link="https://auth.alxprgs.tech/verify-email?token=synthetic",
+        action_url=None,
+        details={},
+        settings=settings,
     )
-    assert ok is True
+    verification_email._send_smtp(message, settings)
     assert connections == [("localhost", 1025, 5)]
     assert len(sent) == 1
-    assert sent[0]["From"] == "no-reply@alxprgs.tech"
+    assert "no-reply@alxprgs.tech" in str(sent[0]["From"])
     assert sent[0]["To"] == "recipient@example.test"
-    assert sent[0].get_content_type() == "text/plain"
-    assert sent[0].get_content().strip() == "Текст письма"
+    assert [part.get_content_type() for part in sent[0].iter_parts()] == [
+        "text/plain",
+        "text/x-amp-html",
+        "text/html",
+    ]
+    assert "012345" in sent[0].get_body(preferencelist=("plain",)).get_content()
 
 
 @pytest.mark.asyncio
@@ -207,7 +218,7 @@ async def test_ses_flow_escapes_html_and_does_not_capture_token(
         requests.append(kwargs)
         return "ses-message-123"
 
-    monkeypatch.setattr(mfa_service, "send_ses_email", fake_send)
+    monkeypatch.setattr(verification_email, "send_ses_email", fake_send)
     audit = AsyncMock()
     monkeypatch.setattr(mfa_service.AuditService, "log_event", audit)
     db = AsyncMock()
@@ -215,9 +226,18 @@ async def test_ses_flow_escapes_html_and_does_not_capture_token(
     user = User(id=uuid.uuid4(), username="<script>alert(1)</script>", email="user@example.test")
     token = await EmailVerificationService.send_verification(db, user, user.email, _settings())
     assert len(requests) == 1
-    assert "<script>" not in str(requests[0]["html_body"])
-    assert "&lt;script&gt;" in str(requests[0]["html_body"])
-    assert token in str(requests[0]["text_body"])
+    parsed = message_from_bytes(requests[0]["raw_message"], policy=default)
+    html_body = next(
+        part.get_content() for part in parsed.iter_parts() if part.get_content_type() == "text/html"
+    )
+    text_body = next(
+        part.get_content()
+        for part in parsed.iter_parts()
+        if part.get_content_type() == "text/plain"
+    )
+    assert "<script>alert(1)</script>" not in html_body
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_body
+    assert token in text_body
     assert sent_emails_sink == []
     assert audit.await_args.kwargs["event_type"] == "email_verification_requested"
 
@@ -230,8 +250,8 @@ async def test_ses_failure_audited_without_smtp_fallback(monkeypatch: pytest.Mon
     def forbidden_smtp(**kwargs: object) -> None:
         raise AssertionError("SMTP fallback is forbidden")
 
-    monkeypatch.setattr(mfa_service, "send_ses_email", fake_send)
-    monkeypatch.setattr(EmailVerificationService, "_send_smtp_email", forbidden_smtp)
+    monkeypatch.setattr(verification_email, "send_ses_email", fake_send)
+    monkeypatch.setattr(verification_email, "_send_smtp", forbidden_smtp)
     audit = AsyncMock()
     monkeypatch.setattr(mfa_service.AuditService, "log_event", audit)
     db = AsyncMock()
@@ -240,25 +260,11 @@ async def test_ses_failure_audited_without_smtp_fallback(monkeypatch: pytest.Mon
     await EmailVerificationService.send_verification(db, user, user.email, _settings())
     assert audit.await_args_list[0].kwargs["event_type"] == "email_delivery_failed"
     assert audit.await_args_list[0].kwargs["details"] == {
-        "email": "user@example.test",
         "reason": "credentials_unavailable",
         "provider": "ses",
     }
 
 
-@pytest.mark.asyncio
-async def test_disabled_email_does_not_create_token_or_client(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def forbidden_send(**kwargs: object) -> None:
-        raise AssertionError("AWS must not be called")
-
-    monkeypatch.setattr(mfa_service, "send_ses_email", forbidden_send)
-    db = AsyncMock()
-    db.add = MagicMock()
-    user = User(id=uuid.uuid4(), username="user", email="user@example.test")
-    settings = _settings()
-    settings.FEATURE_EMAIL_VERIFICATION_ENABLED = False
-    with pytest.raises(FeatureDisabledException):
-        await EmailVerificationService.send_verification(db, user, user.email, settings)
-    db.add.assert_not_called()
+def test_email_verification_cannot_be_disabled() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, FEATURE_EMAIL_VERIFICATION_ENABLED=False)

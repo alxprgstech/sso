@@ -25,10 +25,15 @@ export interface RegisterRequest {
 export interface RegisterResponse {
   status: string;
   message: string;
+  challenge_id: string;
+  expires_at: string;
+  request_details: Record<string, string>;
+}
+
+export interface RegistrationCompleteResponse {
+  status: string;
+  message: string;
   user_id: string;
-  username: string;
-  email: string;
-  email_verification_required: boolean;
 }
 
 export interface UserProfile {

@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath("backend"))
 
-from app.config import get_settings
+from app.config import Settings
 from app.core.exceptions import OAuthErrorException
 from app.core.security import (
     create_jwt,
@@ -19,11 +19,11 @@ from app.core.security import (
 
 
 def test_core_security() -> None:
-    s = get_settings()
+    s = Settings.model_construct()
     assert s.FEATURE_TOTP_ENABLED is False
     assert s.FEATURE_PASSKEY_ENABLED is False
     assert s.FEATURE_RECOVERY_CODES_ENABLED is False
-    assert s.FEATURE_EMAIL_VERIFICATION_ENABLED is False
+    assert s.FEATURE_EMAIL_VERIFICATION_ENABLED is True
     assert s.REQUIRE_VERIFIED_EMAIL is False
 
     h = hash_password("TestPassword123!")

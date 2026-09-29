@@ -13,7 +13,7 @@ ALXPRGS SSO — централизованная закрытая система
 - Централизованную аутентификацию пользователей по логину и паролю (Argon2id).
 - Выдачу токенов доступа и идентификации по протоколу OpenID Connect (OIDC Core 1.0) с поддержкой Authorization Code Flow и PKCE (RFC 7636).
 - Интеграцию внешних сервисов экосистемы через стандартизированный протокол и отдельную клиентскую библиотеку Python SDK (`alxprgs-sso`).
-- Поддержку расширенных факторов аутентификации (TOTP, WebAuthn Passkey, Recovery codes) и верификации email, которые полностью реализованы, но **отключены по умолчанию** на уровне конфигурации.
+- Поддержку расширенных факторов аутентификации (TOTP, WebAuthn Passkey, Recovery codes), отключённых по умолчанию, и обязательное подтверждение email перед созданием самостоятельно регистрируемого пользователя.
 - Ролевое разграничение доступа (RBAC) и единый административный интерфейс.
 
 ---
@@ -140,14 +140,14 @@ sequenceDiagram
 - `FEATURE_TOTP_ENABLED` (по умолчанию `false`)
 - `FEATURE_PASSKEY_ENABLED` (по умолчанию `false`)
 - `FEATURE_RECOVERY_CODES_ENABLED` (по умолчанию `false`)
-- `FEATURE_EMAIL_VERIFICATION_ENABLED` (по умолчанию `false`)
+- `FEATURE_EMAIL_VERIFICATION_ENABLED` (совместимый параметр; всегда `true`, значение `false` отвергается)
 
 ### Архитектурные инварианты:
 1. **Single Source of Truth**: Сервер является единственным источником правды.
 2. **Fail-Closed**: При выключенном флаге:
-   - Соответствующие роуты `/api/v1/mfa/*`, включая `/api/v1/mfa/email/request` и `/api/v1/mfa/email/confirm`, возвращают `404 Not Found` с кодом `feature_disabled`.
-   - Фоновые задачи (например, отправка email) блокируются на уровне доменных сервисов.
+   - Роуты TOTP, Passkey и Recovery codes возвращают `404 Not Found` с кодом `feature_disabled`; подтверждение email доступно и необходимо для самостоятельной регистрации.
+   - Закрытый режим самостоятельной регистрации не создаёт заявку и не отправляет письмо.
 3. **Безопасная витрина возможностей (Capabilities)**: Эндпоинт `/api/v1/auth/capabilities` возвращает фронтенду булевы флаги доступности интерфейсов. Фронтенд скрывает элементы UI, но не принимает решений безопасности.
 4. **Защита от bypass**: Если пользователь ранее привязал второй фактор в тестовом профиле, а затем флаг был отключён, вход не должен автоматически пропускать проверку без административного вмешательства.
 
-При включённом подтверждении email `EmailVerificationService.send_verification` выбирает SMTP (default) или SES API v2 по серверному `EMAIL_PROVIDER`. SES-ветка изолирована в `services/ses_email.py`; токен хранится в БД хешем, а тестовый in-memory sink с сырым токеном работает только при `ENVIRONMENT=testing`. Ссылка `/verify-email` ведёт на публичную страницу и подтверждается действием пользователя. Подробнее: [ADR-0007](adr/0007-ses-email-provider.md).
+Для самостоятельной регистрации `RegistrationService.start` создаёт `pending_registrations`, не `users`. `confirm` под блокировкой строки проверяет шестизначный HMAC-код либо хеш одноразовой ссылки и атомарно создаёт подтверждённого пользователя. `EmailVerificationService` сохраняет прежний путь для уже существующих пользователей. Общий MIME-шаблон `services/verification_email.py` содержит text/AMP/HTML и отправляется через SMTP либо SES API v2 Raw (`services/ses_email.py`) согласно `EMAIL_PROVIDER`. Сырой код и токен попадают в in-memory sink только при `ENVIRONMENT=testing`. Ссылка `/verify-email` погашается действием пользователя. Подробнее: [ADR-0007](adr/0007-ses-email-provider.md), [ADR-0008](adr/0008-registration-after-email-verification.md).

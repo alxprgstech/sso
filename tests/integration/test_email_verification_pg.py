@@ -16,7 +16,7 @@ from app.cli.bootstrap_admin import execute_bootstrap
 from app.config import Settings, get_settings
 from app.core.rbac import ROLE_USER
 from app.main import app
-from app.services import mfa_service
+from app.services import verification_email
 from app.services.mfa_service import EmailVerificationService, sent_emails_sink
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,7 +99,7 @@ async def test_email_verification_ses_provider_with_fake_client_pg(
         submitted.append(kwargs)
         return "ses-message-123"
 
-    monkeypatch.setattr(mfa_service, "send_ses_email", fake_ses_send)
+    monkeypatch.setattr(verification_email, "send_ses_email", fake_ses_send)
 
     def _get_ses_settings() -> Settings:
         overridden = copy.copy(get_settings())
@@ -130,25 +130,23 @@ async def test_email_verification_ses_provider_with_fake_client_pg(
                 "confirm_password": sample_credential,
             },
         )
-        assert registration.status_code == 201
+        assert registration.status_code == 202
         assert len(submitted) == 1
         login_before = await pg_client.post(
             "/api/v1/auth/login",
             json={"username": "ses_signup_user", "password": sample_credential},
         )
         assert login_before.status_code == 401
-        response = await pg_client.post(
-            "/api/v1/mfa/email/request", json={"email": "ses_fake@alxprgs.tech"}
-        )
-        assert response.status_code == 200
-        assert len(submitted) == 2
         assert submitted[0]["region"] == "us-east-1"
         assert submitted[0]["from_email"] == "sso@alxprgs.tech"
-        assert len(sent_emails_sink) == 2
+        assert submitted[0]["raw_message"]
+        assert len(sent_emails_sink) == 1
         token = sent_emails_sink[-1]["token"]
-        confirmed = await pg_client.post("/api/v1/mfa/email/confirm", json={"token": token})
+        confirmed = await pg_client.post(
+            "/api/v1/auth/register/confirm-link", json={"token": token}
+        )
         assert confirmed.status_code == 200
-        replay = await pg_client.post("/api/v1/mfa/email/confirm", json={"token": token})
+        replay = await pg_client.post("/api/v1/auth/register/confirm-link", json={"token": token})
         assert replay.status_code == 401
         login_after = await pg_client.post(
             "/api/v1/auth/login",
@@ -341,11 +339,16 @@ async def test_email_verification_local_smtp_delivery_and_failure_resilience(
         msg_body = smtp_mock.received_messages[-1]
         assert "smtp_test@alxprgs.tech" in msg_body
         import email
+        from email import policy
 
-        parsed_email = email.message_from_string(msg_body)
-        payload = parsed_email.get_payload(decode=True)
-        decoded_text = payload.decode("utf-8") if payload else msg_body
-        assert "Код подтверждения:" in decoded_text
+        parsed_email = email.message_from_string(msg_body, policy=policy.default)
+        decoded_text = parsed_email.get_body(preferencelist=("plain",)).get_content()
+        assert "Ваш код подтверждения:" in decoded_text
+        assert [part.get_content_type() for part in parsed_email.iter_parts()] == [
+            "text/plain",
+            "text/x-amp-html",
+            "text/html",
+        ]
 
     finally:
         await smtp_mock.stop()
@@ -501,41 +504,37 @@ async def test_email_verification_negative_expired_reused_and_rate_limit(
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_email_verification_default_off_isolation(
+async def test_email_verification_available_with_other_factors_off(
     pg_session: AsyncSession, pg_client: httpx.AsyncClient
 ):
     """
-    G4-EMAIL, SEC-FLAG-07: Default-off профиль:
-    - FEATURE_EMAIL_VERIFICATION_ENABLED = False;
-    - Эндпоинты /api/v1/mfa/email/* возвращают HTTP 404 feature_disabled;
-    - Письма не отправляются (sent_emails_sink пуст);
-    - Обычный парольный вход не требует email verification.
+    G4-EMAIL: email verification remains available with the optional factors off.
+    Unknown addresses remain neutral and do not cause delivery.
     """
     sent_emails_sink.clear()
 
-    def _get_disabled_settings() -> Settings:
+    def _get_default_settings() -> Settings:
         current = get_settings()
         overridden = copy.copy(current)
-        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = False
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
-    app.dependency_overrides[get_settings] = _get_disabled_settings
+    app.dependency_overrides[get_settings] = _get_default_settings
     try:
-        # 1. Проверяем эндпоинты в default-off
+        # 1. Unknown address gets neutral response without sending mail.
         req_res = await pg_client.post(
             "/api/v1/mfa/email/request",
             json={"email": "test@alxprgs.tech"},
         )
-        assert req_res.status_code == 404
-        assert req_res.json()["error"] == "feature_disabled"
+        assert req_res.status_code == 200
+        assert req_res.json()["status"] == "ok"
 
         confirm_res = await pg_client.post(
             "/api/v1/mfa/email/confirm",
             json={"token": "x" * 32},
         )
-        assert confirm_res.status_code == 404
-        assert confirm_res.json()["error"] == "feature_disabled"
+        assert confirm_res.status_code == 401
 
         assert len(sent_emails_sink) == 0
     finally:

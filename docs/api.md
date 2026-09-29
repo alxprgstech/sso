@@ -131,7 +131,7 @@
   "totp_enabled": false,
   "passkey_enabled": false,
   "recovery_codes_enabled": false,
-  "email_verification_enabled": false,
+  "email_verification_enabled": true,
   "require_verified_email": false,
   "registration_mode": "closed"
 }
@@ -140,7 +140,7 @@
 ### 2.2. Самостоятельная регистрация пользователя (REG-01..REG-09)
 - **Метод**: `POST /api/v1/auth/register`
 - **Заголовки**: `Origin` (валидируется), `Content-Type: application/json`
-- **Ограничения**: Доступен только при `registration_mode == "open"`. Защищен межпроцессным rate limiting (макс. 5 запросов/мин с IP).
+- **Ограничения**: Доступен только при `registration_mode == "open"`. Защищён межпроцессными лимитами регистрации и отправки письма. Пользователь до подтверждения не создаётся.
 - **Тело запроса**:
 ```json
 {
@@ -150,21 +150,22 @@
   "confirm_password": "SecurePassword123!"
 }
 ```
-- **Ответ 201 Created**:
+- **Ответ 202 Accepted**:
 ```json
 {
-  "status": "ok",
-  "message": "Пользователь успешно зарегистрирован",
-  "user_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "username": "alex_ivanov",
-  "email": "alex@alxprgs.tech",
-  "email_verification_required": false
+  "status": "verification_pending",
+  "challenge_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "expires_at": "2026-09-29T16:00:00Z",
+  "request_details": {"ip": "192.0.2.10", "city": "Неизвестно", "country": "Неизвестно"}
 }
 ```
 - **Ошибки**:
   - `403 Forbidden`: `{"detail": "Самостоятельная регистрация пользователей в настоящий момент закрыта"}` (если режим `closed`);
   - `409 Conflict`: `{"detail": {"error": "user_already_exists", "detail": "Пользователь с указанными учётными данными уже существует"}}` (без раскрытия совпавшего поля);
   - `429 Too Many Requests`: `{"detail": {"error": "rate_limit_exceeded"}}`.
+  - `503 Service Unavailable`: доставка письма не удалась; заявка остаётся, письмо можно запросить снова.
+
+Подтверждение кода: `POST /api/v1/auth/register/confirm-code` с `{"challenge_id":"...","code":"000123"}`. Подтверждение ссылки: `POST /api/v1/auth/register/confirm-link` с `{"token":"..."}`. Оба при успехе возвращают HTTP 200 и `{"status":"ok","user_id":"..."}`; код и ссылка действуют 10 минут и погашаются один раз. Пять неверных кодов блокируют текущий код. Повтор письма: `POST /api/v1/auth/register/resend` с `{"challenge_id":"..."}` возвращает HTTP 202 и новый срок; прежние код и ссылка гаснут. `POST /api/v1/auth/register/preview-link` возвращает сведения о запросе без погашения ссылки. Gmail action `POST /api/v1/auth/register/confirm-gmail?challenge_id=...` доступен только при проверенном Google bearer token. Клиентам прежнего API необходимо перейти с ответа `201/user_id` на `202/challenge_id` и отдельное подтверждение.
 
 ### 2.3. Вход по паролю
 - **Метод**: `POST /api/v1/auth/login`

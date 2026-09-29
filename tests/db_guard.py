@@ -166,7 +166,7 @@ async def safe_truncate_test_tables(session: AsyncSession) -> None:
     truncate_sql = text(
         "TRUNCATE TABLE audit_events, authorization_codes, refresh_tokens, "
         "oidc_redirect_uris, oidc_clients, sessions, password_credentials, "
-        "user_roles, users, recovery_codes, email_verification_tokens, "
+        "user_roles, users, pending_registrations, recovery_codes, email_verification_tokens, "
         "webauthn_challenges, webauthn_credentials, totp_credentials CASCADE;"
     )
     await session.execute(truncate_sql)

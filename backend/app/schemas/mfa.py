@@ -47,3 +47,8 @@ class EmailVerificationRequest(BaseModel):
 
 class EmailVerificationConfirmRequest(BaseModel):
     token: str = Field(..., min_length=16, max_length=128)
+
+
+class EmailVerificationCodeConfirmRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+    code: str = Field(..., pattern=r"^[0-9]{6}$")

@@ -15,6 +15,7 @@ from app.core.exceptions import (
     AuthorizationException,
 )
 from app.core.security import encrypt_totp_secret, hash_token
+from app.database import get_db
 from app.main import app
 from app.models.mfa import (
     EmailVerificationToken,
@@ -75,7 +76,7 @@ async def test_passkey_registration_route_uses_exact_configured_origin(monkeypat
 def test_default_features_all_disabled_in_api():
     """
     Инвариант SEC-FLAG-01..03:
-    Все 4 флага отключены по умолчанию.
+    Три отложенных фактора отключены; email подтверждение обязательно.
     Эндпоинты MFA при отключенных флагах возвращают 404 c error=feature_disabled.
     """
     sent_emails_sink.clear()
@@ -85,7 +86,7 @@ def test_default_features_all_disabled_in_api():
     assert clean_settings.FEATURE_TOTP_ENABLED is False
     assert clean_settings.FEATURE_PASSKEY_ENABLED is False
     assert clean_settings.FEATURE_RECOVERY_CODES_ENABLED is False
-    assert clean_settings.FEATURE_EMAIL_VERIFICATION_ENABLED is False
+    assert clean_settings.FEATURE_EMAIL_VERIFICATION_ENABLED is True
     assert clean_settings.REQUIRE_VERIFIED_EMAIL is False
 
     # 2. Изоляция default-off профиля в API независима от окружения хоста
@@ -95,11 +96,19 @@ def test_default_features_all_disabled_in_api():
         overridden.FEATURE_TOTP_ENABLED = False
         overridden.FEATURE_PASSKEY_ENABLED = False
         overridden.FEATURE_RECOVERY_CODES_ENABLED = False
-        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = False
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
     app.dependency_overrides[get_settings] = _get_default_off_settings
+    fake_db = AsyncMock()
+    fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=0))
+    fake_db.scalar.return_value = None
+
+    async def _get_fake_db():
+        yield fake_db
+
+    app.dependency_overrides[get_db] = _get_fake_db
     try:
         # 1. TOTP endpoints return 404
         r1 = client.post("/api/v1/mfa/totp/setup")
@@ -134,16 +143,16 @@ def test_default_features_all_disabled_in_api():
         assert r6.json()["error"] == "feature_disabled"
         assert r6.json()["feature"] == "FEATURE_PASSKEY_ENABLED"
 
-        # 4. Email verification endpoints return 404
+        # 4. Email request remains available and neutral for an unknown address.
         r7 = client.post("/api/v1/mfa/email/request", json={"email": "user@example.com"})
-        assert r7.status_code == 404
-        assert r7.json()["error"] == "feature_disabled"
-        assert r7.json()["feature"] == "FEATURE_EMAIL_VERIFICATION_ENABLED"
+        assert r7.status_code == 200
+        assert r7.json()["status"] == "ok"
 
         # Проверка отсутствия отправки писем при disabled
         assert len(sent_emails_sink) == 0
     finally:
         app.dependency_overrides.pop(get_settings, None)
+        app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.mark.asyncio
@@ -273,6 +282,8 @@ async def test_email_verification_service():
     assert len(sent_emails_sink) == 1
     assert sent_emails_sink[0]["to"] == user.email
     assert raw_token == sent_emails_sink[0]["token"]
+    assert sent_emails_sink[0]["code"].isdigit()
+    assert len(sent_emails_sink[0]["code"]) == 6
 
     # 2. Мокаем выборку токена из БД
     token_record = EmailVerificationToken(
@@ -284,10 +295,7 @@ async def test_email_verification_service():
         expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
     )
 
-    mock_db.execute.side_effect = [
-        MagicMock(scalar_one_or_none=MagicMock(return_value=token_record)),  # select token
-        MagicMock(scalar_one=MagicMock(return_value=user)),  # select user
-    ]
+    mock_db.scalar.side_effect = [token_record, user]
 
     # 3. Подтверждение токена
     verified = await EmailVerificationService.confirm_email(mock_db, raw_token)

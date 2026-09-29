@@ -111,7 +111,6 @@ function docker-compose {{
                 "FEATURE_TOTP_ENABLED",
                 "FEATURE_PASSKEY_ENABLED",
                 "FEATURE_RECOVERY_CODES_ENABLED",
-                "FEATURE_EMAIL_VERIFICATION_ENABLED",
                 "REQUIRE_VERIFIED_EMAIL",
             ):
                 self.assertEqual(values[name], "false")

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import html
 import json
 import secrets
 import string
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import pyotp
@@ -19,7 +19,6 @@ from app.config import Settings, get_settings
 from app.core.exceptions import (
     AuthenticationException,
     AuthorizationException,
-    FeatureDisabledException,
 )
 from app.core.security import (
     decrypt_totp_secret,
@@ -36,7 +35,17 @@ from app.models.mfa import (
 )
 from app.models.user import User
 from app.services.audit_service import AuditService
-from app.services.ses_email import SESEmailDeliveryError, send_ses_email
+from app.services.ses_email import SESEmailDeliveryError
+from app.services.verification_email import (
+    CODE_TTL_SECONDS,
+    MAX_CODE_ATTEMPTS,
+    build_message,
+    code_hash,
+    code_matches,
+    deliver_message,
+    link_url,
+    new_code,
+)
 
 settings = get_settings()
 
@@ -542,171 +551,112 @@ class WebAuthnService:
 
 class EmailVerificationService:
     @staticmethod
-    def _send_smtp_email(
-        to_email: str,
-        subject: str,
-        body: str,
-        settings: Settings,
-    ) -> bool:
-        """Синхронная отправка письма через smtplib (вызывается в отдельном потоке)."""
-        import smtplib
-        from email.message import EmailMessage
-
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = settings.SMTP_FROM_EMAIL
-        msg["To"] = to_email
-        msg.set_content(body)
-
-        try:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5) as server:
-                if settings.SMTP_USE_TLS:
-                    server.starttls()
-                if settings.SMTP_USER and settings.SMTP_PASSWORD:
-                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-                server.send_message(msg)
-            return True
-        except Exception:
-            return False
-
-    @staticmethod
     async def send_verification(
         db: AsyncSession,
         user: User,
         email: str,
         settings: Settings | None = None,
+        details: dict[str, str] | None = None,
     ) -> str:
-        """
-        Выпуск токена подтверждения и отправка через выбранный транспорт.
-        """
-        import asyncio
-
+        """Send a six-digit code and an independent one-use link for an existing user."""
         active_settings = settings or get_settings()
-        if not active_settings.FEATURE_EMAIL_VERIFICATION_ENABLED:
-            raise FeatureDisabledException(feature="FEATURE_EMAIL_VERIFICATION_ENABLED")
-
         raw_token = generate_random_token(32)
-        h = hash_token(raw_token)
+        code = new_code()
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(hours=24)
-
         tok = EmailVerificationToken(
+            id=uuid.uuid4(),
             user_id=user.id,
-            token_hash=h,
+            token_hash=hash_token(raw_token),
             email=email,
             is_used=False,
-            expires_at=expires_at,
+            expires_at=now + timedelta(seconds=CODE_TTL_SECONDS),
         )
+        tok.code_hash = code_hash(active_settings, tok.id, code)
         db.add(tok)
         await db.commit()
-
-        subject = "Подтверждение адреса электронной почты ALXPRGS SSO"
-        verification_url = f"{active_settings.FRONTEND_URL}/verify-email?token={raw_token}"
-        body = (
-            f"Здравствуйте, {user.username}!\n\n"
-            f"Для подтверждения вашего адреса электронной почты перейдите по ссылке:\n"
-            f"{verification_url}\n\n"
-            f"Код подтверждения: {raw_token}\n\n"
-            f"Ссылка действительна 24 часа. Если вы не запрашивали подтверждение, проигнорируйте письмо.\n"
+        message = build_message(
+            to_email=email,
+            username=user.username,
+            code=code,
+            link=link_url(active_settings, raw_token, "existing"),
+            action_url=None,
+            details=details or {},
+            settings=active_settings,
         )
-
-        # Тестовый сборщик не должен удерживать сырые токены в обычном процессе.
         if active_settings.ENVIRONMENT == "testing":
             sent_emails_sink.append(
-                {"to": email, "subject": subject, "token": raw_token, "timestamp": now.isoformat()}
+                {
+                    "to": email,
+                    "subject": str(message["Subject"]),
+                    "token": raw_token,
+                    "code": code,
+                    "challenge_id": str(tok.id),
+                    "timestamp": now.isoformat(),
+                }
             )
-
-        if active_settings.EMAIL_PROVIDER == "ses":
-            safe_username = html.escape(user.username)
-            safe_url = html.escape(verification_url, quote=True)
-            safe_token = html.escape(raw_token)
-            html_body = (
-                f"<p>Здравствуйте, {safe_username}!</p>"
-                f'<p>Для подтверждения адреса перейдите по <a href="{safe_url}">ссылке</a>.</p>'
-                f"<p>Код подтверждения: {safe_token}</p>"
-                "<p>Ссылка действительна 24 часа. Если вы не запрашивали подтверждение, "
-                "проигнорируйте письмо.</p>"
+        try:
+            await deliver_message(message, active_settings)
+        except SESEmailDeliveryError as error:
+            await AuditService.log_event(
+                db,
+                event_type="email_delivery_failed",
+                user_id=user.id,
+                details={"reason": error.reason, "provider": active_settings.EMAIL_PROVIDER},
             )
-            try:
-                await asyncio.to_thread(
-                    send_ses_email,
-                    region=active_settings.SES_REGION,
-                    from_email=active_settings.SES_FROM_EMAIL,
-                    from_name=active_settings.SES_FROM_NAME,
-                    to_email=email,
-                    subject=subject,
-                    text_body=body,
-                    html_body=html_body,
-                )
-            except SESEmailDeliveryError as error:
-                await AuditService.log_event(
-                    db,
-                    event_type="email_delivery_failed",
-                    user_id=user.id,
-                    details={"email": email, "reason": error.reason, "provider": "ses"},
-                )
-        elif active_settings.SMTP_HOST and active_settings.SMTP_PORT:
-            smtp_ok = await asyncio.to_thread(
-                EmailVerificationService._send_smtp_email,
-                to_email=email,
-                subject=subject,
-                body=body,
-                settings=active_settings,
-            )
-            if not smtp_ok:
-                await AuditService.log_event(
-                    db,
-                    event_type="email_delivery_failed",
-                    user_id=user.id,
-                    details={"email": email, "reason": "smtp_connection_failed"},
-                )
-
-        await AuditService.log_event(
-            db, event_type="email_verification_requested", user_id=user.id, details={"email": email}
-        )
+        await AuditService.log_event(db, event_type="email_verification_requested", user_id=user.id)
         return raw_token
 
     @staticmethod
     async def confirm_email(db: AsyncSession, raw_token: str) -> bool:
-        """
-        Атомарное подтверждение адреса электронной почты с защитой от Replay и истечения срока (G4-EMAIL).
-        """
-        h = hash_token(raw_token)
-        now = datetime.now(timezone.utc)
-
-        # Проверяем наличие любого токена с таким хешем для выявления replay / expired
-        check_stmt = select(EmailVerificationToken).where(EmailVerificationToken.token_hash == h)
-        existing_tok = (await db.execute(check_stmt)).scalar_one_or_none()
-
-        if not existing_tok:
-            return False
-
-        if existing_tok.is_used:
+        tok = await db.scalar(
+            select(EmailVerificationToken)
+            .where(EmailVerificationToken.token_hash == hash_token(raw_token))
+            .with_for_update()
+        )
+        if tok and tok.is_used:
             await AuditService.log_event(
-                db,
-                event_type="email_verification_replay_detected",
-                user_id=existing_tok.user_id,
-                details={"token_hash": h[:16]},
+                db, event_type="email_verification_replay_detected", user_id=tok.user_id
             )
             return False
-
-        if existing_tok.expires_at <= now:
+        if tok and tok.expires_at <= datetime.now(timezone.utc):
             await AuditService.log_event(
-                db,
-                event_type="email_verification_expired",
-                user_id=existing_tok.user_id,
-                details={"token_hash": h[:16]},
+                db, event_type="email_verification_expired", user_id=tok.user_id
             )
             return False
+        return await EmailVerificationService._consume(db, tok)
 
-        existing_tok.is_used = True
+    @staticmethod
+    async def confirm_code(db: AsyncSession, email: str, code: str, settings: Settings) -> bool:
+        tok = await db.scalar(
+            select(EmailVerificationToken)
+            .where(
+                EmailVerificationToken.email == email.strip().lower(),
+                EmailVerificationToken.is_used.is_(False),
+            )
+            .order_by(EmailVerificationToken.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        if not tok or tok.is_used or tok.expires_at <= datetime.now(timezone.utc):
+            return False
+        if not tok.code_hash or tok.failed_attempts >= MAX_CODE_ATTEMPTS:
+            return False
+        if not code_matches(settings, tok.id, code, tok.code_hash):
+            tok.failed_attempts += 1
+            await db.commit()
+            return False
+        return await EmailVerificationService._consume(db, tok)
 
-        # Обновляем пользователя
-        user_stmt = select(User).where(User.id == existing_tok.user_id)
-        user = (await db.execute(user_stmt)).scalar_one()
-        user.email = existing_tok.email
+    @staticmethod
+    async def _consume(db: AsyncSession, tok: EmailVerificationToken | None) -> bool:
+        if not tok or tok.is_used or tok.expires_at <= datetime.now(timezone.utc):
+            return False
+        user = await db.scalar(select(User).where(User.id == tok.user_id).with_for_update())
+        if not user:
+            return False
+        tok.is_used = True
+        user.email = tok.email
         user.email_verified = True
-
         await db.commit()
         await AuditService.log_event(db, event_type="email_verified", user_id=user.id)
         return True

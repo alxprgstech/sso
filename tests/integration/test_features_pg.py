@@ -19,7 +19,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
     pg_session: AsyncSession, pg_client: httpx.AsyncClient
 ):
     """
-    QA-08, SEC-FLAG-01, SEC-FLAG-02: В default-профиле все 4 флага выключены (false).
+    QA-08, SEC-FLAG-01, SEC-FLAG-02: Три отложенных фактора выключены.
     Прямые вызовы эндпоинтов MFA возвращают 404 feature_disabled.
     """
 
@@ -29,7 +29,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
         overridden.FEATURE_TOTP_ENABLED = False
         overridden.FEATURE_PASSKEY_ENABLED = False
         overridden.FEATURE_RECOVERY_CODES_ENABLED = False
-        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = False
+        overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
@@ -42,7 +42,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
         assert caps["totp_enabled"] is False
         assert caps["passkey_enabled"] is False
         assert caps["recovery_codes_enabled"] is False
-        assert caps["email_verification_enabled"] is False
+        assert caps["email_verification_enabled"] is True
 
         # 2. Создаем пользователя и входим
         code, _ = await execute_bootstrap(
@@ -86,14 +86,14 @@ async def test_default_off_profile_capabilities_and_404_pg(
         assert passkey_opt.status_code == 404
         assert "отключен" in str(passkey_opt.json())
 
-        # 3.4 Email verification request
+        # 3.4 Email request is always available. Use an unknown address without a session.
+        pg_client.cookies.clear()
         email_req = await pg_client.post(
             "/api/v1/mfa/email/request",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"email": "mfa_dis@alxprgs.tech"},
+            json={"email": "unknown@alxprgs.tech"},
         )
-        assert email_req.status_code == 404
-        assert "отключен" in str(email_req.json())
+        assert email_req.status_code == 200
+        assert email_req.json()["status"] == "ok"
     finally:
         app.dependency_overrides.pop(get_settings, None)
 

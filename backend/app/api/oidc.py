@@ -127,11 +127,7 @@ async def authorize(
                 user_candidate = (await db.execute(user_stmt)).scalar_one_or_none()
                 if not user_candidate or not user_candidate.is_active:
                     session_invalid = True
-                elif (
-                    settings.REQUIRE_VERIFIED_EMAIL
-                    and settings.FEATURE_EMAIL_VERIFICATION_ENABLED
-                    and not user_candidate.email_verified
-                ):
+                elif settings.REQUIRE_VERIFIED_EMAIL and not user_candidate.email_verified:
                     session_invalid = True
                 else:
                     user = user_candidate

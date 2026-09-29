@@ -13,6 +13,7 @@ from app.models.oidc import (
     RefreshToken,
 )
 from app.models.session import Session
+from app.models.registration import PendingRegistration
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
 
@@ -33,4 +34,5 @@ __all__ = [
     "EmailVerificationToken",
     "AuditEvent",
     "SystemConfiguration",
+    "PendingRegistration",
 ]

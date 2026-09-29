@@ -22,6 +22,11 @@ const apiMock = vi.hoisted(() => ({
   downloadAudit: vi.fn(),
   setupTotp: vi.fn(),
   confirmEmailVerification: vi.fn(),
+  register: vi.fn(),
+  confirmRegistrationCode: vi.fn(),
+  confirmRegistrationLink: vi.fn(),
+  previewRegistrationLink: vi.fn(),
+  resendRegistration: vi.fn(),
 }));
 vi.mock("./api/client", () => ({ api: apiMock }));
 
@@ -29,7 +34,7 @@ const disabled: Capabilities = {
   totp_enabled: false,
   passkey_enabled: false,
   recovery_codes_enabled: false,
-  email_verification_enabled: false,
+  email_verification_enabled: true,
   require_verified_email: false,
   registration_mode: "closed",
 };
@@ -76,6 +81,45 @@ async function enterPassword() {
 }
 
 describe("server capabilities and account flows", () => {
+  it("requires the emailed six-digit code before completing registration", async () => {
+    window.history.replaceState({}, "", "/register");
+    apiMock.getCapabilities.mockResolvedValue({ ...disabled, registration_mode: "open" });
+    apiMock.register.mockResolvedValue({
+      status: "verification_pending",
+      challenge_id: "synthetic-challenge",
+      expires_at: "2026-09-29T18:00:00Z",
+      request_details: { ip: "192.0.2.1", os: "Windows", city: "Неизвестно" },
+    });
+    apiMock.confirmRegistrationCode.mockResolvedValue({ status: "ok", user_id: "synthetic-user" });
+    render(<App />);
+    fireEvent.change(await screen.findByPlaceholderText("alex_ivanov"), { target: { value: "alex" } });
+    fireEvent.change(screen.getByPlaceholderText("alex@alxprgs.tech"), { target: { value: "alex@example.test" } });
+    const passwords = document.querySelectorAll<HTMLInputElement>('input[type="password"]');
+    fireEvent.change(passwords[0], { target: { value: "SyntheticPassword2026!" } });
+    fireEvent.change(passwords[1], { target: { value: "SyntheticPassword2026!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Зарегистрироваться" }));
+    await screen.findByLabelText("Код из письма");
+    expect(apiMock.confirmRegistrationCode).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Сведения о запросе"));
+    expect(screen.getByText("Windows")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Код из письма"), { target: { value: "012345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Подтвердить адрес" }));
+    await waitFor(() => expect(apiMock.confirmRegistrationCode).toHaveBeenCalledWith("synthetic-challenge", "012345"));
+    expect(await screen.findByText(/учётная запись создана/)).toBeTruthy();
+  });
+
+  it("previews registration link details without consuming the link", async () => {
+    window.history.replaceState({}, "", "/verify-email?mode=registration&token=synthetic-registration-link");
+    apiMock.previewRegistrationLink.mockResolvedValue({ request_details: { ip: "192.0.2.2", city: "Неизвестно" } });
+    apiMock.confirmRegistrationLink.mockResolvedValue({ status: "ok", user_id: "synthetic-user" });
+    render(<App />);
+    await screen.findByRole("button", { name: "Подтвердить адрес" });
+    expect(window.location.search).toBe("");
+    expect(apiMock.confirmRegistrationLink).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Подтвердить адрес" }));
+    await waitFor(() => expect(apiMock.confirmRegistrationLink).toHaveBeenCalledWith("synthetic-registration-link"));
+  });
+
   it("opens a verification link without a session and waits for a user click", async () => {
     window.history.replaceState({}, "", "/verify-email?token=synthetic-once-token");
     apiMock.confirmEmailVerification.mockResolvedValue({ status: "ok", message: "Подтверждено" });

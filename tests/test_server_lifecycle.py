@@ -83,7 +83,7 @@ def test_preflight_capabilities_mismatch_fail_fast():
             "passkey_enabled": False,
             "totp_enabled": False,
             "recovery_codes_enabled": False,
-            "email_verification_enabled": False,
+            "email_verification_enabled": True,
         }
     }
 

@@ -18,6 +18,7 @@ from app.models.user import User
 from app.schemas.auth import UserProfileResponse
 from app.schemas.mfa import (
     EmailVerificationConfirmRequest,
+    EmailVerificationCodeConfirmRequest,
     EmailVerificationRequest,
     PasskeyAuthenticationVerifyRequest,
     PasskeyRegistrationVerifyRequest,
@@ -35,6 +36,7 @@ from app.services.mfa_service import (
     WebAuthnService,
     _cred_id_to_bytes,
 )
+from app.services.verification_email import request_details
 
 router = APIRouter(prefix="/api/v1/mfa", tags=["Multi-Factor Authentication"])
 
@@ -341,11 +343,10 @@ async def delete_passkey(
 
 
 # ==============================================================================
-# 4. EMAIL VERIFICATION РОУТЕР (FEATURE_EMAIL_VERIFICATION_ENABLED)
+# 4. EMAIL VERIFICATION РОУТЕР
 # ==============================================================================
 email_router = APIRouter(
     prefix="/email",
-    dependencies=[Depends(require_feature("FEATURE_EMAIL_VERIFICATION_ENABLED"))],
 )
 
 
@@ -381,7 +382,9 @@ async def request_email_verification(
             await verify_csrf(request, session, settings)
 
         target_email = (payload.email or user.email).strip().lower()
-        await EmailVerificationService.send_verification(db, user, target_email, settings)
+        await EmailVerificationService.send_verification(
+            db, user, target_email, settings, request_details(request, settings)
+        )
         return {"status": "ok", "message": f"Письмо с подтверждением отправлено на {target_email}"}
 
     # 2. Неаутентифицированный запрос (неподтвержденный пользователь)
@@ -396,7 +399,9 @@ async def request_email_verification(
     target_user = (await db.execute(stmt)).scalar_one_or_none()
 
     if target_user and not target_user.email_verified:
-        await EmailVerificationService.send_verification(db, target_user, clean_email, settings)
+        await EmailVerificationService.send_verification(
+            db, target_user, clean_email, settings, request_details(request, settings)
+        )
 
     # Защита от перечисления аккаунтов (Account Enumeration):
     # Возвращаем нейтральный ответ
@@ -416,6 +421,18 @@ async def confirm_email_verification(
         raise AuthenticationException(
             "Токен подтверждения недействителен или срок его действия истёк"
         )
+    return {"status": "ok", "message": "Адрес электронной почты успешно подтверждён"}
+
+
+@email_router.post("/confirm-code")
+async def confirm_email_code(
+    payload: EmailVerificationCodeConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    success = await EmailVerificationService.confirm_code(db, payload.email, payload.code, settings)
+    if not success:
+        raise AuthenticationException("Код подтверждения недействителен или истёк")
     return {"status": "ok", "message": "Адрес электронной почты успешно подтверждён"}
 
 

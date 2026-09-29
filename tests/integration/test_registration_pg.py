@@ -1,8 +1,11 @@
+import re
+
 import httpx
 import pytest
 from app.cli.bootstrap_admin import execute_bootstrap
 from app.core.rbac import ROLE_ADMIN, ROLE_USER
 from app.core.security import verify_password
+from app.services import registration_service
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,13 +85,13 @@ async def test_registration_bootstrap_incomplete_rejected_pg(
 @pytest.mark.postgres
 @pytest.mark.asyncio
 async def test_registration_success_open_mode_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
     """
     QA-05, REG-01, REG-04, TEST-REG-01: Успешная регистрация в режиме 'open'.
     Проверяет:
     - Создание обычного пользователя с ролью 'user' и is_superuser=False.
-    - email_verified=False в default-профиле.
+    - До подтверждения нет записи users; после кода email_verified=True.
     - Хеширование пароля Argon2id.
     - Отсутствие автоматической сессионной cookie (REG-04: явный последующий вход).
     - Возможность успешного входа после регистрации и отсутствие прав администратора.
@@ -101,6 +104,13 @@ async def test_registration_success_open_mode_pg(
     )
     await pg_session.commit()
 
+    messages = []
+
+    async def capture_message(message, _settings):
+        messages.append(message)
+
+    monkeypatch.setattr(registration_service, "deliver_message", capture_message)
+
     # 2. Выполняем регистрацию
     resp = await pg_client.post(
         "/api/v1/auth/register",
@@ -111,12 +121,28 @@ async def test_registration_success_open_mode_pg(
             "confirm_password": "CharliePassword2026!",
         },
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 202
     data = resp.json()
-    assert data["status"] == "ok"
-    assert data["username"] == "charlie_reg"
-    assert data["email"] == "charlie@alxprgs.tech"
-    new_user_id = data["user_id"]
+    assert data["status"] == "verification_pending"
+    assert "user_id" not in data
+    assert len(messages) == 1
+
+    before = await pg_session.execute(text("SELECT id FROM users WHERE username = 'charlie_reg'"))
+    assert before.scalar_one_or_none() is None
+    before_login = await pg_client.post(
+        "/api/v1/auth/login",
+        json={"username": "charlie_reg", "password": "CharliePassword2026!"},
+    )
+    assert before_login.status_code == 401
+    plain = messages[0].get_body(preferencelist=("plain",)).get_content()
+    code = re.search(r"Ваш код подтверждения: ([0-9]{6})", plain)
+    assert code is not None
+    confirmed = await pg_client.post(
+        "/api/v1/auth/register/confirm-code",
+        json={"challenge_id": data["challenge_id"], "code": code.group(1)},
+    )
+    assert confirmed.status_code == 200
+    new_user_id = confirmed.json()["user_id"]
 
     # 3. Проверяем инвариант REG-04: cookie сессии НЕ должна устанавливаться автоматически
     assert "alx_session" not in pg_client.cookies
@@ -134,7 +160,7 @@ async def test_registration_success_open_mode_pg(
     assert user_row[1] == "charlie@alxprgs.tech"
     assert user_row[2] is False  # is_superuser == False
     assert user_row[3] is True  # is_active == True
-    assert user_row[4] is False  # email_verified == False в default-профиле
+    assert user_row[4] is True
 
     # Проверяем роль user
     r_res = await pg_session.execute(
@@ -185,8 +211,116 @@ async def test_registration_success_open_mode_pg(
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
+async def test_registration_code_attempts_resend_and_expiry_pg(
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    await pg_session.execute(
+        text(
+            "UPDATE system_configuration SET bootstrap_completed=true, registration_mode='open' WHERE id=1"
+        )
+    )
+    await pg_session.commit()
+    sent = []
+
+    async def capture_message(message, _settings):
+        sent.append(message)
+
+    codes = iter(("000123", "004567"))
+    monkeypatch.setattr(registration_service, "deliver_message", capture_message)
+    monkeypatch.setattr(registration_service, "new_code", lambda: next(codes))
+    registration = await pg_client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "code_rules",
+            "email": "code_rules@alxprgs.tech",
+            "password": "CodeRules2026!",
+            "confirm_password": "CodeRules2026!",
+        },
+    )
+    assert registration.status_code == 202
+    challenge_id = registration.json()["challenge_id"]
+    for _ in range(5):
+        wrong = await pg_client.post(
+            "/api/v1/auth/register/confirm-code",
+            json={"challenge_id": challenge_id, "code": "999999"},
+        )
+        assert wrong.status_code == 401
+    locked = await pg_client.post(
+        "/api/v1/auth/register/confirm-code",
+        json={"challenge_id": challenge_id, "code": "000123"},
+    )
+    assert locked.status_code == 401
+    resend = await pg_client.post(
+        "/api/v1/auth/register/resend", json={"challenge_id": challenge_id}
+    )
+    assert resend.status_code == 202
+    old_code = await pg_client.post(
+        "/api/v1/auth/register/confirm-code",
+        json={"challenge_id": challenge_id, "code": "000123"},
+    )
+    assert old_code.status_code == 401
+    assert len(sent) == 2
+    await pg_session.execute(
+        text(
+            "UPDATE pending_registrations SET expires_at = now() - interval '1 second' WHERE id = :id"
+        ),
+        {"id": challenge_id},
+    )
+    await pg_session.commit()
+    expired = await pg_client.post(
+        "/api/v1/auth/register/confirm-code",
+        json={"challenge_id": challenge_id, "code": "004567"},
+    )
+    assert expired.status_code == 401
+    assert (
+        await pg_session.scalar(text("SELECT COUNT(*) FROM users WHERE username='code_rules'")) == 0
+    )
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_registration_delivery_failure_keeps_pending_pg(
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from app.services.ses_email import SESEmailDeliveryError
+
+    await pg_session.execute(
+        text(
+            "UPDATE system_configuration SET bootstrap_completed=true, registration_mode='open' WHERE id=1"
+        )
+    )
+    await pg_session.commit()
+
+    async def fail_message(_message, _settings):
+        raise SESEmailDeliveryError("credentials_unavailable")
+
+    monkeypatch.setattr(registration_service, "deliver_message", fail_message)
+    response = await pg_client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "mail_failure",
+            "email": "mail_failure@alxprgs.tech",
+            "password": "MailFailure2026!",
+            "confirm_password": "MailFailure2026!",
+        },
+    )
+    assert response.status_code == 503
+    assert (
+        await pg_session.scalar(
+            text("SELECT COUNT(*) FROM pending_registrations WHERE username='mail_failure'")
+        )
+        == 1
+    )
+    assert (
+        await pg_session.scalar(text("SELECT COUNT(*) FROM users WHERE username='mail_failure'"))
+        == 0
+    )
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
 async def test_registration_duplicate_collisions_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
+    pg_session: AsyncSession, pg_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
     """
     QA-05, REG-03, TEST-REG-03: Защита от перечисления пользователей при коллизиях.
@@ -200,6 +334,13 @@ async def test_registration_duplicate_collisions_pg(
     )
     await pg_session.commit()
 
+    messages = []
+
+    async def capture_message(message, _settings):
+        messages.append(message)
+
+    monkeypatch.setattr(registration_service, "deliver_message", capture_message)
+
     # Создаем первого пользователя
     r1 = await pg_client.post(
         "/api/v1/auth/register",
@@ -210,7 +351,15 @@ async def test_registration_duplicate_collisions_pg(
             "confirm_password": "Password1234!",
         },
     )
-    assert r1.status_code == 201
+    assert r1.status_code == 202
+    plain = messages[0].get_body(preferencelist=("plain",)).get_content()
+    code = re.search(r"Ваш код подтверждения: ([0-9]{6})", plain)
+    assert code is not None
+    confirmed = await pg_client.post(
+        "/api/v1/auth/register/confirm-code",
+        json={"challenge_id": r1.json()["challenge_id"], "code": code.group(1)},
+    )
+    assert confirmed.status_code == 200
 
     # Попытка 1: тот же username, другой email -> 409 Conflict
     r_dup_uname = await pg_client.post(

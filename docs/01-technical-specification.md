@@ -65,7 +65,7 @@
   - `FEATURE_TOTP_ENABLED=false`
   - `FEATURE_PASSKEY_ENABLED=false`
   - `FEATURE_RECOVERY_CODES_ENABLED=false`
-  - `FEATURE_EMAIL_VERIFICATION_ENABLED=false`
+  - `FEATURE_EMAIL_VERIFICATION_ENABLED=true` (обязательное подтверждение самостоятельной регистрации)
   - `REQUIRE_VERIFIED_EMAIL=false`
 - При значении `false` соответствующие эндпоинты возвращают HTTP 404 (`feature_disabled`); фоновые рассылки писем не производятся.
 

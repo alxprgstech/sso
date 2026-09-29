@@ -2,6 +2,7 @@ import { errorMessage } from "../utils/error";
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
+import type { RegisterResponse } from "../types/api";
 
 interface RegisterPageProps {
   onNavigateToLogin: () => void;
@@ -16,6 +17,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [challenge, setChallenge] = useState<RegisterResponse | null>(null);
+  const [code, setCode] = useState("");
+  const [verified, setVerified] = useState(false);
 
   const isClosed = capabilities && capabilities.registration_mode !== "open";
 
@@ -50,18 +54,44 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
         confirm_password: confirmPassword,
       });
 
-      setSuccess(
-        res.email_verification_required
-          ? "Регистрация успешна! На указанный email направлено письмо с подтверждением."
-          : "Учётная запись успешно зарегистрирована! Теперь вы можете войти в систему."
-      );
-
-      // Через 2 секунды перенаправляем на вход
-      setTimeout(() => {
-        onNavigateToLogin();
-      }, 2000);
+      setChallenge(res);
+      setPassword("");
+      setConfirmPassword("");
+      setSuccess("Письмо отправлено. Введите код из 6 цифр или откройте ссылку в письме.");
     } catch (err: unknown) {
       setError(errorMessage(err, "Ошибка при регистрации учётной записи."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!challenge || !/^[0-9]{6}$/.test(code)) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await api.confirmRegistrationCode(challenge.challenge_id, code);
+      setVerified(true);
+      setCode("");
+      setSuccess("Адрес подтверждён, учётная запись создана. Теперь можно войти.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Неверный или просроченный код."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!challenge) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setChallenge(await api.resendRegistration(challenge.challenge_id));
+      setSuccess("Новый код отправлен. Предыдущий код и ссылка больше не действуют.");
+      setCode("");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Не удалось повторно отправить письмо."));
     } finally {
       setLoading(false);
     }
@@ -120,6 +150,21 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                 </div>
               )}
 
+              {verified ? (
+                <button type="button" onClick={onNavigateToLogin} className="w-full rounded bg-blue-600 px-4 py-3 text-white">Перейти ко входу</button>
+              ) : challenge ? (
+                <div className="space-y-4">
+                  <form onSubmit={handleVerify} className="space-y-3">
+                    <label htmlFor="registration-code" className="block text-sm font-medium text-gray-700">Код из письма</label>
+                    <input id="registration-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required className="w-full rounded border p-3 text-center text-2xl tracking-widest" />
+                    <button type="submit" disabled={loading || code.length !== 6} className="w-full rounded bg-blue-600 px-4 py-3 text-white disabled:opacity-50">Подтвердить адрес</button>
+                  </form>
+                  <button type="button" disabled={loading} onClick={handleResend} className="text-sm text-blue-700 underline disabled:opacity-50">Отправить новый код</button>
+                  <details className="rounded border p-3 text-sm"><summary className="cursor-pointer">Сведения о запросе</summary>
+                    <dl className="mt-2 space-y-1">{Object.entries(challenge.request_details).map(([key, value]) => <div key={key}><dt className="inline font-medium">{key}: </dt><dd className="inline">{value}</dd></div>)}</dl>
+                  </details>
+                </div>
+              ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -196,6 +241,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                   </button>
                 </div>
               </form>
+              )}
 
               <div className="mt-6 text-center">
                 <span className="text-sm text-gray-600">Уже есть учётная запись? </span>

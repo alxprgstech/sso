@@ -1,5 +1,18 @@
 # Акт и матрица приёмки программного комплекса ALXPRGS SSO
 
+## TASK-096: обязательное email-подтверждение при самостоятельной регистрации (29.09.2026)
+
+| Проверка | Фактический результат | Статус |
+| --- | --- | --- |
+| `pytest -q tests/test_verification_email.py tests/test_ses_email.py tests/test_mfa_features.py tests/test_registration.py tests/test_core_verify.py tests/test_auth_and_sessions.py tests/test_start_ps1.py tests/test_start_sh.py` | 48 passed, 2 subtests passed; только fake SES, письма не отправлялись | подтверждено локально |
+| `pytest --collect-only -q tests/integration/test_registration_pg.py tests/integration/test_email_verification_pg.py tests/integration/test_concurrency_pg.py` | 17 тестов собраны; это не PostgreSQL-исполнение | подтверждена только сборка |
+| `ruff check backend/ tests/ scripts/test_smtp_capture.py scripts/manage_test_server.py scripts/run_e2e_suite.py scripts/run_overnight_stability.py` и `ruff format --check` | обе команды прошли | подтверждено локально |
+| `mypy --explicit-package-bases backend/app --ignore-missing-imports` | 34 файла без ошибок | подтверждено локально |
+| `npm run test:components`, `npm run lint`, `npm run typecheck`, `npm run typecheck:tests`, `npm run build` | 14 component passed; остальные команды успешны | подтверждено локально |
+| Защищённая PostgreSQL, миграция 0003, race/replay/TTL, локальный SMTP browser E2E, Compose | Docker CLI и PostgreSQL отсутствуют в текущей среде; браузерный CI ещё не запускался | заблокировано, критерий готовности не закрыт |
+
+Смена контракта `POST /api/v1/auth/register`: `201/user_id` заменено на `202/challenge_id`, затем отдельный вызов подтверждения. Gmail AMP/action требуют отдельной регистрации отправителя Google; наличие Schema.org не гарантирует карточку кода в Gmail. Реальная отправка SES и Gmail action в production не проводились.
+
 ## Дополнение TASK-095: локальные AWS credentials в Compose (2026-09-29)
 
 Стандартные `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` и `AWS_SESSION_TOKEN` теперь интерполируются из игнорируемого Git `.env` только для backend-контейнера. PyYAML/mapping и botocore fallback при пустых значениях проверены; secret scan — 0 новых находок. Docker CLI в среде Codex отсутствует, поэтому `docker compose config --quiet`, пересоздание контейнера и фактическая SES-доставка не проверены. TASK-095 остаётся `blocked` до проверки на Docker-хосте; реальные значения ключей в этом акте не фиксируются.
@@ -8,8 +21,8 @@
 
 | Критерий | Текущее доказательство | Состояние |
 | --- | --- | --- |
-| SES Simple text/HTML, AWS credential chain, From и безопасные ошибки | `tests/test_ses_email.py`, fake client; затронутый Python unit набор 36 passed | локально подтверждено mock-тестами, не реальным SES |
-| SMTP по умолчанию и default-off | Fake SMTP проверил прежнее текстовое письмо и параметры транспорта; MFA/registration unit и тесты `start.ps1`/`start.sh` прошли (3 passed, 2 subtests); локальный SMTP-приёмник и PG-набор ожидают отдельной PostgreSQL | частично подтверждено |
+| SES Raw multipart text/AMP/HTML, AWS credential chain, From и безопасные ошибки | `tests/test_ses_email.py`, `tests/test_verification_email.py`, fake client | unit подтверждён локально; реальный SES не вызывался |
+| SMTP по умолчанию | Текущие unit проверяют multipart MIME и параметры транспорта; локальный SMTP capture прошёл smoke test. Прежний результат default-off для email исторический, см. TASK-096 выше. | частично подтверждено, PostgreSQL/CI ожидают |
 | Публичная ссылка без автоматического погашения | Frontend component 12 passed, utility 7 passed, lint/typechecks/build успешны | локально подтверждено компонентно |
 | Конфигурация и зависимости | `pip check`, `pip-audit --strict -r requirements-lock.txt`, Ruff, mypy, ограниченный security script, secret scan 116 исторических/0 новых | локально подтверждено |
 | PostgreSQL интеграция, Compose и реальная SES-доставка | Новый PG-тест остановлен защитной фикстурой без `TEST_DATABASE_URL`; Docker/psql/pg_dump недоступны; реальная отправка в тестах запрещена | не проверено / blocked |
@@ -99,13 +112,13 @@
 - [x] **SSO-08**: Немедленное прекращение доступа при блокировке учетной записи или отзыве сессии.
 
 ### 2.4. Требования к отложенным возможностям (SEC-FLAG)
-- [x] **SEC-FLAG-01**: Все 4 флага (`FEATURE_TOTP_ENABLED`, `FEATURE_PASSKEY_ENABLED`, `FEATURE_RECOVERY_CODES_ENABLED`, `FEATURE_EMAIL_VERIFICATION_ENABLED`) по умолчанию равны `false`. `REQUIRE_VERIFIED_EMAIL=false`.
+- [ ] **SEC-FLAG-01 (редакция 29.09.2026)**: TOTP, Passkey и Recovery codes по умолчанию `false`; email-подтверждение обязательно для самостоятельной регистрации. Старый результат default-off для email относился к прежнему контракту, новая PostgreSQL/CI проверка ожидается.
 - [x] **SEC-FLAG-02**: При отключенном флаге API возвращает 404 `feature_disabled`.
 - [x] **SEC-FLAG-03**: Реализован W3C WebAuthn Level 3 для Passkey.
 - [x] **SEC-FLAG-04**: TOTP секреты шифруются Fernet с отдельным ключом `MFA_ENCRYPTION_KEY`.
 - [x] **SEC-FLAG-05**: Резервные коды зависят от активного TOTP, хешируются SHA-256 и атомарно погашаются.
 - [x] **SEC-FLAG-06**: Подтверждение почты генерирует одноразовые токены.
-- [x] **SEC-FLAG-07**: При disabled-флаге подтверждения почты внешние письма не отправляются (`sent_emails_sink`).
+- [ ] **SEC-FLAG-07 (редакция 29.09.2026)**: При закрытой регистрации заявка и письмо не создаются; при открытой отправка обязательна и сбой транспорта не создаёт пользователя. PostgreSQL/CI проверка ожидается.
 
 ### 2.5. Пользователи, кабинет и админка (USR, UI, AUDIT)
 - [x] **USR-01**: Личный кабинет с просмотром профиля и сменой пароля.

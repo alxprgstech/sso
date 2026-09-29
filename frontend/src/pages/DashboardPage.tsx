@@ -173,17 +173,17 @@ export const DashboardPage: React.FC = () => {
 
   const handleConfirmEmailVerification = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailToken.trim()) return;
+    if (!user || !emailToken.trim()) return;
     setEmailLoading(true);
     setEmailError(null);
     setEmailSuccess(null);
     try {
-      const res = await api.confirmEmailVerification(emailToken.trim());
+      const res = await api.confirmEmailCode(user.email, emailToken.trim());
       setEmailSuccess(res.message || "Email успешно подтвержден!");
       setEmailToken("");
       await refreshUser();
     } catch (err: unknown) {
-      setEmailError(errorMessage(err, "Неверный или просроченный токен верификации"));
+      setEmailError(errorMessage(err, "Неверный или просроченный код подтверждения"));
     } finally {
       setEmailLoading(false);
     }
@@ -745,11 +745,11 @@ export const DashboardPage: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-gray-500">
-              Отправка одноразовой ссылки верификации на адрес электронной почты.
+              Отправка шестизначного кода и одноразовой ссылки на адрес электронной почты.
             </p>
             {!capabilities?.email_verification_enabled ? (
               <div className="text-xs text-gray-400 italic">
-                Флаг FEATURE_EMAIL_VERIFICATION_ENABLED выключен в конфигурации сервера.
+                Подтверждение адреса электронной почты доступно.
               </div>
             ) : (
               <div className="space-y-3 pt-2">
@@ -782,7 +782,10 @@ export const DashboardPage: React.FC = () => {
                       <input
                         type="text"
                         required
-                        placeholder="Токен подтверждения из письма"
+                        placeholder="Код из 6 цифр"
+                        inputMode="numeric"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
                         value={emailToken}
                         onChange={(e) => setEmailToken(e.target.value)}
                         className="flex-1 text-xs border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
