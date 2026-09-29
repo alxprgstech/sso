@@ -185,3 +185,5 @@
 - TASK-100, 2026-09-30T01:21:05.8138786+03:00: английский пробный шаблон — Ruff check/format, unittest 5 и dry-run passed. Реальный SES не вызывался; прежние ограничения TASK-099 сохраняются.
 
 - TASK-101, 2026-09-30T01:31:08.1068154+03:00: unittest 9 passed (mock SES), Ruff check/format passed, --all-variants --dry-run сформировал 5/5 без AWS, diff check passed. Проверены целый код в QP варианта 2, совпадение decoded HTML 1/2, код в теме 3 и в начале тела 4, HTML-only 5, уникальные коды и остановка после ошибки. Gmail-карточки/реальная отправка не проверены; старые ограничения TASK-099 сохраняются.
+
+- TASK-102, 2026-09-30T01:36:58.3913543+03:00: unit 11 passed (mock SES), Ruff check passed, format выполнен, --clean-variants --dry-run сформировал 5/5 без AWS, diff check passed. Проверены чистые темы, короткий text-only/7bit, одинаковое decoded тело 7/8 и HTML 9/10, одна HTML-часть multipart/mixed 9. Первый набор по скриншотам владельца Gmail web: 0/5 карточек; мобильный результат и второй набор не проверены.

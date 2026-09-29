@@ -81,6 +81,26 @@ VARIANTS = {
     4: "code at start of body",
     5: "HTML only",
 }
+# Второй набор: темы без номера/идентификатора. Номера и синтетические коды — в консоли.
+CLEAN_SUBJECT = "ALXPRGS Account verification"
+MINIMAL_TEXT = """Your ALXPRGS verification code is: {code}
+Don't share this code with anyone.
+"""
+# По структуре предоставленного Xiaomi HTML; без трекера и чужих данных.
+FRAGMENT_HTML = """<div>Hi <b>{name}</b>!</div><br>
+For your ALXPRGS account {account}, your verification code is: {code}<br>
+Don't share this code with anyone else.<br>
+If you didn't request this code, change your password as soon as possible at
+<a href="{site}">auth.alxprgs.tech</a>.<br><br>
+This email was sent automatically, please don't reply to it.<br>
+"""
+CLEAN_VARIANTS = {
+    6: "control: clean subject, text + HTML",
+    7: "minimal text only",
+    8: "minimal text only + code in subject",
+    9: "HTML fragment in multipart/mixed",
+    10: "same HTML fragment without MIME container",
+}
 
 
 @dataclass(frozen=True)
@@ -107,7 +127,7 @@ def build_test_message(
     code: str | None = None,
     batch_id: str = "",
 ) -> EmailMessage:
-    if variant is not None and variant not in VARIANTS:
+    if variant is not None and variant not in VARIANTS and variant not in CLEAN_VARIANTS:
         raise ValueError("Unknown variant")
     local, domain = to_email.split("@", 1)
     values = {
@@ -120,8 +140,10 @@ def build_test_message(
     # Увеличиваем только длину QP-строк варианта 2, остальные MIME-параметры одинаковые.
     policy = SMTP.clone(max_line_length=998) if variant == 2 else SMTP
     message = EmailMessage(policy=policy)
-    subject = CODE_SUBJECT.format(**values) if variant == 3 else SUBJECT
-    if variant is not None:
+    subject = CLEAN_SUBJECT if variant in CLEAN_VARIANTS else SUBJECT
+    if variant in (3, 8):
+        subject = CODE_SUBJECT.format(**values)
+    if variant in VARIANTS:
         # Общие метки нужны для сравнения; буквенный batch_id отделяет повторные прогоны.
         subject += f" [OTP test {variant} {batch_id}]"
     message["Subject"] = subject
@@ -129,9 +151,17 @@ def build_test_message(
     message["To"] = to_email
     text_template = CODE_FIRST_TEXT if variant == 4 else TEXT_TEMPLATE
     html_template = CODE_FIRST_HTML if variant == 4 else HTML_TEMPLATE
+    if variant in (7, 8):
+        text_template = MINIMAL_TEXT
+    if variant in (9, 10):
+        html_template = FRAGMENT_HTML
     html_body = html_template.format(**{key: html.escape(value) for key, value in values.items()})
-    if variant == 5:
+    if variant in (5, 9, 10):
         message.set_content(html_body, subtype="html", charset="utf-8", cte="quoted-printable")
+        if variant == 9:
+            message.make_mixed()
+    elif variant in (7, 8):
+        message.set_content(text_template.format(**values), charset="utf-8", cte="7bit")
     else:
         message.set_content(text_template.format(**values), charset="utf-8", cte="quoted-printable")
         message.add_alternative(html_body, subtype="html", charset="utf-8", cte="quoted-printable")
@@ -141,8 +171,12 @@ def build_test_message(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--to", required=True, help="Адрес получателя (не сохраняется в БД)")
-    parser.add_argument(
+    batch_modes = parser.add_mutually_exclusive_group()
+    batch_modes.add_argument(
         "--all-variants", action="store_true", help="Отправить пять вариантов для сравнения Gmail"
+    )
+    batch_modes.add_argument(
+        "--clean-variants", action="store_true", help="Отправить второй набор 6–10 без меток в теме"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Проверить письмо без обращения к AWS"
@@ -162,13 +196,15 @@ def main(argv: list[str] | None = None) -> int:
         ):
             raise ValueError("Invalid SES configuration")
         recipient = validate_address(args.to)
-        variants = list(VARIANTS) if args.all_variants else [None]
+        selected = CLEAN_VARIANTS if args.clean_variants else VARIANTS
+        variants = list(selected) if args.all_variants or args.clean_variants else [None]
         batch_id = "".join(secrets.choice(string.ascii_lowercase) for _ in range(8))
         codes = secrets.SystemRandom().sample(range(1_000_000), len(variants))
         # Формируем весь набор до первой отправки, чтобы ошибка шаблона не дала частичный набор.
         messages = [
             (
                 variant,
+                f"{code:06d}",
                 build_test_message(
                     recipient, settings, variant=variant, code=f"{code:06d}", batch_id=batch_id
                 ),
@@ -176,9 +212,12 @@ def main(argv: list[str] | None = None) -> int:
             for variant, code in zip(variants, codes, strict=True)
         ]
         accepted = 0
-        for variant, message in messages:
+        for variant, code, message in messages:
             raw_message = message.as_bytes()
-            label = f"{variant}: {VARIANTS[variant]}" if variant is not None else "single"
+            label = f"{variant}: {selected[variant]}" if variant is not None else "single"
+            if args.clean_variants:
+                # Эти коды не зарегистрированы в БД и не являются секретами аккаунта.
+                print(f"Вариант {variant}: непривязанный тестовый код {code}")
             if args.dry_run:
                 print(f"Сформирован вариант {label}. AWS не вызывался.")
                 continue

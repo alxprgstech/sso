@@ -10,6 +10,50 @@ from scripts import send_test_verification_email as script
 
 
 class TestEditableEmail(unittest.TestCase):
+    def test_clean_variant_mime_and_contents(self):
+        settings = script.MailSettings("us-east-1", "sender@example.com", "ALXPRGS")
+        messages = {
+            variant: message_from_bytes(
+                script.build_test_message(
+                    "recipient@example.com", settings, variant=variant, code="000042"
+                ).as_bytes(),
+                policy=default,
+            )
+            for variant in script.CLEAN_VARIANTS
+        }
+        self.assertEqual(messages[6].get_content_type(), "multipart/alternative")
+        for variant in (7, 8):
+            self.assertEqual(messages[variant].get_content_type(), "text/plain")
+            self.assertEqual(messages[variant]["Content-Transfer-Encoding"], "7bit")
+            self.assertNotIn("@", messages[variant].get_content())
+            self.assertNotIn("http", messages[variant].get_content())
+        self.assertEqual(messages[7].get_content(), messages[8].get_content())
+        self.assertTrue(messages[8]["Subject"].startswith("000042 is your"))
+        self.assertEqual(messages[9].get_content_type(), "multipart/mixed")
+        self.assertEqual(len(list(messages[9].iter_parts())), 1)
+        self.assertEqual(messages[10].get_content_type(), "text/html")
+        self.assertEqual(
+            messages[9].get_body(preferencelist=("html",)).get_content(), messages[10].get_content()
+        )
+        for variant, message in messages.items():
+            with self.subTest(variant=variant):
+                self.assertNotIn("OTP test", message["Subject"])
+                self.assertIn("000042", message.get_body().get_content())
+                if variant != 8:
+                    self.assertEqual(message["Subject"], script.CLEAN_SUBJECT)
+
+    def test_clean_batch_and_dry_run(self):
+        for dry_run in (False, True):
+            with (
+                self.subTest(dry_run=dry_run),
+                patch.object(script, "send_ses_email", return_value="unit-message") as send,
+            ):
+                args = ["--to", "recipient@example.com", "--clean-variants"]
+                if dry_run:
+                    args.append("--dry-run")
+                self.assertEqual(script.main(args), 0)
+                self.assertEqual(send.call_count, 0 if dry_run else 5)
+
     def test_five_variants_preserve_codes_and_expected_differences(self):
         settings = script.MailSettings("us-east-1", "sender@example.com", "ALXPRGS")
         messages = {
