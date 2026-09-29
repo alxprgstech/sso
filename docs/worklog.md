@@ -2551,3 +2551,13 @@
 
 - Время: 2026-09-30T01:21:05.8138786+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07. Изменены scripts/send_test_verification_email.py и README: английские text/HTML по образцу, ALXPRGS, редактируемое имя, маскированный email, auth.alxprgs.tech.
 - Проверки: Ruff check/format passed, unittest 5 passed, dry-run passed, diff check passed. Реальная отправка не выполнялась; прежний блокер scanner TASK-099 сохраняется. Завершение: 2026-09-30T01:21:05.8138786+03:00. Следующий шаг: включить учёт в локальный коммит; владельцу изменить DISPLAY_NAME перед отправкой.
+
+### TASK-101 — начало
+
+- Время: 2026-09-30T01:27:31.3825769+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07. Планируются пять сравнимых вариантов письма в существующем CLI и поиск обсуждений Gmail OTP. Репозиторий чистый. Проверки: unit MIME/CLI, Ruff, dry-run; реальная отправка поручена владельцу.
+
+### TASK-101 — завершение
+
+- Время: 2026-09-30T01:31:08.1068154+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07. Изменены scripts/send_test_verification_email.py, tests/test_test_verification_email_script.py и README: --all-variants, пять вариантов, отдельные случайные коды, общий ID, fail-fast с числом принятых. Подготовлен обзор r/GMail со ссылкой, утверждения участников отделены от подтверждённых фактов.
+- Проверки: unittest 9 passed (fake SES), Ruff check/format passed, batch dry-run 5/5, git diff --check passed. Использован bundled Python с pure-Python зависимостями .venv. Реальный SES не вызывался, карточки Gmail не проверены; результат ручного опыта ожидается от владельца. Старый scanner-блокер TASK-099 сохраняется.
+- Завершение: 2026-09-30T01:31:08.1068154+03:00. Следующий шаг: локальный коммит по прежнему поручению; владелец запускает --all-variants и сравнивает номера.
