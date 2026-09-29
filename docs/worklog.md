@@ -2514,3 +2514,19 @@
   - `ruff format --check backend/ tests/ packages/python-sdk/ scripts/ examples/` — 108 files already formatted.
   - `mypy --explicit-package-bases packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports` — Success: no issues found in 39 source files.
 - Результат: причины всех трёх сбоев CI устранены без ослабления безопасности, задача TASK-097 выполнена (`done`).
+
+### TASK-098 — Ревизия и учёт синтетических тестовых фикстур в baseline сканера секретов
+
+- Время: 2026-09-29T21:48:00+03:00. Исполнитель: Antigravity. Требования: CI-01/02, C9-04, DOC-TRACK-01..07.
+- Основание: устранение сбоя в CI шаге `python scripts/check_secret_scan.py --self-test` задания `Security & Dependencies Scan`. Сканер `detect-secrets` обнаружил 3 новых кандидата KeywordDetector в файлах тестов новой функциональности регистрации и подтверждения email.
+- Исследование: проверены кандидаты в `tests/test_verification_email.py:22` (тестовый ключ сессий) и `tests/integration/test_registration_pg.py:236,303` (фиктивные пароли в сценариях регистрации). Подтверждено, что все они являются синтетическими тестовыми данными и не содержат реальных секретов.
+- Изменения:
+  1. `scripts/check_secret_scan.py`: добавлен `"tests/test_verification_email.py"` в список проверенных путей `REVIEWED_CANDIDATE_PATHS`.
+  2. `.secrets.baseline`: обновлён с помощью `python scripts/check_secret_scan.py --write-reviewed-baseline` (119 проверенных фингерпринтов).
+- Проверки:
+  - `python scripts/check_secret_scan.py --self-test` — exit 0 (`Synthetic secret control: rejected`, `Secret scan: 119 candidates; 0 new`).
+  - `python scripts/scan_secrets_and_deps.py` — exit 0 ([SUCCESS]).
+  - `pytest tests/test_secret_scan_utf8.py tests/test_verification_email.py` — 5 passed.
+  - `ruff check scripts/check_secret_scan.py` — passed.
+  - `git diff --check` — exit 0.
+- Результат: сканирование секретов в CI полностью согласовано с новыми синтетическими фикстурами, безопасность и синтетический контроль сохранены, задача TASK-098 выполнена (`done`).

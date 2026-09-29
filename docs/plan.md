@@ -701,3 +701,15 @@
   5. Проверить `scripts/scan_secrets_and_deps.py`, `ruff check`, `ruff format --check`, `mypy` и pytest для затронутых тестов.
 - Критерий: `scan_secrets_and_deps.py` завершается exit 0 ([SUCCESS]); unit-тесты `test_security_and_negative_scenarios.py` (9/9 passed); `MockSMTPServer` корректно выделяет свободный порт; статические проверки ruff/mypy проходят чисто; журнал, план и статус актуализированы.
 - Результат: `scan_secrets_and_deps.py` — exit 0 ([SUCCESS]); `test_security_and_negative_scenarios.py` — 9/9 passed; `MockSMTPServer` динамически биндится на свободный порт; `test_inter_process_distributed_rate_limiting_real_processes_pg` снабжён тестовым SMTP-приёмником и согласован с контрактом `202 Accepted` и лимитом `DB_EMAIL_MAX_ATTEMPTS=3`; Ruff check/format и mypy (39 файлов) подтверждают отсутствие ошибок. Защита и строгость тестов сохранены в полном объёме.
+
+### TASK-098: Ревизия и учёт синтетических тестовых фикстур в baseline сканера секретов
+
+- Приоритет: P0. Зависимости: TASK-096, TASK-097. Статус: done. Начало: 2026-09-29T21:44:00+03:00. Завершение: 2026-09-29T21:48:00+03:00. Исполнитель: Antigravity. Требования: CI-01/02, C9-04, DOC-TRACK-01..07.
+- План:
+  1. Исследовать новые кандидаты KeywordDetector в задании CI `Security & Dependencies Scan`: 1 кандидат в `tests/test_verification_email.py` (тестовый ключ сессий) и 2 кандидата в `tests/integration/test_registration_pg.py` (тестовые пароли в сценариях регистрации).
+  2. Убедиться, что кандидаты являются исключительно синтетическими тестовыми фикстурами и не содержат реальных секретов или персональных данных.
+  3. Добавить `tests/test_verification_email.py` в множество `REVIEWED_CANDIDATE_PATHS` в `scripts/check_secret_scan.py` (с сохранением алфавитного порядка).
+  4. Обновить `.secrets.baseline` командой `python scripts/check_secret_scan.py --write-reviewed-baseline`.
+  5. Проверить выполнение `python scripts/check_secret_scan.py --self-test` (отклонение синтетического контроля и 0 новых кандидатов), `python scripts/scan_secrets_and_deps.py`, `pytest tests/test_secret_scan_utf8.py tests/test_verification_email.py` и `ruff check`.
+- Критерий: `scripts/check_secret_scan.py --self-test` возвращает exit 0 с результатом `Secret scan: 119 candidates; 0 new` и `Synthetic secret control: rejected`; `scan_secrets_and_deps.py` завершается успехом; реальные секреты не раскрываются и не коммитятся; отслеживание работы актуализировано по DOC-TRACK-01..07.
+- Результат: `tests/test_verification_email.py` добавлен в `REVIEWED_CANDIDATE_PATHS`; в `.secrets.baseline` зафиксированы 119 проверенных фингерпринтов; `scripts/check_secret_scan.py --self-test` прошёл успешно (0 новых, синтетический контроль отклонён); `scripts/scan_secrets_and_deps.py` — exit 0 ([SUCCESS]); тесты сканера и валидации почты (5/5) пройдены; ruff без замечаний.

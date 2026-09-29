@@ -61,6 +61,7 @@ REVIEWED_CANDIDATE_PATHS = frozenset(
         "tests/test_overnight_runner_criteria.py",
         "tests/test_registration.py",
         "tests/test_security_and_negative_scenarios.py",
+        "tests/test_verification_email.py",
     }
 )
 

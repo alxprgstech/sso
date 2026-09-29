@@ -1,5 +1,11 @@
 # Актуальный статус — GOAL-09 заблокирован обязательными runtime-проверками
 
+- Обновление 2026-09-29T21:48:00+03:00, Antigravity: TASK-098 `done`. Устранён сбой шага `scripts/check_secret_scan.py --self-test` в CI задании `Security & Dependencies Scan`:
+  1) Проверены 3 новых кандидата KeywordDetector в тестах обязательного email и регистрации: тестовый ключ сессий в `tests/test_verification_email.py:22` и тестовые пароли в `tests/integration/test_registration_pg.py:236,303`. Все кандидаты являются синтетическими тестовыми фикстурами.
+  2) `tests/test_verification_email.py` добавлен в `REVIEWED_CANDIDATE_PATHS` в `scripts/check_secret_scan.py`.
+  3) `.secrets.baseline` обновлён через `python scripts/check_secret_scan.py --write-reviewed-baseline` (119 проверенных фингерпринтов).
+  4) `check_secret_scan.py --self-test` (0 новых, синтетический контроль отклонён), `scan_secrets_and_deps.py`, `pytest tests/test_secret_scan_utf8.py tests/test_verification_email.py` (5/5) и ruff завершились успешно.
+
 - Обновление 2026-09-29T21:20:00+03:00, Antigravity: TASK-097 `done`. Устранены причины сбоев CI после перехода на обязательное подтверждение email (TASK-096):
   1) `scripts/scan_secrets_and_deps.py` актуализирован под `FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True` и запрет false в `.env.example`, проверка exit 0 ([SUCCESS]);
   2) `tests/test_security_and_negative_scenarios.py`: изолирован default-off профиль, `/api/v1/mfa/email/request` исключён из 404 и подтверждён статус HTTP 200 OK (9/9 passed);
