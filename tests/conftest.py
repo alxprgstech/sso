@@ -1,6 +1,8 @@
+import json
 import os
 import sys
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -29,6 +31,71 @@ from tests.db_guard import (
     safe_truncate_test_tables,
     verify_test_database_marker,
 )
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-email-tests",
+        action="store_true",
+        default=False,
+        help="Enable real SES/testmail tests; credentials required",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    selected = [item for item in items if item.get_closest_marker("email_external")]
+    if not config.getoption("--run-email-tests"):
+        items[:] = [item for item in items if item not in selected]
+        config.hook.pytest_deselected(items=selected)
+        return
+    if config.getoption("showlocals"):
+        raise pytest.UsageError("External email tests forbid --showlocals")
+    if os.getenv("PYTEST_XDIST_WORKER") or getattr(config.option, "numprocesses", None):
+        raise pytest.UsageError("External email tests require one worker and a dedicated database")
+    from tests.helpers.email_test_settings import EmailTestConfigurationError, load_email_settings
+
+    try:
+        load_email_settings()
+    except EmailTestConfigurationError as exc:
+        raise pytest.UsageError(str(exc)) from None
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if item.get_closest_marker("email_external"):
+        # Pytest assertion introspection/captured logs can include email tokens.
+        report.sections = []
+        if report.failed:
+            from tests.helpers.testmail_client import EmailTestError
+
+            message = (
+                str(call.excinfo.value)
+                if call.excinfo and isinstance(call.excinfo.value, EmailTestError)
+                else "Email scenario failed; sensitive details withheld"
+            )
+            report.longrepr = f"{item.nodeid} [{report.when}]: {message}"
+        records = getattr(item.config, "_email_reports", [])
+        records.append(
+            {
+                "case": item.name,
+                "stage": report.when,
+                "outcome": report.outcome,
+                "duration_seconds": round(report.duration, 3),
+            }
+        )
+        item.config._email_reports = records
+
+
+def pytest_sessionfinish(session, exitstatus):
+    records = getattr(session.config, "_email_reports", None)
+    if records is not None:
+        path = Path("artifacts/email/pytest-summary.json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"exit_status": int(exitstatus), "cases": records}), encoding="utf-8"
+        )
 
 
 @pytest.fixture
@@ -163,7 +230,7 @@ async def pg_session(pg_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, Non
 
 @pytest_asyncio.fixture
 async def pg_client(
-    pg_engine: AsyncEngine, pg_session: AsyncSession
+    pg_engine: AsyncEngine, pg_session: AsyncSession, request: pytest.FixtureRequest
 ) -> AsyncGenerator[httpx.AsyncClient, None]:
     """
     HTTP-клиент для вызова FastAPI эндпоинтов с независимыми сессиями из реальной PostgreSQL.
@@ -188,7 +255,7 @@ async def pg_client(
 
     app.dependency_overrides[get_db] = _override_get_db
 
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx.ASGITransport(app=app, client=(getattr(request, "param", "127.0.0.1"), 123))
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client
 

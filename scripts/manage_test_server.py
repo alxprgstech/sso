@@ -127,12 +127,15 @@ def check_capabilities(
         f"passkey={passkey}, totp={totp}, recovery={recovery}, email={email}"
     )
 
-    if expected_profile == "default-off":
+    if expected_profile in ("default-off", "email"):
         if passkey is not False or totp is not False or recovery is not False or email is not True:
             print(
                 f"[PREFLIGHT-FAIL] {label}: Ожидались три выключенных MFA-флага и email=True, "
                 f"но получено: passkey={passkey}, totp={totp}, recovery={recovery}, email={email}"
             )
+            return False
+        if expected_profile == "email" and caps.get("require_verified_email") is not True:
+            print("[PREFLIGHT-FAIL] Email profile requires verified email before login")
             return False
     elif expected_profile == "enabled":
         if passkey is not True:
@@ -173,6 +176,11 @@ def start_server(
     cmd = [sys.executable, "-c", runner_code]
 
     merged_env = os.environ.copy()
+    if profile == "email" and not (env_vars or {}).get(
+        "TEST_DATABASE_URL", merged_env.get("TEST_DATABASE_URL")
+    ):
+        print("[START-ERROR] Email profile requires explicit TEST_DATABASE_URL")
+        return 1
     if profile == "default-off":
         merged_env["FEATURE_TOTP_ENABLED"] = "false"
         merged_env["FEATURE_PASSKEY_ENABLED"] = "false"
@@ -196,6 +204,27 @@ def start_server(
 
     if env_vars:
         merged_env.update(env_vars)
+
+    if profile == "email":
+        if not merged_env.get("TEST_DATABASE_URL"):
+            print("[START-ERROR] Email profile requires explicit TEST_DATABASE_URL")
+            return 1
+        merged_env.update(
+            {
+                "FEATURE_TOTP_ENABLED": "false",
+                "FEATURE_PASSKEY_ENABLED": "false",
+                "FEATURE_RECOVERY_CODES_ENABLED": "false",
+                "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
+                "REQUIRE_VERIFIED_EMAIL": "true",
+                "EMAIL_PROVIDER": "ses",
+                "ENVIRONMENT": "testing",
+                "DATABASE_URL": merged_env["TEST_DATABASE_URL"],
+                "DATABASE_URL_SYNC": merged_env["TEST_DATABASE_URL"],
+            }
+        )
+        merged_env = {
+            key: value for key, value in merged_env.items() if not key.startswith("TESTMAIL_")
+        }
 
     log_handle = open(logfile, "w", encoding="utf-8")
     extra_flags = 0
@@ -230,7 +259,11 @@ def start_server(
             )
             log_handle.flush()
             with open(logfile, "r", encoding="utf-8", errors="replace") as rf:
-                print("--- ЛОГ СЕРВЕРА ---\n" + rf.read())
+                print(
+                    "Email backend failed (private log withheld)"
+                    if profile == "email"
+                    else "--- ЛОГ СЕРВЕРА ---\n" + rf.read()
+                )
             return 1
 
         try:
@@ -245,7 +278,11 @@ def start_server(
         print(f"[START-ERROR] Таймаут ожидания готовности {health_url} ({timeout}с)!")
         log_handle.flush()
         with open(logfile, "r", encoding="utf-8", errors="replace") as rf:
-            print("--- ЛОГ СЕРВЕРА ---\n" + rf.read())
+            print(
+                "Email backend failed (private log withheld)"
+                if profile == "email"
+                else "--- ЛОГ СЕРВЕРА ---\n" + rf.read()
+            )
         return 1
 
     # Обновляем pidfile реальным PID процесса, слушающего порт
@@ -419,6 +456,9 @@ def start_frontend(
 
     cmd = ["node", vite_bin, "preview", "--host", host, "--port", str(port)]
     merged_env = os.environ.copy()
+    merged_env = {
+        key: value for key, value in merged_env.items() if not key.startswith(("TESTMAIL_", "AWS_"))
+    }
     merged_env["VITE_BACKEND_TARGET"] = backend_url
 
     log_handle = open(logfile, "w", encoding="utf-8")
@@ -498,7 +538,7 @@ def main() -> int:
     p_start.add_argument("--host", default="127.0.0.1")
     p_start.add_argument("--pidfile", default="/tmp/backend.pid")
     p_start.add_argument("--logfile", default="/tmp/backend.log")
-    p_start.add_argument("--profile", choices=["default-off", "enabled"], required=True)
+    p_start.add_argument("--profile", choices=["default-off", "enabled", "email"], required=True)
     p_start.add_argument("--timeout", type=int, default=15)
 
     # start-frontend
@@ -524,7 +564,9 @@ def main() -> int:
 
     # preflight
     p_preflight = subparsers.add_parser("preflight", help="Проверить capabilities")
-    p_preflight.add_argument("--profile", choices=["default-off", "enabled"], required=True)
+    p_preflight.add_argument(
+        "--profile", choices=["default-off", "enabled", "email"], required=True
+    )
     p_preflight.add_argument("--backend-url", required=True)
     p_preflight.add_argument("--frontend-url", default=None)
 

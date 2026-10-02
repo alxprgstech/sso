@@ -34,6 +34,7 @@ REVIEWED_CANDIDATE_PATHS = frozenset(
         "docs/testing/defects.md",
         "docs/worklog.md",
         "frontend/e2e/sso.spec.ts",
+        "frontend/e2e/email.spec.ts",
         "packages/python-sdk/README.md",
         "scripts/manage_test_server.py",
         "scripts/prepare_e2e_data.py",
@@ -49,6 +50,7 @@ REVIEWED_CANDIDATE_PATHS = frozenset(
         "tests/integration/test_oidc_pg.py",
         "tests/integration/test_passkey_pg.py",
         "tests/integration/test_registration_pg.py",
+        "tests/integration/test_testmail_email_pg.py",
         "tests/test_admin_api.py",
         "tests/test_bootstrap_admin.py",
         "tests/test_core_verify.py",
@@ -62,6 +64,8 @@ REVIEWED_CANDIDATE_PATHS = frozenset(
         "tests/test_registration.py",
         "tests/test_security_and_negative_scenarios.py",
         "tests/test_verification_email.py",
+        "tests/test_server_lifecycle.py",
+        "tests/test_testmail_client.py",
     }
 )
 

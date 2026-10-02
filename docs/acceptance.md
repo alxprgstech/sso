@@ -187,3 +187,32 @@
 - TASK-101, 2026-09-30T01:31:08.1068154+03:00: unittest 9 passed (mock SES), Ruff check/format passed, --all-variants --dry-run сформировал 5/5 без AWS, diff check passed. Проверены целый код в QP варианта 2, совпадение decoded HTML 1/2, код в теме 3 и в начале тела 4, HTML-only 5, уникальные коды и остановка после ошибки. Gmail-карточки/реальная отправка не проверены; старые ограничения TASK-099 сохраняются.
 
 - TASK-102, 2026-09-30T01:36:58.3913543+03:00: unit 11 passed (mock SES), Ruff check passed, format выполнен, --clean-variants --dry-run сформировал 5/5 без AWS, diff check passed. Проверены чистые темы, короткий text-only/7bit, одинаковое decoded тело 7/8 и HTML 9/10, одна HTML-часть multipart/mixed 9. Первый набор по скриншотам владельца Gmail web: 0/5 карточек; мобильный результат и второй набор не проверены.
+
+## TASK-103 — testmail.app: локальная реализация, live-приёмка blocked
+
+- Начало: 2026-10-02T05:29:19+03:00. Завершение доступной реализации: 2026-10-02T06:08:09+03:00. Исполнитель: Codex. Базовый SHA: dac275e56d29ea052dc4a6c31dd3be25abe51292, изменения ещё в рабочем дереве.
+- Среда: Windows, Python 3.12.14; отдельная artifacts/.venv с requirements-lock.txt; pytest 9.1.1, httpx 0.28.1, pydantic 2.13.5, boto3 1.43.104. Старый .venv не работал из-за отсутствующего Python 3.13. Runtime не входит в Git.
+
+| Команда / проверка | Фактический результат |
+|---|---|
+| python -m pytest tests/test_testmail_client.py tests/test_server_lifecycle.py tests/test_verification_email.py tests/test_ses_email.py tests/test_secret_scan_utf8.py -k 'not real_server and not real_frontend' -q -p no:cacheprovider --basetemp=artifacts/pytest-email-final | 58 passed, 2 runtime checks deselected в этом явно offline прогоне; обязательные CI checks не исключены |
+| pytest tests/test_registration.py tests/test_mfa_features.py tests/test_security_and_negative_scenarios.py tests/test_database_guard.py | 39 passed; 3 PG setup errors — TEST_DATABASE_URL отсутствует; весь прогон failed, не passed |
+| pytest tests/test_server_lifecycle.py с process-management доступом | 11 passed, включая frontend startup/HTTP/stop; 1 backend capabilities timeout без тестовой БД. Ранее frontend cleanup не разрешался sandbox; собственный процесс затем остановлен штатным PID/port guard |
+| ruff check / ruff format --check backend tests packages/python-sdk scripts examples | passed; 117 файлов formatted |
+| mypy --explicit-package-bases tests/helpers packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports | passed, 43 source files |
+| frontend ESLint + tsc --noEmit -p tsconfig.tests.json + Vite build | passed |
+| vitest run .component.test.tsx --environment jsdom | 14 passed |
+| Playwright --list --reporter=list, обычный / email config | 9 ordinary cases / 2 email cases; это collection, не browser E2E success |
+| CLI preflight / runner --suite email без credentials | exit 1 до подключения к БД; безопасная диагностика |
+| pytest внешнего файла без opt-in / с --run-email-tests | 5 deselected / UsageError без key/namespace до БД |
+| YAML parse ci.yml + release.yml | passed; 8 CI jobs, четыре explicit release Secrets; GitHub execution не проверен |
+| git diff --check, local documentation links | passed, missing local links 0 |
+| git check-ignore .env, git ls-files .env | ignored / не отслеживается |
+| check_secret_scan.py --self-test | 126 reviewed candidates, 0 new; synthetic secret control rejected. Семь новых synthetic fixture candidates просмотрены до baseline update |
+| scan_secrets_and_deps.py / pip check | passed. Первый structural scan обнаружил 13 публичных SDK sample keys во временном dependency каталоге; runtime помещён в artifacts/.venv, существующие scanner exclusions не изменены |
+
+Публичная GraphQL introspection 02.10.2026 успешно проверила HeaderLine.key/line, Email.from/to String и timestamp Float без API key и без чтения писем. Authenticated namespace access, delivered headers/attachments (включая представление AMP alternative), SES delivery, PostgreSQL flows, новые Chromium cases, обычный полный CI и release dry-run не проверены.
+
+Наблюдаемые blockers: SES sandbox, отсутствуют testmail credentials/namespace и TEST_DATABASE_URL; Docker/psql не найдены в PATH. GitHub Secrets/IAM и Essential account не подтверждены. Для приёмки нужны production access, credentials/выделенная БД и последовательный прогон 8 писем по [инструкции](testing/email.md). AWS resources, production sender, schema и CD не изменялись; реальные письма не отправлялись. TASK-103 и GOAL-09 не объявлены done.
+
+- TASK-103, финальная проверка 2026-10-02T06:13:46+03:00: release ref вне main явно даёт fail до checkout/Secrets; YAML/ref/secret assertions passed. Browser diagnostic category проверена frontend typecheck/lint; raw errors/OTP/link не сохраняются. Статус live-приёмки остаётся blocked.

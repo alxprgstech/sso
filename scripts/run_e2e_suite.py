@@ -15,10 +15,12 @@ ALXPRGS SSO - Автоматизированный запуск E2E браузе
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
@@ -33,6 +35,8 @@ def run_cmd(cmd: list[str], cwd: str | None = None, env: dict[str, str] | None =
 
 
 def run_e2e(suite: str) -> int:
+    if suite == "email":
+        return run_email_e2e()
     temp_dir = tempfile.gettempdir()
     fe_pid = os.path.join(temp_dir, "sso_fe.pid")
     fe_log = os.path.join(temp_dir, "sso_fe.log")
@@ -292,11 +296,158 @@ def run_e2e(suite: str) -> int:
     return 0
 
 
+def run_email_e2e() -> int:
+    """Reuse lifecycle tools, but isolate credentials and suppress raw child output."""
+    sys.path.insert(0, ROOT_DIR)
+    sys.path.insert(0, os.path.join(ROOT_DIR, "backend"))
+    from tests.db_guard import get_test_database_url
+    from tests.helpers.email_test_settings import load_email_settings
+    from tests.helpers.testmail_cli import preflight
+
+    report_path = Path(ROOT_DIR) / "artifacts/email/runner-summary.json"
+    stages: list[dict[str, object]] = []
+    active_stage = "configuration"
+    result = 1
+    try:
+        settings = load_email_settings()
+        active_stage = "provider-preflight"
+        preflight(settings)
+        db_url = get_test_database_url()
+        common = {
+            "TEST_DATABASE_URL": db_url,
+            "DATABASE_URL": db_url,
+            "DATABASE_URL_SYNC": db_url,
+            "BASE_URL": "http://localhost:8000",
+            "FRONTEND_URL": "http://localhost:5173",
+            "PLAYWRIGHT_BASE_URL": "http://localhost:5173",
+            "PYTHON_BIN": sys.executable,
+            "EMAIL_PROVIDER": "ses",
+            "ENVIRONMENT": "testing",
+            "REQUIRE_VERIFIED_EMAIL": "true",
+            "FEATURE_TOTP_ENABLED": "false",
+            "FEATURE_PASSKEY_ENABLED": "false",
+            "FEATURE_RECOVERY_CODES_ENABLED": "false",
+            "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
+            "SES_REGION": settings.SES_REGION,
+            "SES_FROM_EMAIL": settings.SES_FROM_EMAIL,
+            "SES_FROM_NAME": settings.SES_FROM_NAME,
+        }
+        backend_env = settings.process_environment(recipient="backend") | common
+        helper_env = settings.process_environment() | common
+        frontend_env = settings.process_environment(recipient="frontend") | common
+        npx = "npx.cmd" if sys.platform == "win32" else "npx"
+
+        def stage(name, command, env, *, cwd=ROOT_DIR):
+            nonlocal active_stage
+            active_stage = name
+            child = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True)
+            stages.append({"stage": name, "exit_status": child.returncode})
+            print(f"Email stage {name}: {'passed' if child.returncode == 0 else 'failed'}")
+            if child.returncode:
+                raise RuntimeError("Email stage failed")
+
+        with tempfile.TemporaryDirectory(prefix="sso-email-") as directory:
+            fe_pid, be_pid = os.path.join(directory, "fe.pid"), os.path.join(directory, "be.pid")
+            try:
+                if not os.path.exists(os.path.join(FRONTEND_DIR, "dist/index.html")):
+                    npm = "npm.cmd" if sys.platform == "win32" else "npm"
+                    stage("build", [npm, "run", "build"], frontend_env, cwd=FRONTEND_DIR)
+                stage("seed", [sys.executable, SEED_SCRIPT], frontend_env)
+                stage(
+                    "frontend",
+                    [
+                        sys.executable,
+                        MANAGE_SCRIPT,
+                        "start-frontend",
+                        "--port",
+                        "5173",
+                        "--pidfile",
+                        fe_pid,
+                        "--logfile",
+                        os.path.join(directory, "frontend.log"),
+                        "--backend-url",
+                        "http://localhost:8000",
+                    ],
+                    frontend_env,
+                )
+                stage(
+                    "backend",
+                    [
+                        sys.executable,
+                        MANAGE_SCRIPT,
+                        "start",
+                        "--port",
+                        "8000",
+                        "--pidfile",
+                        be_pid,
+                        "--logfile",
+                        os.path.join(directory, "backend.log"),
+                        "--profile",
+                        "email",
+                    ],
+                    backend_env,
+                )
+                stage(
+                    "capabilities",
+                    [
+                        sys.executable,
+                        MANAGE_SCRIPT,
+                        "preflight",
+                        "--profile",
+                        "email",
+                        "--backend-url",
+                        "http://127.0.0.1:8000",
+                        "--frontend-url",
+                        "http://localhost:5173",
+                    ],
+                    frontend_env,
+                )
+                stage(
+                    "browser",
+                    [npx, "playwright", "test", "--config", "playwright.email.config.ts"],
+                    helper_env,
+                    cwd=FRONTEND_DIR,
+                )
+            finally:
+                cleanup_failed = False
+                for pidfile, port in ((be_pid, "8000"), (fe_pid, "5173")):
+                    stopped = subprocess.run(
+                        [
+                            sys.executable,
+                            MANAGE_SCRIPT,
+                            "stop",
+                            "--pidfile",
+                            pidfile,
+                            "--port",
+                            port,
+                        ],
+                        cwd=ROOT_DIR,
+                        env=frontend_env,
+                        capture_output=True,
+                        text=True,
+                    )
+                    stages.append({"stage": f"stop-{port}", "exit_status": stopped.returncode})
+                    cleanup_failed |= bool(stopped.returncode)
+                if cleanup_failed:
+                    active_stage = "cleanup"
+                    raise RuntimeError("Email server cleanup failed")
+        result = 0
+    except Exception:
+        print(f"Email E2E failed at {active_stage}; raw output withheld. See docs/testing/email.md")
+    finally:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps({"exit_status": result, "last_stage": active_stage, "stages": stages}),
+            encoding="utf-8",
+        )
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Автоматический запуск E2E сьюитов")
     parser.add_argument(
         "--suite",
-        choices=["sso", "passkey", "all"],
+        choices=["sso", "passkey", "all", "email"],
         default="all",
         help="Какой сьюит запускать (sso, passkey, all)",
     )

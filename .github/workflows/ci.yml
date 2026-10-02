@@ -11,6 +11,19 @@ on:
       target_sha:
         required: true
         type: string
+      run_email_tests:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      TESTMAIL_API_KEY:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AWS_SESSION_TOKEN:
+        required: false
 
 concurrency:
   group: ci-${{ inputs.target_sha || github.ref }}
@@ -20,6 +33,111 @@ permissions:
   contents: read
 
 jobs:
+  email-e2e:
+    name: Real SES email integration and browser E2E
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || inputs.run_email_tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sso_user
+          POSTGRES_PASSWORD: sso_test_password
+          POSTGRES_DB: alxprgs_sso_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sso_user -d alxprgs_sso_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      PYTHONPATH: .:backend
+      TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+      DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+      DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+      SESSION_SECRET_KEY: default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only
+      EMAIL_PROVIDER: ses
+      ENVIRONMENT: testing
+      REQUIRE_VERIFIED_EMAIL: 'true'
+      FEATURE_EMAIL_VERIFICATION_ENABLED: 'true'
+      FEATURE_TOTP_ENABLED: 'false'
+      FEATURE_PASSKEY_ENABLED: 'false'
+      FEATURE_RECOVERY_CODES_ENABLED: 'false'
+      BASE_URL: http://localhost:8000
+      FRONTEND_URL: http://localhost:5173
+      TESTMAIL_NAMESPACE: ${{ vars.TESTMAIL_NAMESPACE }}
+      TESTMAIL_TIMEOUT_SECONDS: ${{ vars.TESTMAIL_TIMEOUT_SECONDS || '120' }}
+      TESTMAIL_POLL_INTERVAL_SECONDS: ${{ vars.TESTMAIL_POLL_INTERVAL_SECONDS || '2' }}
+      SES_REGION: ${{ vars.SES_REGION || 'us-east-1' }}
+      SES_FROM_EMAIL: ${{ vars.SES_FROM_EMAIL || 'sso@alxprgs.tech' }}
+      SES_FROM_NAME: ${{ vars.SES_FROM_NAME || 'ALXPRGS' }}
+    steps:
+      - name: Checkout exact revision without external credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify revision belongs to trusted main history
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Install locked dependencies and build without credentials
+        run: |
+          python -m pip install -r requirements-lock.txt
+          python -m pip install --no-deps --no-build-isolation -e './backend[dev]'
+          python -m pip check
+          cd frontend
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Check credentials, authenticated API contract and SES production access
+        env:
+          TESTMAIL_API_KEY: ${{ secrets.TESTMAIL_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo 'Required CI AWS credentials are missing'
+            exit 1
+          fi
+          python -m tests.helpers.testmail_cli preflight
+      - name: Migrate and mark fresh dedicated database
+        run: |
+          (cd backend && alembic upgrade head)
+          python -m scripts.init_fresh_ci_test_marker
+      - name: Real email API scenarios
+        env:
+          TESTMAIL_API_KEY: ${{ secrets.TESTMAIL_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: pytest tests/integration/test_testmail_email_pg.py -m email_external --run-email-tests -x --tb=short
+      - name: Real email browser scenarios with finally cleanup
+        env:
+          TESTMAIL_API_KEY: ${{ secrets.TESTMAIL_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: python scripts/run_e2e_suite.py --suite email
+      - name: Upload allowlisted summaries only
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: email-safe-summary-${{ github.run_attempt }}
+          path: |
+            artifacts/email/pytest-summary.json
+            artifacts/email/browser-summary.json
+            artifacts/email/runner-summary.json
+          retention-days: 3
+          if-no-files-found: ignore
+
   verify-cd-template:
     name: Verify Inactive CD Template
     runs-on: ubuntu-latest

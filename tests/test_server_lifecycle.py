@@ -19,6 +19,108 @@ import pytest
 from scripts import manage_test_server
 
 
+def test_email_capabilities_require_verified_login(monkeypatch):
+    caps = {
+        "passkey_enabled": False,
+        "totp_enabled": False,
+        "recovery_codes_enabled": False,
+        "email_verification_enabled": True,
+        "require_verified_email": False,
+    }
+    monkeypatch.setattr(manage_test_server, "fetch_json", lambda *args, **kwargs: caps)
+    assert manage_test_server.check_capabilities("http://localhost:8000", "email", "email") is False
+    caps["require_verified_email"] = True
+    assert manage_test_server.check_capabilities("http://localhost:8000", "email", "email") is True
+
+
+def test_email_backend_filters_credentials_and_pins_database(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    captured = {}
+    monkeypatch.setenv("TESTMAIL_API_KEY", "synthetic-testmail")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "synthetic-aws")
+    monkeypatch.setenv("DATABASE_URL", "unrelated-database")
+    monkeypatch.setattr(manage_test_server, "is_port_in_use", lambda *args: False)
+    monkeypatch.setattr(manage_test_server, "get_pid_listening_on_port", lambda *args: 123)
+    monkeypatch.setattr(manage_test_server, "fetch_json", lambda *args, **kwargs: {"status": "ok"})
+
+    def spawn(*args, **kwargs):
+        captured.update(kwargs["env"])
+        return SimpleNamespace(pid=123, poll=lambda: None)
+
+    monkeypatch.setattr(manage_test_server.subprocess, "Popen", spawn)
+    db = "postgresql+psycopg://localhost/alxprgs_sso_test"
+    assert (
+        manage_test_server.start_server(
+            8000,
+            str(tmp_path / "pid"),
+            str(tmp_path / "log"),
+            "email",
+            env_vars={"TEST_DATABASE_URL": db, "REQUIRE_VERIFIED_EMAIL": "false"},
+        )
+        == 0
+    )
+    assert "TESTMAIL_API_KEY" not in captured
+    assert captured["AWS_SECRET_ACCESS_KEY"] == "synthetic-aws"
+    assert captured["REQUIRE_VERIFIED_EMAIL"] == "true"
+    assert captured["DATABASE_URL"] == db
+    assert captured["EMAIL_PROVIDER"] == "ses"
+
+
+def test_email_backend_requires_explicit_test_database(tmp_path, monkeypatch):
+    monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+    monkeypatch.setattr(manage_test_server, "is_port_in_use", lambda *args: False)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Must fail before spawning backend")
+
+    monkeypatch.setattr(manage_test_server.subprocess, "Popen", forbidden)
+    assert (
+        manage_test_server.start_server(8000, str(tmp_path / "pid"), str(tmp_path / "log"), "email")
+        == 1
+    )
+
+
+def test_email_runner_cleans_up_after_browser_failure(tmp_path, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from scripts import run_e2e_suite
+    from tests.helpers import email_test_settings, testmail_cli
+
+    settings = email_test_settings.EmailTestSettings(
+        _env_file=None, TESTMAIL_API_KEY="synthetic-runner", TESTMAIL_NAMESPACE="example"
+    )
+    monkeypatch.setattr(email_test_settings, "load_email_settings", lambda: settings)
+    monkeypatch.setattr(testmail_cli, "preflight", lambda settings: None)
+    monkeypatch.setenv("TEST_DATABASE_URL", "postgresql+psycopg://localhost/alxprgs_sso_test")
+    monkeypatch.setenv("TESTMAIL_API_KEY", "synthetic-runner")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "synthetic-aws")
+    monkeypatch.setattr(run_e2e_suite, "ROOT_DIR", str(tmp_path))
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["env"]))
+        return SimpleNamespace(
+            returncode=1 if "playwright" in command else 0,
+            stdout="synthetic-runner OTP 000123",
+            stderr="synthetic-aws",
+        )
+
+    monkeypatch.setattr(run_e2e_suite.subprocess, "run", run)
+    assert run_e2e_suite.run_email_e2e() == 1
+    assert len([command for command, _ in calls if "stop" in command]) == 2
+    backend_env = next(env for command, env in calls if "start" in command)
+    frontend_env = next(env for command, env in calls if "start-frontend" in command)
+    assert "TESTMAIL_API_KEY" not in backend_env
+    assert "AWS_SECRET_ACCESS_KEY" not in frontend_env
+    output = capsys.readouterr().out
+    assert (
+        "synthetic-runner" not in output
+        and "000123" not in output
+        and "synthetic-aws" not in output
+    )
+
+
 def test_stop_refuses_foreign_listener_before_kill(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

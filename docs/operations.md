@@ -174,3 +174,7 @@ python scripts/rotate_keys.py --output-dir keys/ --bits 2048
 
 - Логи бэкенда выводятся в stdout в структурированном виде.
 - Все события безопасности (вход, выход, неудачные попытки, блокировки, создание клиентов, ротация секретов) персистентно фиксируются в таблице PostgreSQL `audit_logs` и доступны администраторам через REST API (`GET /api/v1/admin/audit-log`) и интерфейс панели управления.
+
+## Реальные email-тесты
+
+SES остаётся существующим отправителем; testmail.app применяется только как получатель тестовых писем. Владелец отдельно обеспечивает SES production access и выделенные IAM credentials; приложение не меняет account/DNS/configuration sets. Main/release CI требует четыре scoped Secrets (session token optional) и TESTMAIL_NAMESPACE Variable. Обычная рабочая Compose БД для внешней группы не используется. [Запуск, безопасность artifacts, IAM и troubleshooting](testing/email.md).

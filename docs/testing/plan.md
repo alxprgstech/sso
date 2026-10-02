@@ -62,3 +62,7 @@
   - Два клиента RP: `http://127.0.0.1:8001`, `http://127.0.0.1:8002`
 - **Изолированный venv для SDK**:
   - Путь: `.venv-sdk-test`
+
+## Внешняя email-группа (TASK-103)
+
+Существующие unit/fake SES и PostgreSQL SMTP проверки сохраняются. Opt-in email_external проверяет пять реальных API-сценариев через SES/testmail; отдельный Playwright config — два независимых registration code/link flow. Общий helper живёт только в tests/helpers. На main/manual-main/release группа обязательна, PR её не запускает. Подробности, безопасные credentials, DB guard, ограничения параллельности и live-блокеры: [email.md](email.md). MOCK/SMTP успех не засчитывается как доставка SES; восемь live писем и release dry-run требуют отдельного фактического результата.

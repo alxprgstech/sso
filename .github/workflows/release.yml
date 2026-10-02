@@ -30,6 +30,14 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       is_prerelease: ${{ steps.resolve.outputs.is_prerelease }}
     steps:
+      - name: Require trusted main workflow ref before release checks
+        env:
+          RELEASE_WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$RELEASE_WORKFLOW_REF" != 'refs/heads/main' ]; then
+            echo 'Release workflow must be dispatched from main; mandatory email checks cannot be skipped'
+            exit 1
+          fi
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -98,6 +106,12 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       target_sha: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
+      run_email_tests: true
+    secrets:
+      TESTMAIL_API_KEY: ${{ secrets.TESTMAIL_API_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
     permissions:
       contents: read
 

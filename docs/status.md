@@ -1,5 +1,7 @@
 # Актуальный статус — GOAL-09 заблокирован обязательными runtime-проверками
 
+- Обновление 2026-10-02T06:08:09+03:00, Codex: TASK-103 `blocked` по live-приёмке после локальной реализации testmail.app. Test-only Python client/CLI, 5 PG и 2 browser cases, email profile, отдельный main/manual-main/release job и документация готовы. 58 focused offline + 39 regression tests, 14 component tests, Ruff/mypy/frontend lint/typecheck/build и secret scan успешны. Требуются SES production access, testmail key/namespace, выделенная PostgreSQL и проверенные CI Secrets/IAM. Три PG guard checks и backend capabilities не прошли без БД; main/release dry-run и реальная доставка не выполнены. Production sender и защиты сохранены; GOAL-09 не закрыт. Следующий шаг — [live-инструкция](testing/email.md).
+
 - Обновление 2026-09-29T21:48:00+03:00, Antigravity: TASK-098 `done`. Устранён сбой шага `scripts/check_secret_scan.py --self-test` в CI задании `Security & Dependencies Scan`:
   1) Проверены 3 новых кандидата KeywordDetector в тестах обязательного email и регистрации: тестовый ключ сессий в `tests/test_verification_email.py:22` и тестовые пароли в `tests/integration/test_registration_pg.py:236,303`. Все кандидаты являются синтетическими тестовыми фикстурами.
   2) `tests/test_verification_email.py` добавлен в `REVIEWED_CANDIDATE_PATHS` в `scripts/check_secret_scan.py`.
@@ -247,3 +249,7 @@ git push origin v0.2.0
 - Обновление 2026-09-30T01:35:23.9414078+03:00, Codex: TASK-102 in_progress — второй набор без меток; первый набор на Gmail web дал 0/5 карточек по скриншотам владельца. Мобильный результат ожидается.
 
 - Обновление 2026-09-30T01:36:58.3913543+03:00, Codex: TASK-102 done — набор 6–10 через --clean-variants, без меток в темах. Unit 11/Ruff/dry-run passed. Реальная отправка поручена владельцу; мобильный результат первого и второй набор ожидаются. Общая приёмка и scanner-блокер TASK-099 сохраняются.
+
+- 2026-10-02T05:29:19+03:00, Codex: TASK-103 in_progress — реализация testmail.app test-only интеграции. Live-проверки требуют SES production access, testmail credentials и выделенную PostgreSQL. Предыдущие ограничения общей приёмки сохраняются.
+
+- 2026-10-02T12:47:33+03:00: TASK-103 — сохранение подготовленной локальной реализации в commit по поручению владельца. Live-блокеры и точка продолжения docs/testing/email.md сохраняются.

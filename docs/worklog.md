@@ -2571,3 +2571,43 @@
 - Время: 2026-09-30T01:36:58.3913543+03:00. Исполнитель: Codex. Требования: G4-EMAIL, DOC-TRACK-01..07. Изменены scripts/send_test_verification_email.py, tests/test_test_verification_email_script.py и README: --clean-variants, набор 6–10 без меток, короткий 7bit text, код в теме, одинаковый HTML-фрагмент с/без multipart/mixed. Консоль сопоставляет номер с синтетическим непривязанным кодом. Первый набор и одиночный режим сохранены.
 - Проверки: unittest 11 passed (SES замокан), Ruff check passed, format обоих файлов выполнен, dry-run 5/5 без AWS, diff check passed. Фактическое завершение: 2026-09-30T01:36:58.3913543+03:00. Реальная отправка второго набора не выполнялась; карточки/мобильный результат не проверены. Старый scanner-блокер TASK-099 сохраняется; bundled Python использован из-за отсутствующего Python .venv.
 - Следующий шаг: локальный коммит, владелец запускает --clean-variants и сопоставляет карточки с кодами в консоли.
+
+## 2026-10-02T05:29:19+03:00 — Codex, TASK-103, начало
+
+- По поручению владельца начата реализация согласованного testmail.app плана. Прочитаны AGENTS/GOAL, код и рабочие документы; исходное дерево чистое.
+- План: общая Python тестовая инфраструктура, SES без замены, opt-in pytest/Playwright, обязательный доверенный CI/release job, безопасные отчёты и документация.
+- Проверки до изменений: read-only анализ; реальная доставка не выполнялась. SES sandbox и отсутствие testmail credentials/выделенной БД блокируют live-приёмку, не offline реализацию.
+- Следующий шаг: Settings, клиент и regression tests; ADR 0009.
+
+## 2026-10-02T05:49:55+03:00 — Codex, TASK-103, реализация и промежуточные проверки
+
+- Добавлены test-only Settings, GraphQL client/CLI, opt-in pytest и пять PG сценариев, два browser сценария, отдельный config/reporter, email profile runner и один CI job с explicit release Secrets. Production services/schema/transport не изменены.
+- Публичная GraphQL schema прочитана без credentials: Email.headers=HeaderLine{key,line}, from/to String, timestamp Float; запрос исправлен по реальной схеме. Checkpoint исключает ID и content duplicates.
+- Проверки: первые helper + существующие verification/SES tests 36 passed; mypy helper и frontend lint/typecheck:tests passed. Расширенный прогон: 30 passed, real frontend cleanup failed в sandbox; собственный процесс остановлен штатным PID guard с доступом к process management. Повторный lifecycle: 11 passed (включая frontend), backend capabilities timeout без выделенной PostgreSQL; не объявлен успешным.
+- Secret scan обнаружил шесть новых Keyword candidates. Проверены только синтетические admin/user passwords в email.spec, PASSWORD внешнего теста, synthetic-runner/synthetic-aws fixtures lifecycle и synthetic-key helper; реальные ключи отсутствуют. Четыре пути добавлены в reviewed allowlist; baseline обновляется только после этого просмотра.
+- Live SES/testmail/PG/browser flows и main/release dry-run остаются непроверенными: отсутствуют credentials/TEST_DATABASE_URL, наблюдался SES sandbox. Следующий шаг: расширенные offline/security/static проверки, завершение документации.
+
+## 2026-10-02T06:05:06+03:00 — Codex, TASK-103, итоговые offline проверки
+
+- Целевой прогон: 58 passed, 2 runtime lifecycle checks отдельно отобраны для доступной среды; Ruff check/format (117 файлов), mypy helper + backend/SDK (43 файла), frontend lint/typecheck/build и 14 component tests passed. Playwright collection: 2 email cases, прежние 9 ordinary cases.
+- Дополнительные regression tests: 39 passed, 3 PostgreSQL guard errors без TEST_DATABASE_URL. Lifecycle с process access: frontend passed; backend capabilities timeout без БД. Реальные PG/email/browser проверки не засчитаны.
+- Два workflows разобраны YAML parser; CI содержит 8 jobs и release передаёт четыре Secrets явно. .env игнорируется и не отслеживается. CLI/runner без credentials возвращают fail до БД; default collection deselects 5 email cases.
+- Структурный scanner сначала увидел 13 публичных AWS sample keys внутри временно установленного botocore в artifacts/email-python; runtime перемещён в штатно исключаемый dependency каталог artifacts/.venv без изменения scanner правил. Повторный scan_secrets_and_deps.py passed, pip check passed. Полный detect-secrets контроль сначала 125/0; новый dotenv-precedence regression добавил один Base64 candidate на tests/test_testmail_client.py:359. Проверен: строка содержит только synthetic-dotenv, example namespace и timeout; реального секрета нет. Baseline обновляется после явного просмотра, синтетический контроль сохраняется.
+- База рабочей ревизии: dac275e56d29ea052dc4a6c31dd3be25abe51292; изменения TASK-103 локальные, commit/PR/release не выполнялись. Следующий шаг: сохранить фактическую приёмку и live blockers.
+
+## 2026-10-02T06:08:09+03:00 — Codex, TASK-103, точка продолжения
+
+- Доступная локальная реализация завершена. План/status/acceptance и инструкции обновлены; task blocked до реальных external checks. Baseline после явного просмотра synthetic-dotenv candidate: 126 fingerprints; контроль повторяется перед завершением.
+- Не выполнены live SES/testmail/PG/Chromium, GitHub main CI и release dry-run. Не отправлялись реальные письма, не изменялись AWS resources/CD, commit/PR/release не создавались. Предыдущие project acceptance blockers сохраняются.
+- Следующий шаг: владелец задаёт key/namespace в игнорируемом .env и scoped GitHub Secrets/Variables, получает SES production access и отдельную test DB; затем preflight, реальные API/browser flows (8 писем), полный CI и release dry-run exact SHA. Документировать фактический delivered API contract и результаты, не засчитывать mock успех как live acceptance.
+
+## 2026-10-02T06:13:46+03:00 — Codex, TASK-103, финальная проверка границы release
+
+- При финальном просмотре найден путь пропуска email job при dispatch release из другой ветки. Release теперь явно отвергает ref вне main первым шагом, до checkout и передачи Secrets. YAML parse и trust/ref/explicit-secrets assertions passed; GitHub execution по-прежнему не выполнен.
+- Browser helper преобразует private stderr только в фиксированные безопасные категории; reporter записывает category без errors/stdout/URLs/attachments. Повторные TypeScript/lint passed. Не ослаблены assertions или failure outcomes.
+- Task остаётся blocked по внешней приёмке. Финальная точка продолжения: docs/testing/email.md, docs/acceptance.md и TASK-103 в плане; нужны SES production access, testmail credentials, отдельная test DB и CI Secrets/IAM, затем реальная доставка/flows и exact-SHA release dry-run.
+
+## 2026-10-02T12:47:33+03:00 — Codex, TASK-103, подготовка commit
+
+- Владелец поручил сохранить текущую реализацию в локальном commit. Проверено состояние: только подготовленные изменения testmail интеграции и документации; diff check passed. .env и временный runtime не включаются.
+- План: повторить secret scan, включить подготовленные файлы, создать commit и проверить чистоту дерева. Live-приёмка остаётся blocked; ранее зафиксированные проверки и ограничения сохраняются. Push/release не поручены.

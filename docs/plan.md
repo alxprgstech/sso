@@ -744,3 +744,14 @@
 - Критерий: пять писем с чистыми темами, корректный MIME, уникальные непривязанные коды; реальная отправка владельцем.
 
 - TASK-102: done. Завершение: 2026-09-30T01:36:58.3913543+03:00. Unit 11 passed, Ruff, format и batch dry-run passed; MIME 9/10 и отсутствие меток проверены. Следующий шаг: ручной Gmail web/mobile опыт владельца; scanner-блокер TASK-099 не меняется.
+
+### TASK-103: testmail.app — внешние email integration/E2E
+
+- Приоритет: P1. Зависимости: TASK-094, TASK-096. Статус: blocked. Начало: 2026-10-02T05:29:19+03:00. Локальная реализация завершена: 2026-10-02T06:08:09+03:00. Исполнитель: Codex. Требования: G4-EMAIL, G6-RUNTIME, DOC-TRACK-01..07.
+- План: test-only Settings и opt-in; общий GraphQL helper/CLI и offline regression tests; пять PostgreSQL сценариев; два Playwright сценария; изолированный обязательный main/manual-main/release job; документация и проверки.
+- Критерий: offline/static проверки успешны; реальные восемь писем через SES получены testmail, сценарии и release dry-run проверены на точном SHA. Production services и политики безопасности не изменяются.
+- Наблюдаемые prerequisites: SES sandbox, отсутствуют testmail credentials и TEST_DATABASE_URL. Реальная доставка заблокирована до production access и выделенных credentials/БД; независимая реализация продолжается.
+- Результат: Settings/helper/CLI, 5 PG cases, 2 browser cases, profiles/runners, scoped main/release CI и документация реализованы. 58 focused offline + 39 regression tests прошли; 14 frontend component tests и static/build/security checks успешны. Полная приёмка не выполнена: 3 PG guard errors, backend capabilities timeout, live flows и GitHub main/release dry-run не проверены.
+- Разблокировка: владелец обеспечивает SES production access, Essential key/namespace, отдельную PostgreSQL и CI Secrets/IAM; выполнить preflight, 5 API + 2 browser cases (8 писем), обычный CI и release dry-run на точном SHA. Не заменять реальную доставку mocks/SMTP и не ослаблять guards. Точка продолжения: docs/testing/email.md.
+
+- TASK-103, 2026-10-02T12:47:33+03:00: по поручению владельца текущая реализация подготавливается к локальному commit. Live-критерии остаются blocked; push/release не выполняются.
