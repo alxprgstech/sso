@@ -36,10 +36,13 @@ class StartBashTests(unittest.TestCase):
                 encoding="ascii",
             )
             docker.chmod(0o755)
+            git = bin_dir / "git"
+            git.write_text("#!/bin/sh\nprintf '%s\\n' " + "a" * 40 + "\n", encoding="ascii")
+            git.chmod(0o755)
             environment = os.environ.copy()
             environment["PATH"] = str(bin_dir) + os.pathsep + environment.get("PATH", "")
             result = subprocess.run(
-                [bash, "start.sh"],
+                [bash, "-c", 'export PATH="$PWD/bin:$PATH"; exec bash start.sh'],
                 cwd=tmp_path,
                 env=environment,
                 capture_output=True,
@@ -72,3 +75,17 @@ class StartBashTests(unittest.TestCase):
             ):
                 self.assertEqual(values[name], "false")
             self.assertNotIn(password, result.stdout + result.stderr)
+            self.assertNotIn("ALX_BUILD_SHA", generated)
+            git.write_text("#!/bin/sh\necho invalid\n", encoding="ascii")
+            invalid = subprocess.run(
+                [bash, "-c", 'export PATH="$PWD/bin:$PATH"; exec bash start.sh'],
+                cwd=tmp_path,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(invalid.returncode, 1)
+            self.assertIn("Cannot determine the full Git revision", invalid.stderr)
+            self.assertEqual((tmp_path / ".env").read_bytes().decode("utf-8"), generated)

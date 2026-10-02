@@ -205,6 +205,15 @@ def start_server(
     if env_vars:
         merged_env.update(env_vars)
 
+    # The ordinary SSO/MFA/email campaigns never use a Sentry network transport.
+    merged_env.update(
+        {
+            "SENTRY_ENABLED": "false",
+            "SENTRY_FRONTEND_ENABLED": "false",
+            "SENTRY_REPLAY_ENABLED": "false",
+        }
+    )
+
     if profile == "email":
         if not merged_env.get("TEST_DATABASE_URL"):
             print("[START-ERROR] Email profile requires explicit TEST_DATABASE_URL")

@@ -49,6 +49,15 @@ def run_e2e(suite: str) -> int:
     )
 
     base_env = os.environ.copy()
+    # All services in this campaign are loopback. System HTTP proxies must not
+    # receive synthetic OAuth codes/client secrets intended for these services.
+    loopback_bypass = ",".join(
+        filter(
+            None,
+            [base_env.get("no_proxy", base_env.get("NO_PROXY", "")), "localhost,127.0.0.1,::1"],
+        )
+    )
+    base_env.update(NO_PROXY=loopback_bypass, no_proxy=loopback_bypass)
     base_env.update(
         {
             "TEST_DATABASE_URL": db_url,
@@ -177,7 +186,14 @@ def run_e2e(suite: str) -> int:
 
             # Playwright
             pw_res = subprocess.run(
-                [npx_cmd, "playwright", "test", "e2e/sso.spec.ts", "e2e/multi_client_sso.spec.ts"],
+                [
+                    npx_cmd,
+                    "playwright",
+                    "test",
+                    "e2e/sso.spec.ts",
+                    "e2e/multi_client_sso.spec.ts",
+                    "e2e/telemetry.spec.ts",
+                ],
                 cwd=FRONTEND_DIR,
                 env=default_off_env,
             )
@@ -255,7 +271,7 @@ def run_e2e(suite: str) -> int:
 
             # Playwright
             pw_res = subprocess.run(
-                [npx_cmd, "playwright", "test", "e2e/passkey.spec.ts"],
+                [npx_cmd, "playwright", "test", "e2e/passkey.spec.ts", "e2e/telemetry.spec.ts"],
                 cwd=FRONTEND_DIR,
                 env=enabled_env,
             )

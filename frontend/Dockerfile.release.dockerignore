@@ -1,0 +1,6 @@
+*
+!dist
+!dist/**
+!nginx.conf
+!csp.conf
+!security-headers.conf

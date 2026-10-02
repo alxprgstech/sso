@@ -32,6 +32,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  SENTRY_ENABLED: 'false'
+  SENTRY_FRONTEND_ENABLED: 'false'
+  SENTRY_REPLAY_ENABLED: 'false'
+
 jobs:
   email-e2e:
     name: Real SES email integration and browser E2E
@@ -137,6 +142,25 @@ jobs:
             artifacts/email/runner-summary.json
           retention-days: 3
           if-no-files-found: ignore
+
+  telemetry-container-check:
+    name: Sentry Container Packaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ inputs.target_sha || github.sha }}
+          persist-credentials: false
+      - name: Build immutable containers without telemetry credentials
+        run: |
+          revision=$(git rev-parse HEAD)
+          docker build --build-arg ALX_BUILD_SHA="$revision" -f backend/Dockerfile -t sso-backend-check .
+          docker build --build-arg ALX_BUILD_SHA="$revision" -f frontend/Dockerfile -t sso-frontend-check .
+          docker run --rm --entrypoint python sso-backend-check -c 'from app.build_info import get_build_info; from app.main import app; assert get_build_info()["version"] == app.version; assert len(get_build_info()["commit_sha"]) == 40'
+          docker run --rm --add-host backend:127.0.0.1 sso-frontend-check nginx -t
+          docker run --rm sso-frontend-check sh -c 'test -f /usr/share/nginx/html/build-info.json && ! find /usr/share/nginx/html -name "*.map" | grep .'
 
   verify-cd-template:
     name: Verify Inactive CD Template
@@ -368,6 +392,19 @@ jobs:
           npm run test:components
           npm run build
 
+      - name: Build and verify private source maps offline
+        run: |
+          ALX_RELEASE_BUILD=1 npm --prefix frontend run build
+          python scripts/check_sentry_build.py
+          docker build -f frontend/Dockerfile.release -t sso-release-frontend-check frontend
+          docker run --rm --add-host backend:127.0.0.1 sso-release-frontend-check nginx -t
+
+      - name: Real SDK browser privacy harness (no SSO mocks, no ingestion)
+        working-directory: frontend
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:telemetry:browser
+
   playwright-e2e:
     name: Playwright E2E Browser Tests
     runs-on: ubuntu-latest
@@ -495,7 +532,7 @@ jobs:
           E2E_PASSWORD: ComposeAdminPass2026!
           E2E_MAILBOX_PATH: /tmp/sso-e2e-mailbox.jsonl
         run: |
-          npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts
+          npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts e2e/telemetry.spec.ts
 
       - name: Stop Default-off Backend Server
         run: |
@@ -532,7 +569,7 @@ jobs:
           PLAYWRIGHT_BASE_URL: "http://localhost:5173"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
         run: |
-          npx playwright test e2e/passkey.spec.ts
+          npx playwright test e2e/passkey.spec.ts e2e/telemetry.spec.ts
 
       - name: Stop Enabled Backend Server
         if: always()

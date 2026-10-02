@@ -23,8 +23,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const caps = await api.getCapabilities();
       setCapabilities(caps);
-    } catch (err) {
-      console.error("Не удалось получить возможности сервера:", err);
+    } catch {
+      console.error("Не удалось получить возможности сервера");
     }
   };
 

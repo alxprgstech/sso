@@ -74,3 +74,7 @@
   "detail": "Requested feature is disabled by server configuration"
 }
 ```
+
+## Sentry privacy boundary
+
+Allowlist-проекция удаляет request bodies/headers/cookies/query, user/IP/geo, arbitrary extras, exception values всей цепочки, SQL и mail content; SDK data collection явно выключена. Envelope headers также ограничены. Incoming baggage очищается до SDK, outgoing tracing headers не уходят Google/SES. SQL parameters скрыты и в локальных SQL errors/logs. Expected 4xx не становятся Issues. Replay показывает только безопасную оболочку staging; исходный token URL запрещает recorder, transport отвергает recording без worker sanitizer. Production recorder hard-off. Direct ingestion раскрывает сетевой IP Sentry; запрет хранения IP/geo и server-side scrubbing необходимо проверить в проектах до rollout. Credentials не входят в artifacts/containers; подробности: [observability.md](observability.md).

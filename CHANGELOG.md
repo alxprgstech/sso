@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### Наблюдаемость
+
+- Sentry errors/static traces с allowlist очисткой, default-off runtime flags и публичным frontend config endpoint.
+- React ErrorBoundary, типизированные API errors и staging-only Replay с локальным worker; production Replay выключен.
+- Общая VERSION/SHA identity, Debug IDs/private source maps и изолированный release upload без активного CD.
+- Безопасные access/application logs, скрытие SQL parameters и отсутствие сырых readiness exception messages.
+
 ### Безопасность и ядро OIDC
 - Обязательная аутентификация конфиденциальных клиентов по типу клиента в OIDC операциях (FINAL-01).
 - Строгая проверка сессии и блокировки пользователя при авторизации (FINAL-02).

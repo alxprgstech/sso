@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: "email.spec.ts",
+  testIgnore: ["email.spec.ts", "telemetry/**"],
   timeout: 45000,
   expect: {
     timeout: 10000,

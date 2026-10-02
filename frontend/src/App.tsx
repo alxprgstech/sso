@@ -6,6 +6,7 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { AdminPage } from "./pages/AdminPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { navigationBreadcrumb } from "./telemetry/sentry";
 
 const MainContent: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -33,6 +34,7 @@ const MainContent: React.FC = () => {
           onNavigateToLogin={() => {
             window.history.pushState({}, "", "/login");
             setAuthView("login");
+            navigationBreadcrumb("login");
           }}
         />
       );
@@ -42,6 +44,7 @@ const MainContent: React.FC = () => {
         onNavigateToRegister={() => {
           window.history.pushState({}, "", "/register");
           setAuthView("register");
+          navigationBreadcrumb("register");
         }}
       />
     );
@@ -51,7 +54,7 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navbar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      <Navbar currentPage={currentPage} setCurrentPage={page => { navigationBreadcrumb(page); setCurrentPage(page); }} />
       <main className="flex-1">
         {currentPage === "admin" && isAdmin ? (
           <AdminPage />
@@ -69,7 +72,7 @@ const MainContent: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <AuthProvider>
-      <MainContent />
+      <div data-sentry-block className="sso-sensitive"><MainContent /></div>
     </AuthProvider>
   );
 };

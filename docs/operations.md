@@ -173,8 +173,12 @@ python scripts/rotate_keys.py --output-dir keys/ --bits 2048
 ### 6.2. Журналирование и аудит
 
 - Логи бэкенда выводятся в stdout в структурированном виде.
-- Все события безопасности (вход, выход, неудачные попытки, блокировки, создание клиентов, ротация секретов) персистентно фиксируются в таблице PostgreSQL `audit_logs` и доступны администраторам через REST API (`GET /api/v1/admin/audit-log`) и интерфейс панели управления.
+- Все события безопасности (вход, выход, неудачные попытки, блокировки, создание клиентов, ротация секретов) персистентно фиксируются в таблице PostgreSQL `audit_events` и доступны администраторам через REST API (`GET /api/v1/admin/audit-log`) и интерфейс панели управления.
 
 ## Реальные email-тесты
 
 SES остаётся существующим отправителем; testmail.app применяется только как получатель тестовых писем. Владелец отдельно обеспечивает SES production access и выделенные IAM credentials; приложение не меняет account/DNS/configuration sets. Main/release CI требует четыре scoped Secrets (session token optional) и TESTMAIL_NAMESPACE Variable. Обычная рабочая Compose БД для внешней группы не используется. [Запуск, безопасность artifacts, IAM и troubleshooting](testing/email.md).
+
+## Эксплуатация Sentry
+
+Flags/rates default-off; EU projects и DSN получены, включение требует live privacy/source-map приёмки. Backend env управляет database-free browser config. Для остановки component flag=false, tracing rates=0, Replay flag=false/rates=0; backend пересоздать, browser tabs перезагрузить. JSON stdout и PostgreSQL audit остаются локальными каналами. Nginx query/IP/Referer не пишет в access log; .map возвращает 404. Exact frontend ingest origin добавляется generated CSP snippet, сначала Report-Only staging, enforce только после browser проверки. Upload token не передавать application containers. Конкретные команды, alerts/quota/smoke и rollback: [observability.md](observability.md).

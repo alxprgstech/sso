@@ -597,6 +597,9 @@ class EmailVerificationService:
         try:
             await deliver_message(message, active_settings)
         except SESEmailDeliveryError as error:
+            from app.telemetry import capture_infrastructure_failure
+
+            capture_infrastructure_failure(error, "email_delivery")
             await AuditService.log_event(
                 db,
                 event_type="email_delivery_failed",

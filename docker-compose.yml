@@ -20,8 +20,10 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        ALX_BUILD_SHA: ${ALX_BUILD_SHA:?Generate verified build identity before Compose build}
     container_name: alxprgs-sso-backend
     restart: unless-stopped
     depends_on:
@@ -29,6 +31,17 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sso_user}:${POSTGRES_PASSWORD:-sso_secure_password}@db:5432/${POSTGRES_DB:-sso_db}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SENTRY_ENABLED: "${SENTRY_ENABLED:-false}"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      SENTRY_FRONTEND_ENABLED: "${SENTRY_FRONTEND_ENABLED:-false}"
+      SENTRY_FRONTEND_DSN: "${SENTRY_FRONTEND_DSN:-}"
+      SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT:-local}"
+      SENTRY_TRACES_SAMPLE_RATE: "${SENTRY_TRACES_SAMPLE_RATE:-0}"
+      SENTRY_FRONTEND_TRACES_SAMPLE_RATE: "${SENTRY_FRONTEND_TRACES_SAMPLE_RATE:-0}"
+      SENTRY_REPLAY_ENABLED: "${SENTRY_REPLAY_ENABLED:-false}"
+      SENTRY_REPLAYS_SESSION_SAMPLE_RATE: "${SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0}"
+      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: "${SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE:-0}"
       DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER:-sso_user}:${POSTGRES_PASSWORD:-sso_secure_password}@db:5432/${POSTGRES_DB:-sso_db}
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=}
@@ -68,8 +81,10 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        ALX_BUILD_SHA: ${ALX_BUILD_SHA:?Generate verified build identity before Compose build}
     container_name: alxprgs-sso-frontend
     restart: unless-stopped
     depends_on:

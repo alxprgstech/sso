@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Literal
+
+
 import uuid
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -8,6 +11,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=64)
     password: str = Field(..., min_length=1, max_length=128)
+
+
+class TelemetryConfigResponse(BaseModel):
+    enabled: bool
+    dsn: str
+    environment: Literal["local", "test", "staging", "production"]
+    traces_sample_rate: float
+    replay_enabled: bool
+    replays_session_sample_rate: float
+    replays_on_error_sample_rate: float
+    trace_propagation_targets: list[str]
 
 
 class MFAStepRequiredResponse(BaseModel):

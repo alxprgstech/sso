@@ -117,3 +117,9 @@ python scripts/bump_version.py set 0.2.0
 3. Настроить в GitHub Environment защиту развёртывания (Required Reviewers).
 4. Скопировать `deploy/github-actions/cd.yml.example` в `.github/workflows/cd.yml`.
 5. Раскомментировать необходимые строки, зафиксировать Commit SHA и закоммитить изменения.
+
+## Sentry release/source maps
+
+`release_bundle.py build --private-maps <PRIVATE_DIR>` создаёт общую VERSION/full-SHA identity, hidden maps/Debug IDs, private JS/maps manifest и deploy archive без maps. Verifier сравнивает identity внутри backend wheel/frontend archive, а также точное совпадение JS с private bundle. Не пересобирайте frontend после upload. Private промежуточный artifact хранится один день и не входит в GitHub Release.
+
+`prepare-sentry-release` зависит от build и блокирует draft при включённом неуспешном upload. Trusted workflow checkout и fixed CLI installation выполняются без token; единственный upload step получает protected `SENTRY_AUTH_TOKEN`. Требуются `SENTRY_ORG`, оба `SENTRY_PROJECT_*`, `SENTRY_URL=https://de.sentry.io/`, opt-in `SENTRY_RELEASE_UPLOAD_ENABLED`. Dry-run/upload-disabled всегда offline, даже если credentials присутствуют. Dirty/untagged local bundles не допускаются к upload. Runtime release override не используется. Build не создаёт deployment record; CD остаётся неактивным. Полный порядок: [observability.md](observability.md).

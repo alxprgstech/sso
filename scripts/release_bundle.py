@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -12,6 +13,11 @@ import tarfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Supports both `python scripts/release_bundle.py` and module import in tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.build_identity import build_identity
+from scripts.sentry_artifacts import prepare_private_maps
 
 ROOT = Path(__file__).resolve().parent.parent
 TAG_RE = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.[1-9]\d*)?$")
@@ -27,8 +33,12 @@ def package_version(version: str) -> str:
     return version.replace("-rc.", "rc")
 
 
-def run(command: list[str], *, cwd: Path = ROOT) -> str:
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+def run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> str:
+    build_env = dict(os.environ if env is None else env)
+    build_env.pop("SENTRY_AUTH_TOKEN", None)
+    result = subprocess.run(
+        command, cwd=cwd, env=build_env, capture_output=True, text=True, check=False
+    )
     if result.returncode:
         raise ReleaseError(f"Command failed ({Path(command[0]).name}, exit {result.returncode})")
     return result.stdout.strip()
@@ -98,13 +108,15 @@ def archive_tree(archive: tarfile.TarFile, root: Path, prefix: str = "") -> None
             archive.add(path, arcname=prefix + path.relative_to(root).as_posix(), recursive=False)
 
 
-def inspect_packages(output: Path, version: str) -> None:
+def inspect_packages(output: Path, version: str, identity: dict[str, str]) -> None:
     python_version = package_version(version)
     with zipfile.ZipFile(
         output / f"alxprgs_sso_backend-{python_version}-py3-none-any.whl"
     ) as archive:
         if "app/main.py" not in archive.namelist():
             raise ReleaseError("Backend wheel lacks entrypoint")
+        if json.loads(archive.read("app/_build_info.json")) != identity:
+            raise ReleaseError("Backend wheel build identity mismatch")
     with zipfile.ZipFile(output / f"alxprgs_sso-{python_version}-py3-none-any.whl") as archive:
         if "alxprgs_sso/client.py" not in archive.namelist():
             raise ReleaseError("SDK wheel lacks client")
@@ -115,11 +127,45 @@ def inspect_packages(output: Path, version: str) -> None:
     with tarfile.open(output / f"alxprgs-sso-frontend-{version}.tar.gz") as archive:
         if "index.html" not in archive.getnames():
             raise ReleaseError("Frontend archive lacks index.html")
+        if any(name.endswith(".map") for name in archive.getnames()):
+            raise ReleaseError("Frontend archive contains public source maps")
+        if any(
+            any(
+                part.startswith(".env")
+                or part in {".sentryclirc", ".sentry-private", "sentry-private"}
+                for part in name.replace("\\", "/").split("/")
+            )
+            or name.endswith((".pem", ".key"))
+            for name in archive.getnames()
+        ):
+            raise ReleaseError("Private configuration/intermediate in deployment artifact")
+        stream = archive.extractfile("build-info.json")
+        if not stream or json.load(stream) != identity:
+            raise ReleaseError("Frontend archive build identity mismatch")
+        if any(
+            member.issym()
+            or member.islnk()
+            or member.name.startswith("/")
+            or ".." in Path(member.name).parts
+            for member in archive.getmembers()
+        ):
+            raise ReleaseError("Unsafe frontend archive member")
+        if "telemetry-harness.html" in archive.getnames():
+            raise ReleaseError("Test harness in deployment artifact")
 
 
 def verify(output: Path, expected_sha: str | None = None) -> dict:
     manifest = json.loads((output / "release-manifest.json").read_text(encoding="utf-8"))
     version = manifest["version"]
+    if not re.fullmatch(r"[a-f0-9]{40}", manifest["commit_sha"]):
+        raise ReleaseError("Invalid artifact revision")
+    identity = manifest.get("build_identity")
+    if identity != {
+        "version": version,
+        "commit_sha": manifest["commit_sha"],
+        "release": f"alxprgs-sso@{version}+{manifest['commit_sha']}",
+    }:
+        raise ReleaseError("Build identity mismatch")
     if expected_sha and manifest["commit_sha"] != expected_sha:
         raise ReleaseError("Manifest SHA mismatch")
     payload = payload_names(version)
@@ -136,23 +182,34 @@ def verify(output: Path, expected_sha: str | None = None) -> dict:
     required = {f"{sha256(output / name)}  {name}" for name in payload | {"release-manifest.json"}}
     if set(sums) != required or len(sums) != len(required):
         raise ReleaseError("SHA256SUMS is incomplete or invalid")
-    inspect_packages(output, version)
+    inspect_packages(output, version, identity)
     return manifest
 
 
-def build(output: Path, tag: str | None = None, require_clean: bool = False) -> dict:
+def build(
+    output: Path,
+    tag: str | None = None,
+    require_clean: bool = False,
+    private_maps: Path | None = None,
+) -> dict:
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     run([sys.executable, str(ROOT / "scripts" / "bump_version.py"), "check"])
     notes = release_notes(version)
     sha, dirty = source_identity(version, tag, require_clean)
+    identity = build_identity(ROOT, sha)
     output = empty_output(output)
     for package in ("backend", "packages/python-sdk"):
         run([sys.executable, "-m", "build", "--no-isolation", package, "--outdir", str(output)])
     frontend = ROOT / "frontend"
     npm = "npm.cmd" if sys.platform == "win32" else "npm"
     run([npm, "ci"], cwd=frontend)
-    for step in ("lint", "typecheck", "typecheck:tests", "test", "test:components", "build"):
+    for step in ("lint", "typecheck", "typecheck:tests", "test", "test:components"):
         run([npm, "run", step], cwd=frontend)
+    build_env = {**os.environ, "ALX_BUILD_SHA": sha, "ALX_RELEASE_BUILD": "1"}
+    build_env.pop("SENTRY_AUTH_TOKEN", None)
+    run([npm, "run", "build"], cwd=frontend, env=build_env)
+    private_maps = private_maps or output.parent / "sentry-private"
+    prepare_private_maps(frontend / "dist", private_maps, identity)
     with tarfile.open(output / f"alxprgs-sso-frontend-{version}.tar.gz", "w:gz") as archive:
         archive_tree(archive, frontend / "dist")
     with tarfile.open(output / f"alxprgs-sso-migrations-{version}.tar.gz", "w:gz") as archive:
@@ -168,6 +225,7 @@ def build(output: Path, tag: str | None = None, require_clean: bool = False) -> 
         "version": version,
         "tag": tag,
         "commit_sha": sha,
+        "build_identity": identity,
         "source_tree_dirty": dirty,
         "built_at_utc": datetime.now(timezone.utc).isoformat(),
         "artifacts": {
@@ -196,10 +254,11 @@ def main() -> int:
     parser.add_argument("--tag")
     parser.add_argument("--require-clean", action="store_true")
     parser.add_argument("--expected-sha")
+    parser.add_argument("--private-maps", type=Path)
     args = parser.parse_args()
     try:
         result = (
-            build(args.outdir, args.tag, args.require_clean)
+            build(args.outdir, args.tag, args.require_clean, args.private_maps)
             if args.action == "build"
             else verify(args.outdir, args.expected_sha)
         )

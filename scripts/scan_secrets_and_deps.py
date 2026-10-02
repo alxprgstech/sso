@@ -121,6 +121,7 @@ def check_secrets_in_code() -> list[str]:
     EXCLUDED_DIRS = {
         ".git",
         ".venv",
+        ".venv-sentry",  # Ignored local dependency environment; tracked source still scanned.
         "node_modules",
         "dist",
         "build",

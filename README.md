@@ -121,9 +121,9 @@ FEATURE_EMAIL_VERIFICATION_ENABLED=true
 REQUIRE_VERIFIED_EMAIL=false
 ```
 
-- При выключенных флагах эндпоинты TOTP, Passkey, Recovery codes и Email verification возвращают HTTP 404 (`feature_disabled`);
-- Письма не отправляются; тестовый `sent_emails_sink` не пополняется;
-- В default-профиле учетные записи администраторов и зарегистрированных пользователей создаются с `email_verified=False`;
+- При выключенных MFA-флагах эндпоинты TOTP, Passkey и Recovery codes возвращают HTTP 404 (`feature_disabled`);
+- Обязательное подтверждение email при самостоятельной регистрации работает независимо от трёх MFA-флагов и отправляет письмо через настроенный транспорт;
+- Созданные администратором пользователи могут иметь `email_verified=False`; самостоятельная регистрация создаёт пользователя только после подтверждения адреса;
 - `REQUIRE_VERIFIED_EMAIL=true` дополнительно блокирует вход ранее созданных или созданных администратором пользователей с неподтверждённым адресом. Самостоятельная регистрация всегда подтверждает email до создания пользователя.
 
 ### Отправка писем подтверждения
@@ -251,3 +251,9 @@ python scripts/send_test_verification_email.py --to recipient@example.com --clea
 Редактируемые константы второго набора: CLEAN_SUBJECT, MINIMAL_TEXT и FRAGMENT_HTML. MINIMAL_TEXT для 7bit должен быть ASCII. Шаблон 9 использует только ALXPRGS и наш сайт, без трекера Xiaomi. Номера не попадают в тему или тело. В консоли показываются номер и случайный тестовый код: он не записан в БД и не подтверждает аккаунт. Сохраните соответствие для сравнения; Gmail может объединять одинаковые темы в цепочку. Откройте каждое письмо отдельно, сопоставляя код. Проверьте тот же набор на телефоне; другой собственный Gmail-аккаунт можно использовать отдельным запуском.
 
 Фактический результат первого набора: по пяти скриншотам владельца в Gmail web ни один вариант 1–5 не показал карточку. Мобильный результат и второй набор пока не проверены. Это не устанавливает причину и не доказывает влияние репутации отправителя.
+
+## Наблюдаемость Sentry
+
+Backend/frontend errors и static tracing реализованы с default-off flags и нулевыми rates. Конфигурация браузера приходит из публичного database-free `/api/v1/auth/telemetry-config` с bootstrap timeout 300 ms. Production Replay выключен кодом; staging использует отдельный локальный worker после privacy-приёмки. Release identity общая VERSION/full SHA; private source maps не входят в deploy artifacts. Настройка, отключение, проверки, live-блокеры: [docs/observability.md](docs/observability.md), [ADR-0010](docs/adr/0010-sentry-observability.md).
+
+Для ручной source-сборки Compose сначала задайте `ALX_BUILD_SHA` полным проверенным SHA (`$env:ALX_BUILD_SHA = git rev-parse HEAD` в PowerShell, `export ALX_BUILD_SHA=$(git rev-parse HEAD)` в Bash). Start scripts выполняют это сами; требуется Git. Для frontend release artifact используйте `frontend/Dockerfile.release`, без повторной компиляции. Это не запускает deployment.

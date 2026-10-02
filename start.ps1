@@ -29,6 +29,18 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 }
 Write-Host " [OK]" -ForegroundColor Green
 
+# Immutable identity for this source build; never take a release name from .env.
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Error "Git is required to identify the Docker build revision. Use verified release artifacts for deployments without a checkout."
+    exit 1
+}
+$buildRevision = ([string] (& git -C $PSScriptRoot rev-parse HEAD)).Trim()
+if ($LASTEXITCODE -ne 0 -or $buildRevision -notmatch '^[a-f0-9]{40}$') {
+    Write-Error "Cannot determine the full Git revision for this build."
+    exit 1
+}
+$env:ALX_BUILD_SHA = $buildRevision
+
 # 2. Проверка доступности демона Docker (TEST-SETUP-04)
 Write-Host "[2/6] Проверка доступности Docker daemon..." -NoNewline
 $null = docker info 2>&1

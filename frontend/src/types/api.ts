@@ -1,3 +1,14 @@
+export interface TelemetryConfig {
+  enabled: boolean;
+  dsn: string;
+  environment: "local" | "test" | "staging" | "production";
+  traces_sample_rate: number;
+  replay_enabled: boolean;
+  replays_session_sample_rate: number;
+  replays_on_error_sample_rate: number;
+  trace_propagation_targets: string[];
+}
+
 export interface Capabilities {
   totp_enabled: boolean;
   passkey_enabled: boolean;

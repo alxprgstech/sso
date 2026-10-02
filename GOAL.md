@@ -236,3 +236,7 @@
 - [GitHub Actions: workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) — workflows и permissions.
 - [GitHub: API релизов](https://docs.github.com/en/rest/releases/releases) — создание GitHub Releases.
 - [GitHub Actions: безопасное использование](https://docs.github.com/en/actions/reference/security/secure-use) — защита workflow и токенов.
+
+## 10. Расширение наблюдаемости Sentry (02.10.2026)
+
+По поручению владельца реализовать ADR-0010 и SENTRY-01..07: два проекта DE, direct browser transport, allowlist privacy, errors и ограниченные static traces, staging-only Replay с production hard-off, общий VERSION/SHA release, private source maps, доверенный upload без активного CD. Default flags false, rates 0; обычные тесты без ingestion. Готовность требует фактических SDK/privacy/outage/artifact проверок и отдельной live staging приёмки. Sentry дополняет audit/stdout и не влияет на доступность аутентификации.

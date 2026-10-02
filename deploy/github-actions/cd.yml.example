@@ -114,3 +114,14 @@
 #           # 2. Возврат предыдущей версии статических файлов фронтенда
 #           # 3. Восстановление резервной копии базы данных (если миграция была несовместимой)
 #           echo "Выполнен откат к предыдущей стабильной версии."
+# SENTRY rollout (inactive; requires a separately authorized deployment):
+# - Download verified immutable artifacts; do not rebuild frontend after map upload.
+# - Compare VERSION/full SHA/build-info.json and release-manifest.json before rollout.
+# - Pass only backend runtime SENTRY_* settings; never pass SENTRY_AUTH_TOKEN to containers.
+# - Generate exact-ingest CSP via scripts/render_sentry_csp.py, Report-Only on staging first.
+# - Frontend obtains flags/DSN/rates through /api/v1/auth/telemetry-config; production Replay is hard off.
+# - Deploy the verified artifact, migrate, then run health/readiness and auth smoke checks.
+# - Record a Sentry deploy only AFTER successful health checks, in a separate trusted step.
+# - On rollback, restore the previous verified artifacts and their own release identity.
+# - Disable tracing with rates=0, Replay with flag=false/rates=0, errors with component flags=false.
+# - Runtime browser config changes apply after page reload; already open tabs need reloading.

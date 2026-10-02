@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Any, Literal
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,51 @@ class Settings(BaseSettings):
     # Окружение
     ENVIRONMENT: Literal["development", "testing", "production"] = "development"
     DEBUG: bool = False
+
+    # Observability is independent of SSO availability. No credentials in this projection.
+    SENTRY_ENABLED: bool = False
+    SENTRY_DSN: str = ""
+    SENTRY_FRONTEND_ENABLED: bool = False
+    SENTRY_FRONTEND_DSN: str = ""
+    SENTRY_ENVIRONMENT: Literal["local", "test", "staging", "production"] | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+    SENTRY_FRONTEND_TRACES_SAMPLE_RATE: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+    SENTRY_REPLAY_ENABLED: bool = False
+    SENTRY_REPLAYS_SESSION_SAMPLE_RATE: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+    SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: float = Field(default=0, ge=0, le=1, allow_inf_nan=False)
+
+    @property
+    def telemetry_environment(self) -> str:
+        return (
+            self.SENTRY_ENVIRONMENT
+            or {"development": "local", "testing": "test", "production": "production"}[
+                self.ENVIRONMENT
+            ]
+        )
+
+    @field_validator("SENTRY_DSN", "SENTRY_FRONTEND_DSN")
+    @classmethod
+    def validate_sentry_dsn(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+        import re
+
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or not parsed.username
+            or not re.fullmatch(r"[a-zA-Z0-9]+", parsed.username)
+            or not re.fullmatch(r"/[0-9]+", parsed.path)
+            or not parsed.hostname
+            or parsed.port not in (None, 443)
+            or not re.fullmatch(r"o[0-9]+\.ingest(?:\.[a-z]+)?\.sentry\.io", parsed.hostname)
+        ):
+            raise ValueError("Invalid Sentry DSN (HTTPS Sentry ingestion required)")
+        return value
 
     # Сетевые параметры
     HOST: str = "0.0.0.0"

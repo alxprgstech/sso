@@ -755,3 +755,25 @@
 - Разблокировка: владелец обеспечивает SES production access, Essential key/namespace, отдельную PostgreSQL и CI Secrets/IAM; выполнить preflight, 5 API + 2 browser cases (8 писем), обычный CI и release dry-run на точном SHA. Не заменять реальную доставку mocks/SMTP и не ослаблять guards. Точка продолжения: docs/testing/email.md.
 
 - TASK-103, 2026-10-02T12:47:33+03:00: по поручению владельца текущая реализация подготавливается к локальному commit. Live-критерии остаются blocked; push/release не выполняются.
+
+## Sentry — реализация согласованного плана (02.10.2026)
+
+| ID | Приоритет | Зависимости | Критерий готовности | Статус | Начало |
+| --- | --- | --- | --- | --- | --- |
+| SENTRY-01 | P1 | — | ADR, контракт, лицензии; аккаунт/Student/privacy prerequisites проверены | blocked | 2026-10-02T14:43:48+03:00 |
+| SENTRY-02 | P1 | SENTRY-01 | Allowlist, безопасные логи/readiness/SQL; canary tests | done | общий пакет: 14:43:48; отдельно не фиксировалось |
+| SENTRY-03 | P1 | SENTRY-02 | Backend errors/config, local SDK/outage/duplicate tests и staging smoke | blocked | общий пакет: 14:43:48; отдельно не фиксировалось |
+| SENTRY-04 | P1 | SENTRY-02 | Frontend/identity/maps/release/Docker/proxy; offline + image/live association checks | blocked | общий пакет: 14:43:48; отдельно не фиксировалось |
+| SENTRY-05 | P2 | SENTRY-03,04 | Sampler/propagation/mail/DB spans; negative + real distributed/p95/usage checks | blocked | общий пакет: 14:43:48; отдельно не фиксировалось |
+| SENTRY-06 | P2 | SENTRY-04 | Staging-only Replay, реальные recordings, production hard-off и staging privacy audit | blocked | общий пакет: 14:43:48; отдельно не фиксировалось |
+| SENTRY-07 | P1 | SENTRY-03..06 | Локальные проверки и live staging acceptance, alerts/quota, точка продолжения | blocked | общий пакет: 14:43:48; отдельно не фиксировалось |
+
+Локальная реализация пакета завершена 2026-10-02T18:09:56+03:00, Codex. SENTRY-02 завершён по своему критерию. Для SENTRY-01/03..07 код, локальные SDK/PG/browser/artifact проверки выполнены; итоговые gates blocked из-за внешних/непроверенных критериев, а не отсутствия DSN. Критерии уточнены по исходному rollout: staging smoke, реальная distributed trace/latency/usage и privacy audit не исключены из приёмки.
+
+- Результаты: полный pytest 313 passed +16 subtests; enabled PG subset 21 passed; ordinary E2E 6+5 passed; SDK browser 6 passed; frontend 11 unit/20 component; audits/identity/maps/gzip passed. Финальный bundle `artifacts/sentry-release-final3`, private maps отдельно `artifacts/sentry-private-final3`; dirty base revision, upload disabled. Подробности — docs/acceptance.md.
+- SENTRY-01 разблокируется подтверждением Student billing/terms/privacy settings/scopes; EU/projects/public DSN уже подтверждены. SENTRY-03/05/06/07 требуют реального staging hostname/infrastructure, synthetic smoke/ручного payload audit/p95/usage/alerts. SENTRY-04 дополнительно требует Docker/Nginx checks, clean tagged remote CI/dry-run и protected upload Secret/Variables. Token не передавать в чат.
+- Точка продолжения: подготовить выбранный staging и SaaS settings, запустить обязательный CI/Docker и clean tagged offline release, затем включать errors → source association → 1% traces → staging Replay 0/0.10 после отдельной приёмки. Production Replay всегда off; all CD lines остаются commented. Прежний SES/testmail/общий acceptance не закрыт.
+
+- 2026-10-02T21:53:01+03:00, Codex, SENTRY-01..07: владелец поручил сохранить всю реализацию локальным commit. До commit — secret/self-test, version/invariants, whitespace и index review; после — проверка commit и чистоты рабочего дерева. Статусы live-приёмки сохраняются, push/release/deploy не входят в поручение.
+
+- 2026-10-02T21:58:02+03:00, Codex: pre-commit проверки выполнены успешно; проверенный index содержит 84 файла реализации и документации без secrets/private/generated artifacts. Переход к локальному commit и контролю чистоты дерева; SENTRY-01/03..07 остаются blocked по исходным live-критериям.

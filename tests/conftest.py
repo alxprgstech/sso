@@ -19,6 +19,11 @@ from sqlalchemy.pool import NullPool
 
 sys.path.insert(0, os.path.abspath("backend"))
 
+# Ordinary tests must never activate a network transport, even with a developer .env.
+os.environ["SENTRY_ENABLED"] = "false"
+os.environ["SENTRY_FRONTEND_ENABLED"] = "false"
+os.environ["SENTRY_REPLAY_ENABLED"] = "false"
+
 from app.api.deps import get_db
 from app.core.rbac import ROLE_ADMIN, ROLE_USER
 from app.main import app

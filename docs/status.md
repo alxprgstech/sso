@@ -253,3 +253,26 @@ git push origin v0.2.0
 - 2026-10-02T05:29:19+03:00, Codex: TASK-103 in_progress — реализация testmail.app test-only интеграции. Live-проверки требуют SES production access, testmail credentials и выделенную PostgreSQL. Предыдущие ограничения общей приёмки сохраняются.
 
 - 2026-10-02T12:47:33+03:00: TASK-103 — сохранение подготовленной локальной реализации в commit по поручению владельца. Live-блокеры и точка продолжения docs/testing/email.md сохраняются.
+
+## Sentry — текущая работа
+
+2026-10-02T14:43:48+03:00, Codex: SENTRY-01..07 — in_progress. Реализуется согласованный план; flags default-off. Live ingestion/source maps/privacy audit/overhead blocked до организации DE и staging. Общая приёмка проекта и прежние блокеры не меняются.
+
+
+- 2026-10-02T16:15:45+03:00, Codex: SENTRY-01..07 продолжаются. EU/проекты/DSN подтверждены; flags false. Backend/frontend/privacy/identity/private maps/trusted release flow реализованы, actual SDK/browser и offline dirty bundle passed. npm/pip audit без известных vulnerabilities. Live prerequisites теперь: staging hostname/infrastructure, protected upload Secret/Variables, SaaS scrubbing/IP/geo/Student/alerts и dedicated PG/Docker; remote CI и overhead не проверены. Следующий шаг — final local regressions и фиксация acceptance; общая цель не завершена.
+
+## Sentry — актуальный итог 2026-10-02T18:09:56+03:00
+
+Локальная интеграция реализована: backend/frontend errors, DB-free runtime config, strict privacy, safe logs/readiness/SQL, immutable package/frontend identity, Debug IDs/private maps/trusted upload, samplers/mail/DB/HTTPX spans, staging-only async Replay/local worker. SENTRY-02 done; SENTRY-01/03..07 blocked только по сохранившимся внешним gates. Public DSN EU сохранены в ignored .env; отправка выключена, rates 0.
+
+Проверено: полный pytest 313+16 subtests; enabled PG subset 21; ordinary browser 6 default-off+5 enabled; SDK browser privacy 6; frontend 11 unit+20 component; Ruff/mypy/build/audits/secret scans/identity/private maps/offline upload validation. Main gzip delta 57 274 bytes меньше 100 KiB. Финальный локальный bundle и separate private maps — ignored artifacts/sentry-release-final3 и sentry-private-final3. Чистого tagged artifact для deploy сейчас нет.
+
+Открыто: Docker/Nginx/CSP enforcement и remote GitHub CI/dry-run; реальный staging/ingestion/source association/manual payload audit/distributed trace/mail/p95; SaaS scrubbing/IP/geo/Student/alerts и protected CI token/Variables. DSN и EU повторно запрашивать не нужно; token только GitHub Secret. Реальная SES/testmail приёмка и прочие общие требования GOAL остаются отдельными. Никаких publish/deploy/CD activation не было.
+
+Продолжение: [observability.md](observability.md), фактические результаты [acceptance.md](acceptance.md); выполнить gates в порядке errors → maps → 1% traces → staging Replay 0/0.10. Backend flags/env требуют restart, browser config требует reload; production Replay не включать. Test cluster shutdown фиксируется ниже после выполнения.
+
+- 2026-10-02T18:18:26+03:00, Codex: собственный PG cluster и все тестовые servers остановлены; контроль loopback ports passed. Final3 offline bundle повторно validated усиленным env/private-intermediate verifier; source maps не публичны. Все локальные проверки завершены, дальнейшие шаги только указанные external gates.
+
+- 2026-10-02T21:53:01+03:00, Codex: по поручению владельца выполняется сохранение всей локальной интеграции в один commit в main. Перед commit проверяются секреты, whitespace и состав index; повторный полный runtime-набор не требуется, код после предыдущих проверок не меняется. Live gates остаются blocked, telemetry выключена. Push/release/deploy не выполняются; для будущего release потребуется новая чистая сборка на выбранном SHA.
+
+- 2026-10-02T21:58:02+03:00, Codex: проверки подготовки прошли — secret scan 126/0 new с synthetic control, пять инвариантов, версии, staged whitespace и состав 84 файлов. Локальный commit готовится из проверенного index; секреты и приватные артефакты исключены. Точка дальнейшего продолжения и live gates не изменились.

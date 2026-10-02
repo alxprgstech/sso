@@ -230,6 +230,22 @@ def _send_smtp(message: EmailMessage, settings: Settings) -> None:
 
 
 async def deliver_message(message: EmailMessage, settings: Settings) -> None:
+    import sentry_sdk
+
+    with sentry_sdk.start_span(op="email.send", name="email.send") as span:
+        span.set_data("provider", settings.EMAIL_PROVIDER)
+        span.set_data("operation", "send_email")
+        span.set_data("template", "email_verification")
+        try:
+            await _deliver_message(message, settings)
+        except Exception:
+            span.set_data("result", "failure")
+            raise
+        else:
+            span.set_data("result", "success")
+
+
+async def _deliver_message(message: EmailMessage, settings: Settings) -> None:
     if settings.EMAIL_PROVIDER == "ses":
         await asyncio.to_thread(
             send_ses_email,

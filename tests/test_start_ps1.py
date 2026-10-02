@@ -13,7 +13,7 @@ from pathlib import Path
 @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell startup script")
 class StartPowerShellTests(unittest.TestCase):
     def run_start(
-        self, tmp_path: Path, fallback: bool
+        self, tmp_path: Path, fallback: bool, revision: str = "a" * 40
     ) -> tuple[subprocess.CompletedProcess[str], Path]:
         shell = shutil.which("powershell.exe")
         self.assertIsNotNone(shell, "Windows PowerShell is required for this check")
@@ -25,6 +25,7 @@ class StartPowerShellTests(unittest.TestCase):
         # Stop at Compose up; no real daemon, containers, or HTTP server are used.
         ps_script = f"""
 $logPath = '{str(log).replace("'", "''")}'
+function git {{ $global:LASTEXITCODE = 0; '{revision}' }}
 function docker {{
     $commandLine = 'docker ' + ($args -join ' ')
     Add-Content -LiteralPath $logPath -Value $commandLine
@@ -77,6 +78,7 @@ function docker-compose {{
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("Docker Compose (TEST-SETUP-04)", result.stdout)
                 self.assertNotIn("CommandNotFoundException", result.stderr)
+                self.assertNotIn("ALX_BUILD_SHA", (tmp_path / ".env").read_text(encoding="utf-8"))
                 self.assertEqual(
                     (tmp_path / ".env").read_text(encoding="utf-8"),
                     "# Keep this file unchanged\n",
@@ -115,3 +117,14 @@ function docker-compose {{
             ):
                 self.assertEqual(values[name], "false")
             self.assertNotIn(db_password, result.stdout + result.stderr)
+
+    def test_invalid_build_revision_refuses_compose_up(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tmp_path = Path(directory)
+            (tmp_path / ".env").write_text("# preserved\n", encoding="utf-8")
+            result, log = self.run_start(tmp_path, False, revision="invalid")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn(
+                "up -d --build", log.read_text(encoding="utf-8") if log.exists() else ""
+            )
+            self.assertEqual((tmp_path / ".env").read_text(encoding="utf-8"), "# preserved\n")

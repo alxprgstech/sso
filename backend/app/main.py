@@ -27,21 +27,28 @@ from app.core.exceptions import (
 )
 from app.core.security import get_jwks
 from app.database import get_db
+from app.build_info import get_build_info
+from app.logging_config import configure_logging
+from app.telemetry import TelemetryFastAPI, initialize_sentry, register_routes
 
 settings = get_settings()
+configure_logging()
+initialize_sentry(settings)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Действия при запуске приложения
     yield
-    # Действия при остановке приложения
+    import sentry_sdk
+
+    sentry_sdk.get_client().close(timeout=2)
 
 
-app = FastAPI(
+app = TelemetryFastAPI(
     title="ALXPRGS SSO",
     description="Identity and Access Management Server for alxprgs.tech",
-    version="0.1.0",
+    version=get_build_info()["version"],
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url=None,
     lifespan=lifespan,
@@ -68,7 +75,7 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
     """
     Middleware:
     1. Назначает correlation ID (X-Request-ID) для каждого запроса (Section 4.6 GOAL.md).
-    2. Устанавливает базовые заголовки безопасности (Content-Security-Policy, nosniff, etc.).
+    2. Устанавливает базовые заголовки безопасности; CSP задаётся proxy.
     """
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = request_id
@@ -133,10 +140,10 @@ async def health_ready(db: AsyncSession = Depends(get_db)) -> JSONResponse:
             status_code=status.HTTP_200_OK,
             content={"status": "ready", "database": "connected"},
         )
-    except Exception as e:
+    except Exception:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "unavailable", "database": "disconnected", "detail": str(e)},
+            content={"status": "unavailable", "database": "disconnected"},
         )
 
 
@@ -192,3 +199,4 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(mfa_router)
 app.include_router(oidc_router)
+register_routes(app)

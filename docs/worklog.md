@@ -2611,3 +2611,93 @@
 
 - Владелец поручил сохранить текущую реализацию в локальном commit. Проверено состояние: только подготовленные изменения testmail интеграции и документации; diff check passed. .env и временный runtime не включаются.
 - План: повторить secret scan, включить подготовленные файлы, создать commit и проверить чистоту дерева. Live-приёмка остаётся blocked; ранее зафиксированные проверки и ограничения сохраняются. Push/release не поручены.
+
+### 2026-10-02T14:43:48+03:00 — Codex — SENTRY-01..07: начало реализации
+
+- Владелец поручил реализовать полный согласованный план; исходная ревизия da26623, рабочее дерево чистое.
+- План: privacy foundation, backend/frontend SDK, immutable build identity, private source maps и release upload, tracing, staging Replay, проверки и эксплуатационные документы. ADR-0010 создан до кода.
+- Проверено: состояние Git, правила AGENTS/GOAL и рабочие документы. SDK/runtime проверки ещё не выполнялись.
+- Live-блокеры: организация DE/DSN/token, staging и фактическая подписка пока не предоставлены. Продолжается автономная локальная реализация; никакие реальные письма, deploy или публикации не планируются.
+
+
+### 2026-10-02T15:11:16+03:00 — Codex — SENTRY-02..04: первый проверенный результат
+
+- Добавлены SDK settings/default-off, allowlist event/span sanitizers, logging/readiness/SQL privacy, database-free frontend config, React bootstrap/Boundary/ApiError и staging-only async Replay. Общая identity/Hatch/Vite Debug IDs и private maps verifier реализованы.
+- FastAPI 0.141 использует deferred included routers: registry безопасных routes формируется из effective OpenAPI paths; ошибка обнаружена и исправлена отрицательными тестами.
+- Фактически: Python 3.12.14 отдельная .venv-sentry из официальных wheels с проверкой SHA-256; pytest tests/test_sentry.py tests/test_release_bundle.py: 33 passed. Vite release build passed, main gzip 126.81 kB, Replay chunk gzip 40.60 kB. Это размеры новой сборки, не сравнение runtime overhead.
+- npm installation audit: 0 vulnerabilities. Typings SDK проверены/исправлены; полный lint/component/browser/PG/release flow ещё выполняется.
+- Live Sentry credentials/staging отсутствуют. Следующий шаг: CI upload isolation, Docker/CSP, настоящие browser envelopes и PostgreSQL.
+
+
+- 2026-10-02T15:23:39+03:00, Codex, SENTRY-01/04: владелец создал оба проекта и подтвердил EU. Предоставленные public DSN сохранены только в игнорируемом .env, flags false, rates 0; прочие настройки сохранены без вывода. Backend wheel/sdist и mypy прошли. Private Debug IDs/maps gate passed после восстановления metadata entry map Vite 8. Следующий шаг — browser/Replay envelopes и offline release dry-run; staging hostname/upload token всё ещё отсутствуют.
+
+
+### 2026-10-02T16:11:00+03:00 — Codex — SENTRY-02..06: SDK/privacy/artifacts
+
+- После восстановления контекста дополнен учёт статусов SENTRY: общий старт пакета 14:43:48 сохранён; отдельные времена старта подзадач не фиксировались и не восстановлены задним числом.
+- Backend actual SDK regression: 42 passed (errors/503/4xx/chains/scopes/sampler, worker DNS/timeout/429/overflow, mail to_thread parent, external HTTPX no propagation, resealed artifact identity tampering). Ruff check/format 128 files и mypy 42 files passed.
+- Browser SDK harness: 5 passed, настоящие error/transaction envelopes и mandatory decompression rrweb; production hard-off, initial token URL, blocked ingestion, missing Worker fallback. Это isolated SDK integration, не полная SSO/PG acceptance.
+- Полная local dirty release сборка 0.2.0 на базе da2662303b5dc805576895184fac00579b986e3c passed; offline Sentry uploader validation passed, network upload disabled. Wheel/sdist, Debug IDs/private maps, archive identity и no public maps проверены. Tagged clean release, remote CI и live association не проверены.
+- npm audit: 0 vulnerabilities; 50 added/changed lock packages: MIT 35, FSL-1.1-MIT 9, BSD-2-Clause 1, BlueOak-1.0.0 3, FSL-1.1-Apache-2.0 1, Apache-2.0 1; unknown licenses 0. Python audit продолжается: отдельный uv venv первоначально не содержал pip_audit/pip, используется закреплённый существующий auditor после локального ensurepip.
+- Восстановлена UTF-8 читаемость .gitignore (прежний NUL tail), добавлена transient build SHA в start scripts; Docker CI checks обязательны и не deploy. Документы/ADR описывают SDK Replay/Vite ограничения и проверки.
+- TEST_DATABASE_URL отсутствует, safety guard реальной PG проверки отказал; Docker command/runtime отсутствует. Эти результаты не засчитаны как passed. Следующий шаг: final audits/offline checks, live prerequisites и точка продолжения.
+
+- 2026-10-02T16:15:45+03:00, Codex: коррекция времени предыдущей записи SENTRY. Метка 16:11:00 была вручную подставлена при записи и не является фактическим временем завершения. Сохранение записи подтверждено часами среды в 16:13:20+03:00. Остальные результаты неизменны. Python lock audit pip-audit 2.10.1 завершён: No known vulnerabilities found.
+
+### 2026-10-02T16:31:39+03:00 — Codex — SENTRY-07: локальная PostgreSQL
+
+- Docker/installed PG отсутствуют. Официальная страница EDB предлагает Windows ZIP 16.15-5 (373254386 bytes); начата загрузка в игнорируемый artifacts/.venv-sentry-pg. План: только bin/lib/share, отдельный новый cluster, loopback:5433, random SCRAM credential, fresh migrated test DB и неизменённый mandatory safety marker. Системная установка/служба и существующие БД не изменяются.
+- После подготовки выполнить настоящий SQL span/driver failure, fail-closed HTTP и затем остановить собственный server. Не засчитывать загрузку/моки как PG acceptance.
+
+### 2026-10-02T17:08:49+03:00 — Codex — SENTRY-05/07: настоящая PostgreSQL
+
+- ZIP Range download завершён после ReadTimeout/IncompleteRead; 1635 bin/lib/share files проверены ZIP length/CRC, официальный Windows runtime PostgreSQL 16.15. Системная установка не выполнялась.
+- initdb на Cyrillic OneDrive path отказал invalid UTF8 byte sequence; сохранены UTF-8/SCRAM, runtime/data перенесены копированием в новый ASCII temporary directory. Global locale не изменялась. Новый loopback:5433 cluster, random password, свежая alxprgs_sso_test, все 3 Alembic revisions и штатный --local-fresh safety marker прошли. Credentials не выводились и не попали в tracked files.
+- Реальная PG Sentry acceptance: tests/integration/test_sentry_pg.py — 2 passed: SQLAlchemy DB span/timings без SQL/parameters; настоящий driver DataError → fail-closed HTTP 503 и ровно один очищенный event всей chain. Mail to_thread trace проверен отдельно unit transport/stub, это не live SES acceptance.
+- Запущены обычные real SSO default-off/enabled E2E с дополнительной telemetry-config/DOM-block проверкой; криптография/capabilities не подменяются. Source-map gate дополнен actual minified→TSX resolution, passed. Следующий шаг: результат E2E и finally остановка собственного PG.
+
+### 2026-10-02T17:31:42+03:00 — Codex — SENTRY-02..07: итоговые регрессии
+
+- Focused backend/privacy/artifact/upload tests: 51 passed; Ruff 129 files и mypy 42 files passed. Frontend lint/typechecks, 11 unit и 19 component tests passed. Добавлены native DOMException/offline/API failure policy, malformed Replay metadata fail-closed и незавершённый release create/immutable retry-date checks. Python serialized envelope header/attachment canary regression прошёл без дополнительной transport abstraction; browser transport имеет отдельный header/channel gate.
+- Реальные ordinary SSO проверки на отдельной PostgreSQL и local SMTP: default-off 5 passed/1 failed (demo OAuth code exchange rejected); enabled WebAuthn 5 passed, включая real UV/signature flow. Полный all-прогон failed; криптография, CSRF, PKCE и assertions не ослаблялись. Диагностика только безопасного error code продолжается. Это не SES/testmail acceptance.
+- Следующий шаг: финальная единая artifact сборка, сравнительный gzip замер, повтор SDK browser privacy после последних изменений, затем status/acceptance и остановка собственного PG.
+
+- 2026-10-02T17:35:41+03:00, Codex, SENTRY-07: callback 503 локализован в системном HTTP proxy (ответ не содержал OAuth protocol error). NO_PROXY=loopback для тестового процесса дал успешный multi-client SSO scenario без изменения TLS/PKCE/state/nonce/signature. В run_e2e_suite сохранён существующий bypass list и добавлены localhost/127.0.0.1/::1, чтобы synthetic credentials не уходили proxy.
+- В этом диагностическом прогоне ошибочно параллельно запущен npm ci в общей frontend directory: Playwright worker dependencies исчезли, оставшиеся cases failed/not run. Это ошибка организации проверки, не passed campaign. Процессы stopped; locked dependencies восстанавливаются, сборка и повтор all идут последовательно. Baseline исходной da26623 frontend build отдельно passed: main JS 242.06 kB, gzip 69.24 kB; сравнительный итог ещё не зафиксирован.
+
+- 2026-10-02T17:39:49+03:00, Codex, SENTRY-04: финальная dirty local release_bundle сборка (artifacts/sentry-release-final2 + отдельный sentry-private-final2) passed после последовательного восстановления npm dependencies. Сборка сама выполнила lint/typechecks/unit/component/build, Debug ID/minified→TSX/identity/archive checks. Это локальный offline bundle с source_tree_dirty=true, не tagged release/publish. Повтор offline verify начат; первоначальное sandbox чтение elevated artifacts отказало PermissionError, используется read-only process access.
+
+- 2026-10-02T17:42:24+03:00, Codex, SENTRY-04/07: последовательный обычный all E2E на PostgreSQL/local SMTP, без diagnostic wrappers: default-off 6 passed (18.0 s), enabled 5 passed (13.3 s), exit 0; тестовые app/frontend/SMTP processes stopped. Предыдущий proxy/callback blocker воспроизводимо устранён только локальной NO_PROXY настройкой. Это не real SES/testmail acceptance.
+- Финальный offline Sentry release validation passed, network upload disabled. Same-host locked baseline da26623/main JS gzip level 9 = 68 373 bytes; dirty local release = 125 647 bytes; delta 57 274 bytes < 102 400 gate. Измерение архивного размера, не runtime latency. Backend p95 и live staging consumption не измерены.
+- Дополнены actual SDK unhandled-rejection browser case, external-origin header отрицательные assertions и central API contract capture unit case; их проверка начата. Дальше — финальные scans/docs и остановка PostgreSQL.
+
+### 2026-10-02T17:51:09+03:00 — Codex — SENTRY-07: расширенный обязательный набор
+
+- Frontend component tests 20 passed; SDK browser 6 passed (17.6 s), включая global unhandled rejection и отрицательные external headers. Первый новый headers test отказал из-за перекрытия Playwright routes, route сужен к точному localhost:5187; assertions и application policy сохранены.
+- Первый полный pytest tests/ failed: 8 failed, 284 passed, 5 external tests deselected штатным opt-in, 22 errors. Большинство errors — WinError 5 старого pytest temp; остальные — отсутствующий PG toolchain/явный профиль/loopback proxy и copied startup fixtures без Git. Не засчитано как успех. С правильными test-profile, native PG PATH, NO_PROXY и новым basetemp все 13 относящихся PG/runtime checks прошли; четыре startup failures диагностированы отдельно.
+- Startup unit fixtures дополнены fixed fake Git revision; Bash PATH устанавливается внутри test shell, production SHA validation не ослаблена. Добавлены invalid-SHA отказ и отсутствие ALX_BUILD_SHA в persisted .env. PowerShell empty Git stdout больше не вызывает null.Trim. Это изменение требует повторного startup/full suite.
+- Secret scan 126 candidates/0 new + synthetic control passed; structural invariants/version checks passed. git diff --check обнаружил три trailing blank EOF; исправление вместе с финальной документацией.
+
+### 2026-10-02T18:07:21+03:00 — Codex — SENTRY-02..07: завершение локальных проверок
+
+- Полный обычный pytest: 313 passed, 16 subtests, 5 внешних cases штатно deselected, 27 warnings (88.26 s). Enabled CI subset: 21 passed (16.46 s), включая реальные PG/negative crypto/rate limits. Последние formatting/type fixes прошли mypy; окончательный package build выполняется.
+- Logging дополнительно нормализует logger/level/error type; malformed URL и formatter failure fail-closed, исходный record не попадает в fallback logging. Canary regression passed. Startup tests проверяют fake Git input, invalid SHA отказ и byte-level preservation .env; защиты не ослаблены.
+- Исправлена ошибочная локальная cp1251→UTF-8 перезапись observability.md через обратимое strict decoding; исходный русский текст восстановлен, дальнейшие file reads/writes явные UTF-8. Исправлено прежнее имя audit_logs в operations на фактическое audit_events.
+- Acceptance дополнен реальными результатами, limits и историей failures. Следующий шаг: final package result, docs/scans/links, stop own PostgreSQL, фиксация blocked live acceptance.
+
+- 2026-10-02T18:09:56+03:00, Codex, SENTRY-01..07: final3 package build и offline Sentry validation passed, no network mutations. Plan/status/acceptance приведены к исходным live gates: только privacy foundation done; остальные phase gates blocked, локальная реализация/проверки завершены. Отсутствующие Docker/remote CI/staging/SaaS settings не заменяются локальными mocks. Перед завершением — final scans/links и остановка своего PG.
+
+### 2026-10-02T18:18:26+03:00 — Codex — SENTRY-07: точка завершения локальной работы
+
+- Финальная privacy regression 31 passed; Ruff check/format 129 files passed. Artifact verifier дополнен env/.sentryclirc/private-intermediate отрицательными checks с пересчитанными hashes: 23 artifact/upload tests passed; существующий final3 bundle вновь прошёл offline validation без rebuild/upload. Main gzip после final3 = 125647 bytes, тот же gate ≤100 KiB delta.
+- Local Markdown links missing 0; UTF-8/mojibake findings 0; final secret scan 126 candidates/0 new, synthetic control rejected; structural defaults/CD/version и diff whitespace passed.
+- Свой PostgreSQL cluster остановлен pg_ctl -m fast с проверкой owned absolute paths; loopback ports 5433/8000/8001/8002/5173/5187/2525 свободны. Системная служба/пользовательские БД не изменялись. Ранее запущенные app/frontend/SMTP servers stopped.
+- Private runtime/fixtures/artifacts игнорируются Git; реальные .env credentials не выводились, upload token не использовался. No commit/push/release/deploy/CD activation. Локальная реализация завершена; SENTRY live gates и прежняя общая/SES приёмка blocked, подробное продолжение docs/status.md и docs/observability.md.
+
+### 2026-10-02T21:53:01+03:00 — Codex — SENTRY-01..07 / DOC-TRACK: подготовка локального commit
+
+- По прямому поручению владельца все изменения интеграции Sentry и связанные исправления/документация подготавливаются к одному локальному commit в текущей ветке main. Начало подготовки — 2026-10-02T21:53:01+03:00.
+- Рабочее дерево сверено с составом реализации; до подготовки HEAD da2662303b5dc805576895184fac00579b986e3c. Проверки реализации и внешние blocked-критерии сохраняются. Существующий final3 bundle относится к прежней dirty build revision; новый commit не превращает его в clean tagged release artifact.
+- План проверки перед commit: secret scanner с отрицательным self-test, version/invariants, whitespace и состав Git index. .env, приватные maps, test fixtures, caches и artifacts остаются вне Git. Push, release, deploy и включение telemetry не поручены.
+
+- 2026-10-02T21:58:02+03:00, Codex: подготовка завершена. Secret scan: 126 candidates / 0 new; synthetic control rejected. Пять ограниченных инвариантов и согласованность VERSION 0.2.0 прошли. В index 84 файла; запрещённых runtime/private/generated paths и реальных runtime DSN нет; git diff --cached --check passed. Код после ранее зафиксированных runtime-проверок не менялся. Набор готов к локальному commit; следующий шаг — проверить сохранение и чистоту рабочего дерева. Внешняя приёмка остаётся blocked.

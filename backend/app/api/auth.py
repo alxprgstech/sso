@@ -30,6 +30,7 @@ from app.schemas.auth import (
     RegistrationResendRequest,
     SessionInfoResponse,
     UserProfileResponse,
+    TelemetryConfigResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
@@ -40,6 +41,36 @@ from app.services.system_service import SystemService
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 
+@router.get("/telemetry-config", response_model=TelemetryConfigResponse)
+async def telemetry_config(
+    response: Response,
+    settings: Settings = Depends(get_settings),
+) -> TelemetryConfigResponse:
+    from urllib.parse import urlsplit
+    from typing import cast, Literal
+
+    # No database, session or request-derived origin; this response is public.
+    response.headers["Cache-Control"] = "no-store"
+    enabled = settings.SENTRY_FRONTEND_ENABLED and bool(settings.SENTRY_FRONTEND_DSN)
+    replay = (
+        enabled and settings.SENTRY_REPLAY_ENABLED and settings.telemetry_environment == "staging"
+    )
+    origin = urlsplit(settings.FRONTEND_URL)
+    base = f"{origin.scheme}://{origin.netloc}"
+    return TelemetryConfigResponse(
+        enabled=enabled,
+        dsn=settings.SENTRY_FRONTEND_DSN if enabled else "",
+        environment=cast(
+            Literal["local", "test", "staging", "production"], settings.telemetry_environment
+        ),
+        traces_sample_rate=settings.SENTRY_FRONTEND_TRACES_SAMPLE_RATE if enabled else 0,
+        replay_enabled=replay,
+        replays_session_sample_rate=settings.SENTRY_REPLAYS_SESSION_SAMPLE_RATE if replay else 0,
+        replays_on_error_sample_rate=settings.SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE if replay else 0,
+        trace_propagation_targets=[f"{base}/api/", f"{base}/oauth/"] if enabled else [],
+    )
+
+
 @router.get("/capabilities", response_model=CapabilitiesResponse)
 async def get_capabilities(
     db: AsyncSession = Depends(get_db),
@@ -48,7 +79,10 @@ async def get_capabilities(
     """Безопасная витрина возможностей сервера (SEC-FLAG-01, REG-03)."""
     try:
         reg_mode = await SystemService.get_registration_mode(db)
-    except Exception:
+    except Exception as error:
+        from app.telemetry import capture_infrastructure_failure
+
+        capture_infrastructure_failure(error, "capabilities")
         reg_mode = "closed"
 
     return CapabilitiesResponse(

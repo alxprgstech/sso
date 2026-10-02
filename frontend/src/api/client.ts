@@ -14,6 +14,15 @@ import {
   RecoveryCodesResponse,
 } from "../types/api";
 import type { EncodedCreationOptions, EncodedRequestOptions } from "../utils/webauthn";
+import { captureContractFailure } from "../telemetry/sentry";
+import { canonicalRoute } from "../telemetry/privacy";
+
+export class ApiError extends Error {
+  readonly name = "ApiError";
+  constructor(message: string, readonly status: number, readonly code: string, readonly route: string) {
+    super(message);
+  }
+}
 
 class ApiClient {
   private csrfToken: string | null = null;
@@ -60,7 +69,8 @@ class ApiClient {
       } catch {
         // Игнорируем ошибку парсинга JSON
       }
-      throw new Error(errorMessage);
+      throw new ApiError(typeof errorMessage === "string" ? errorMessage : `Ошибка HTTP ${response.status}`,
+        response.status, response.status < 500 ? "request_rejected" : "server_unavailable", canonicalRoute(endpoint));
     }
 
     // Если 204 No Content
@@ -68,7 +78,14 @@ class ApiClient {
       return {} as T;
     }
 
-    return response.json();
+    try {
+      const payload: unknown = await response.json();
+      if (!payload || typeof payload !== "object") throw new Error("Invalid JSON contract");
+      return payload as T;
+    } catch {
+      captureContractFailure();
+      throw new ApiError("Некорректный ответ сервера", response.status, "invalid_response", canonicalRoute(endpoint));
+    }
   }
 
   // --- Auth & Capabilities ---

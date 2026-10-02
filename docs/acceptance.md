@@ -216,3 +216,34 @@
 Наблюдаемые blockers: SES sandbox, отсутствуют testmail credentials/namespace и TEST_DATABASE_URL; Docker/psql не найдены в PATH. GitHub Secrets/IAM и Essential account не подтверждены. Для приёмки нужны production access, credentials/выделенная БД и последовательный прогон 8 писем по [инструкции](testing/email.md). AWS resources, production sender, schema и CD не изменялись; реальные письма не отправлялись. TASK-103 и GOAL-09 не объявлены done.
 
 - TASK-103, финальная проверка 2026-10-02T06:13:46+03:00: release ref вне main явно даёт fail до checkout/Secrets; YAML/ref/secret assertions passed. Browser diagnostic category проверена frontend typecheck/lint; raw errors/OTP/link не сохраняются. Статус live-приёмки остаётся blocked.
+
+## Sentry — локальная реализация и приёмка 2026-10-02T18:07:21+03:00
+
+Требования: GOAL §10, SENTRY-01..07, ADR-0010, DOC-TRACK-01..07. База checkout `da2662303b5dc805576895184fac00579b986e3c`, VERSION `0.2.0`; изменения локальные, tree dirty. Это проверка разработки, не clean tagged release или live Sentry acceptance. EU storage и два проекта подтверждены владельцем; public DSN сохранены только в игнорируемом `.env`, flags false/rates 0. Upload token не получен и не использовался.
+
+Стенд: Windows, Python 3.12.14 в отдельном `.venv-sentry` с точным requirements-lock, Node 24.20.0; PostgreSQL 16.15 official EDB portable runtime в отдельном новом loopback cluster, random SCRAM credential, UTF-8, все три Alembic migrations и штатный fresh safety marker. Docker отсутствует. Обычная E2E почта шла только в local SMTP capture на loopback, не SES/testmail. Приватные credentials/URL/OTP/mailbox в отчёт не включены.
+
+| Проверка / команда | Фактический результат |
+| --- | --- |
+| `pytest tests/ -q -p no:cacheprovider --basetemp=<NEW_PRIVATE_TEMP>` с явным CI default-off profile, guarded TEST_DATABASE_URL, native PG utilities PATH, loopback NO_PROXY | **313 passed**, 16 subtests passed, 5 external SES/testmail cases не выбраны штатным opt-in; 27 warnings, exit 0 |
+| `pytest tests/test_mfa_features.py tests/integration/test_email_verification_pg.py tests/integration/test_passkey_pg.py tests/integration/test_distributed_rate_limiting_pg.py` с enabled flags и REQUIRE_VERIFIED_EMAIL=true | **21 passed**, 10 warnings; отдельная реальная PG проверка, не SQLite |
+| `tests/integration/test_sentry_pg.py` (также входит в полный pytest) | **2 passed**: SQLAlchemy span/timings без SQL/parameters; driver DataError → 503 и один очищенный event всей chain |
+| `tests/test_sentry.py` / `tests/test_sentry_release.py` / release/startup unit regressions | Реальный SDK memory envelopes, exceptions/expected errors/scopes/sampler/outage queue и mail thread context; offline uploader и immutable artifact tampering; negative invalid-SHA/byte-preserved env checks passed в общем наборе |
+| Ruff check/format backend/tests/SDK/scripts/examples + mypy backend/SDK | passed; 129 formatted files, 42 typed source files |
+| Frontend ESLint, обе TypeScript checks, unit/component tests | passed; **11 unit + 20 component** tests, ErrorBoundary и central invalid API contract capture |
+| `npm --prefix frontend run test:telemetry:browser` | **6 passed (17.6 s)**: real error/transaction/unhandled rejection, same-origin/external headers, mandatory decompressed rrweb/metadata, initial token URL, blocked ingestion, missing Worker; production recorder/worker hard-off |
+| `scripts/run_e2e_suite.py --suite all` с installed SDK wheel, isolated PG и local SMTP | **6 default-off + 5 enabled passed**, exit 0; два реальных SSO клиента, обязательное self-registration email подтверждение, WebAuthn UV/signature, telemetry-config/DOM block |
+| `release_bundle.py build` / Sentry offline validation | Финальная единая сборка и validation выполняются; результат дополняется отдельной записью ниже. Ранее final2 build/verify passed: wheel/sdist, build identity, Debug IDs, private maps, real minified→TSX resolution, no public maps и hashes |
+| Same-host frontend main JS gzip comparison | baseline HEAD: **68 373 bytes**, local Sentry release: **125 647 bytes**, delta **57 274 bytes** ≤102 400. Метод: gzip level 9, mtime=0, одинаковые Node/Vite/host/locked builds; backend p95 не измерен |
+| `pip-audit` 2.10.1 full requirements lock / `npm audit` | No known vulnerabilities / 0 vulnerabilities |
+| Новые/изменённые npm lock licenses | 50 packages: MIT 35, FSL-1.1-MIT 9, BSD-2-Clause 1, BlueOak-1.0.0 3, FSL-1.1-Apache-2.0 1, Apache-2.0 1; unknown 0. Python SDK MIT. Закрытая лицензия проекта сохраняется |
+| Secret scan / structural invariants / version check | 126 reviewed candidates, 0 new; synthetic secret control rejected; пять инвариантов и VERSION passed. Финальный повтор после документов выполняется |
+| YAML/trust assertions | 9 CI / 5 release jobs; Actions full SHA; uploader contents:read; token только одному upload step, без install/build; draft зависит от uploader; containers token-free, CD полностью закомментирован |
+
+Первоначальные failed прогоны не засчитаны как успешные: старый pytest temp/cache WinError 5, недостающие PG utilities/profile, системный proxy (OAuth code exchange 503), startup fixtures без Git и несовместимое сравнение universal-newline с bytes. Непреднамеренный параллельный npm ci удалил Playwright worker dependencies; после остановки процессов dependencies восстановлены, общий E2E повторён последовательно. Безопасность приложения/assertions/mandatory jobs не ослаблялись. Warnings относятся к существующим Authlib/Starlette deprecations и AsyncMock db.add в unit fixtures; они не являются доказательством real crypto/PG, для которых приведены отдельные runtime результаты.
+
+Не проверено: Docker image build/Nginx -t/CSP browser enforcement, GitHub обязательные jobs и clean tagged release dry-run, live Sentry ingestion/source association/TSX symbolication через SaaS, real staging distributed tracing/mail/replay privacy audit, backend p95, фактический Student billing/usage/alerts/scrubbing/IP/geo. Предыдущая SES/testmail приёмка и общая цель проекта остаются открыты. Flags не включать на основании только локального отчёта; последовательность rollout и rollback — [observability.md](observability.md).
+
+- 2026-10-02T18:09:56+03:00, Codex, SENTRY-04: окончательная единая сборка artifacts/sentry-release-final3 + private sentry-private-final3 и offline Sentry validation **passed**, exit 0. Source maps/Debug IDs/minified→TSX/identity/checksums проверены; upload disabled. Установки и сборка выполнялись без credentials. После неё frontend не пересобирался.
+
+- 2026-10-02T18:18:26+03:00: post-build privacy 31 passed, artifact/upload 23 passed; final3 повторно validated без rebuild. Main gzip level 9 после final3 125647 bytes. Local links/UTF-8/secret/structural/diff checks passed. Owned PostgreSQL/test servers stopped; перечисленные loopback ports свободны. Live Sentry/SaaS/Docker/remote CI gates не выполнены.

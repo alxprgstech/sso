@@ -32,6 +32,18 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 echo -e " ${GREEN}[OK]${NC}"
 
+# Immutable identity for this source build, independent of runtime .env.
+if ! command -v git >/dev/null 2>&1; then
+    echo 'Git is required to identify the Docker build revision; use verified artifacts without a checkout.' >&2
+    exit 1
+fi
+ALX_BUILD_SHA=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+if [[ ! "$ALX_BUILD_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+    echo 'Cannot determine the full Git revision for this build.' >&2
+    exit 1
+fi
+export ALX_BUILD_SHA
+
 # 2. Проверка доступности демона Docker (TEST-SETUP-04)
 echo -n "[2/6] Проверка доступности Docker daemon..."
 if ! docker info >/dev/null 2>&1; then

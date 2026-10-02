@@ -237,3 +237,9 @@
 
 ### 3.3. Журнал аудита безопасности
 - `GET /api/v1/admin/audit-log`: просмотр событий безопасности (фильтрация по `event_type`, пагинация `skip`/`limit`).
+
+### Публичная telemetry-конфигурация
+
+`GET /api/v1/auth/telemetry-config` не требует cookies/авторизации и не обращается к БД. Ответ `200`, `Cache-Control: no-store`. Поля: `enabled: boolean`, `dsn: string` (только public frontend DSN; пусто при отключении), `environment: local|test|staging|production`, `traces_sample_rate: number`, `replay_enabled: boolean`, `replays_session_sample_rate: number`, `replays_on_error_sample_rate: number`, `trace_propagation_targets: string[]` (точные configured-origin `/api/` и `/oauth/` prefixes). Все rates в [0,1]. Backend DSN, credentials и пользовательские данные отсутствуют.
+
+Defaults: enabled/replay false, DSN пустой, rates 0, targets пустые. Replay принудительно выключен вне staging. Browser дополнительно строит anchored propagation matchers текущего same-origin; runtime config не может разрешить сторонний origin. Конфигурация применяется при следующем reload; bootstrap ограничен 300 ms и продолжает render при отказе telemetry. Privacy policy — [observability.md](observability.md). OIDC wire contracts не изменены.

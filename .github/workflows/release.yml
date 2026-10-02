@@ -151,9 +151,67 @@ jobs:
           name: release-artifacts
           path: dist/artifacts/
 
+      - name: Upload private maps separately (never GitHub release assets)
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: sentry-private-maps
+          path: dist/sentry-private/
+          retention-days: 1
+          if-no-files-found: error
+
+  prepare-sentry-release:
+    name: Validate and prepare Sentry release
+    timeout-minutes: 10
+    needs: [verify-tag-and-sha, build-artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted workflow revision (not tagged code with credentials)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Download immutable release artifacts
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806
+        with:
+          name: release-artifacts
+          path: release-files
+      - name: Download private maps
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806
+        with:
+          name: sentry-private-maps
+          path: sentry-private
+      - name: Validate offline before accessing any credential
+        env:
+          RELEASE_SHA: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
+        run: python scripts/sentry_release.py --release-dir release-files --private-maps sentry-private --expected-sha "$RELEASE_SHA"
+      - name: Install pinned CLI without credentials or lifecycle scripts
+        if: inputs.dry_run != true && vars.SENTRY_RELEASE_UPLOAD_ENABLED == 'true'
+        run: npm install --prefix "$RUNNER_TEMP/sentry-tools" --ignore-scripts --save-exact @sentry/cli@3.8.0
+      - name: Upload validated maps and finalize release
+        if: inputs.dry_run != true && vars.SENTRY_RELEASE_UPLOAD_ENABLED == 'true'
+        env:
+          RELEASE_SHA: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT_BACKEND: ${{ vars.SENTRY_PROJECT_BACKEND }}
+          SENTRY_PROJECT_FRONTEND: ${{ vars.SENTRY_PROJECT_FRONTEND }}
+          SENTRY_URL: ${{ vars.SENTRY_URL || 'https://de.sentry.io/' }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: python scripts/sentry_release.py --release-dir release-files --private-maps sentry-private --expected-sha "$RELEASE_SHA" --repository "$RELEASE_REPOSITORY" --cli "$RUNNER_TEMP/sentry-tools/node_modules/.bin/sentry-cli" --upload
+
   publish-release:
     name: Publish GitHub Release (Draft Mode)
-    needs: [verify-tag-and-sha, build-artifacts]
+    needs: [verify-tag-and-sha, build-artifacts, prepare-sentry-release]
     runs-on: ubuntu-latest
     if: github.event.inputs.dry_run != 'true'
     permissions:
