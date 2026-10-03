@@ -4,6 +4,7 @@
 требует явную переменную TEST_DATABASE_URL (без fallback на DATABASE_URL),
 маскирует учетные данные в DSN и проверяет маркер владения тестовой средой перед TRUNCATE/DROP.
 """
+
 from __future__ import annotations
 
 import os

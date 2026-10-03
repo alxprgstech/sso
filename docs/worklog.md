@@ -2788,3 +2788,60 @@ CI и локальный runner теперь включают appearance и priv
 Исполнитель: текущая рабочая сессия по поручению владельца. Ветка new опубликована штатным git push без перезаписи истории; PR [#2](https://github.com/alxprgstech/sso/pull/2) создан через GitHub API от аккаунта alxprgs. Подтверждены open/не draft, base main, head new и опубликованный commit 734f736, заголовок и описание совпадают с подготовленным текстом без служебной атрибуции. PR прикреплён к текущей задаче. Новые проверки приложения не запускались; локальные результаты приведены в описании, внешние ограничения не скрыты. Начало 2026-10-03T19:38:18.3325812+03:00, завершение 2026-10-03T19:42:32.387204+03:00. Следующий шаг — сохранить итоговый учёт в new, сверить PR HEAD/чистое дерево; удалённый CI оценивается отдельно.
 
 - 2026-10-03T19:43:31.385992+03:00, PR-NEW-01: итоговые plan/status/worklog читаются в UTF-8, git diff --check без ошибок; повторный контроль секретов — 126 исторических сигналов, новых 0. Сохраняется только документация PR, код не изменён.
+
+
+### 2026-10-03T19:49:41.9617228+03:00 — REVIEW-PR-02-01: начало
+
+Исполнитель: текущая рабочая сессия. Владелец запросил анализ CodeScene PR #2: два hotspot decline, десять новых файлов ниже целевых 10.00, два critical rule файла с пересечением категорий. Ветка new, HEAD 3dbd10b, рабочее дерево чистое. Подготовлен план чтения inline-комментариев, кода, тестов и официальных определений. Report URL недоступен через web; GitHub inline/API и предоставленный отчёт позволяют продолжить. Реализация, suppression и установка рекламируемых инструментов в задачу анализа не входят.
+
+
+### 2026-10-03T19:59:32.538575+03:00 — REVIEW-PR-02-01: завершение
+
+Исполнитель: текущая рабочая сессия. Прочитаны все 35 inline-комментариев CodeScene для текущего PR HEAD 3dbd10b и отмеченные функции в 13 файлах; проверено связанное тестовое покрытие чтением. Приложенное письмо повторяет оценки и содержит дополнительные уведомления; run IDs 7798843/7798850 не суммировались как отдельные дефекты. Сохранён docs/reviews/pr-2-codescene.md с определениями, оценкой применимости, приоритетным рефакторингом и необходимыми отрицательными проверками. Absence of Expected Change Pattern проверен по diff и существующему CLI/env contract: обязательного пропущенного изменения manage_test_server не найдено.
+
+Проверены 13 локальных ссылок отчёта, UTF-8, git whitespace и secret scan: 126 исторических сигналов, новых 0. Новых функциональных прогонов и CodeScene CLI не было, report UI недоступен; наблюдаемая метрика взята из GitHub-комментариев, security bug не воспроизводился. Код приложения, gates и PR не менялись; сохранены только локальный анализ и plan/status/worklog. Начало 2026-10-03T19:49:41.9617228+03:00, завершение 2026-10-03T19:59:32.538575+03:00. Точка продолжения — рефакторинг по очередности отчёта и повтор CodeScene для нового HEAD при поручении владельца.
+
+
+### 2026-10-03T20:15:49.4264720+03:00 — REVIEW-CI-02-01: начало
+
+Исполнитель: текущая рабочая сессия. Владелец добавил скриншоты failed backend Ruff и default-off Playwright. API подтвердил текущий HEAD 3dbd10b и [CI run 37137927331](https://github.com/alxprgstech/sso/actions/runs/37137927331): два failed jobs, шесть successful jobs и отдельный external email job skipped. Backend остановился до mypy/migrations/tests; E2E — до enabled профиля. Прежние локальные документы анализа сохраняются; код не менялся. Следующий шаг — логи и точные причины, read-only воспроизведение Ruff и сопоставление E2E с кодом.
+
+
+### 2026-10-03T20:25:34.844787+03:00 — REVIEW-CI-02-01: завершение
+
+Исполнитель: текущая рабочая сессия. Логи актуального CI 37137927331 получены через GitHub API штатной авторизацией; credential не передавался при скачивании redirected logs. Backend lint passed; format failed на 11 файлах (131 formatted), обе команды воспроизведены локально Ruff 0.16.8. Уточнён прежний отчёт: последний format subset из четырёх файлов не покрывал CI scope, полный format check не прошёл. Backend mypy/migrations/pytest skipped; не объявляются успешными.
+
+E2E 26 passed/1 failed: appearance light/mobile resize, разница высоты cookies/reserve 105.18787499999999 px. Исходный unchanged UI unit scenario локально 8 passed; диагностический mocked UI probe воспроизвёл race в 22/30 сменах viewport, после двух browser frames несовпадений 0. Причина — промежуток до resize/ResizeObserver обновления CSS reserve; предложены CSS layout и атомарная условная проверка геометрии без ослабления assertions. Первая diagnostic grep попытка не выбрала тестов, исправлена только команда выборки. Это анализ, не исправление или successful rerun CI.
+
+Сохранён docs/reviews/pr-2-ci.md; plan/status и acceptance дополнены. Шесть иных внутренних jobs прошли, external SES job skipped по PR condition, enabled browser steps skipped из-за failed default-off step. Ссылки отчёта/UTF-8 проверены; собственный preview остановлен. Приложение/workflow/опубликованный HEAD не менялись; следующий шаг — исправления по поручению владельца и новый CI. Начало 2026-10-03T20:15:49.4264720+03:00, завершение 2026-10-03T20:25:34.844787+03:00.
+
+
+### 2026-10-03T20:31:56.2748503+03:00 — PR-FIX-02: начало
+
+Исполнитель: текущая рабочая сессия. Владелец поручил исправить все причины failed CI и 35 замечаний CodeScene в 13 файлах, сохранить изменения в new и обновить PR #2. Четыре изменённых документа анализа и docs/reviews сохраняются. План: CSS layout cookies без измерения высоты, связные операции frontend/backend/scripts, полный Ruff scope, PostgreSQL и оба E2E профиля, commit/push и новый CI/CodeScene. Права, CSRF, UV, MFA, сроки и одноразовость сохраняются; suppression и ослабление тестов не применяются. До реализации внесён план; новые проверки пока не выполнены. Следующий шаг — layout и UI, затем backend и эксплуатационные команды.
+
+
+### 2026-10-03T20:50:35.688020+03:00 — PR-FIX-02: первый связный результат
+
+CSS cookies переведён в нижнюю flex-строку; удалены ResizeObserver и CSS reserve. Выделены чтение/валидация browser consent, управление панелью и фокусом диалога; added resize/no-ResizeObserver и empty/busy/dynamic dialog регрессии. Исправлена локальная ошибка кодировки чтения старых файлов; повторные frontend typechecks/lint/build и 26 component tests прошли. Полный Ruff CI scope после форматирования 11 файлов и рефакторинга: lint passed, 142 files formatted; mypy 47 files passed.
+
+Backend API использует типизированный контекст, proof scope и factor evidence; проверки и транзакционные координаторы разделены. WebAuthn UV/trust policy и одноразовость сохранены, fallback challenge тоже блокируется. DDL 0004, backup/journal и browser runner разделены на связные операции. Новые runtime проверки ещё идут. Первый pytest прерван после fixture connection timeout: PostgreSQL был запущен на default 5432 вместо ранее заданного 55439; собственный кластер перезапущен с явным loopback port, полный прогон повторяется. Защита БД не менялась. Следующий шаг — реальные PostgreSQL, миграция/restore и default-off/enabled browser; новый CodeScene ещё не выполнялся.
+
+
+### 2026-10-03T21:01:14.819285+03:00 — PR-FIX-02: PostgreSQL и браузерный layout
+
+Полный pytest в явном default-off профиле CI: 340 passed, 16 subtests, 5 external-email cases deselected штатным default collection policy, 27 предупреждений. До явного профиля получено 330 passed/2 failed: локальный .env включал MFA, поэтому default-off assertions не соответствовали среде; флаги явно заданы без изменения defaults/защиты/тестов. Enabled subset CI: 21 passed, 10 предупреждений. Downgrade/upgrade 0004 и legacy privacy cleanup прошли на маркированной PostgreSQL. Полный pytest включает настоящий backup/restore со свежим журналом и отрицательную проверку ключа TOTP.
+
+Appearance UI unit в браузере: 19 passed, включая повторные viewport changes без ResizeObserver. Первый launch прекратился вместе с прерванной ошибочной root npx командой; повтор выполнен установленным frontend Playwright. SDK harness первая попытка встретила занятый нашим preview порт, затем выполнение задержалось при cleanup после девятого сценария; interrupted, не засчитано. Preview остановлен, повтор SDK идёт с доступом к native process lifecycle. Typechecks/lint/11 frontend unit и scans/version прошли. Добавлены unit-regressions runner failure/cleanup и invalid journal times; они вошли в 340 tests. Последний небольшой TOTP predicate extraction сохраняет прежнюю проверку шага; целевое покрытие повторится вместе с реальным E2E. Следующий шаг — обе полноценные E2E кампании и новый remote CI/CodeScene.
+
+
+### 2026-10-03T21:08:52.113959+03:00 — PR-FIX-02: обе E2E кампании прошли
+
+Изменённый scripts/run_e2e_suite.py --suite all завершился 0: 28 default-off и 8 enabled Playwright tests passed на настоящей PostgreSQL и production frontend build. Проверены реальные два клиента с установленным SDK, registration/email через собственный loopback SMTP capture, ограниченная deletion session/отмена и настоящий виртуальный WebAuthn с обязательным UV. Runner штатно остановил свои backend/frontend; cleanup с отсутствующим уже удалённым PID безопасен.
+
+Первый full campaign дал 27 passed/1 failed в multi_client_sso до появления login UI: backend читал FRONTEND_URL=localhost:3000 из локального .env. Исправлено явным FRONTEND_URL=http://localhost:5173 внутри того же browser profile; RP/origin/trust checks не расширялись. Добавлена regression настройки собственного frontend. Повтор обоих профилей выше прошёл. Последние целевые PostgreSQL/WebAuthn/TOTP и runner checks выполняются перед commit. Далее публикация new и повторный CodeScene/CI.
+
+
+### 2026-10-03T21:09:50.637616+03:00 — PR-FIX-02: подготовка commit/PR
+
+Последние focused PostgreSQL/privacy/WebAuthn/runner проверки прошли; итоговая сводка добавлена в acceptance. Полный Ruff CI scope и whitespace повторно passed после всех изменений. Подготовлено обновлённое описание PR без служебной атрибуции с реальными локальными результатами и ожидающими remote gates. Изменения сохраняют первоначальные документы анализа, добавляют ADR-0013 и уточнение действующего layout privacy. Локальные задачи 01..03 завершены, 04 in_progress: commit/push и проверка CodeScene/CI. Никаких suppression, новых dependencies, изменений CI policy или production действий. Следующий шаг — отправить коммит в new, проверить PR HEAD/автора и новые checks.

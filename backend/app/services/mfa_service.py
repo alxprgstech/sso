@@ -4,6 +4,7 @@ import json
 import secrets
 import string
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import pyotp
@@ -51,6 +52,14 @@ settings = get_settings()
 
 # Локальный сборщик доступен только при ENVIRONMENT=testing.
 sent_emails_sink: list[dict[str, Any]] = []
+
+
+def totp_step_usable(matched: int | None, previous: int | None) -> bool:
+    if matched is None:
+        return False
+    if previous is None:
+        return True
+    return matched > previous
 
 
 class TOTPService:
@@ -138,9 +147,7 @@ class TOTPService:
             ),
             None,
         )
-        if matched is None or (
-            cred.last_verified_step is not None and matched <= cred.last_verified_step
-        ):
+        if not totp_step_usable(matched, cred.last_verified_step):
             return False
         cred.last_verified_step = matched
         await db.flush()
@@ -235,6 +242,125 @@ def _cred_id_to_bytes(cred_id: str) -> bytes:
         return webauthn.helpers.base64url_to_bytes(cred_id)
     except Exception:
         return cred_id.encode("utf-8")
+
+
+@dataclass(frozen=True)
+class AssertionPolicy:
+    rp_id: str
+    origins: list[str]
+    purpose: str
+    expected_challenge: str | None
+
+
+def assertion_dictionary(credential: str | dict[str, Any]) -> dict[str, Any]:
+    return json.loads(credential) if isinstance(credential, str) else credential
+
+
+async def locked_assertion_credential(
+    db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any]
+) -> WebAuthnCredential:
+    raw_id = assertion.get("id") or assertion.get("rawId")
+    if not raw_id:
+        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
+    credentials = (
+        (
+            await db.execute(
+                select(WebAuthnCredential)
+                .where(
+                    WebAuthnCredential.user_id == user_id,
+                )
+                .with_for_update()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not credentials:
+        raise AuthenticationException("У пользователя отсутствуют зарегистрированные ключи Passkey")
+    for credential in credentials:
+        if credential.credential_id == raw_id or _cred_id_to_bytes(
+            credential.credential_id
+        ) == _cred_id_to_bytes(raw_id):
+            return credential
+    raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
+
+
+def signed_assertion_challenge(assertion: dict[str, Any], policy: AssertionPolicy) -> str | None:
+    try:
+        raw = assertion.get("response", {}).get("clientDataJSON")
+        if not raw:
+            return None
+        client_data = json.loads(webauthn.helpers.base64url_to_bytes(raw).decode("utf-8"))
+        challenge = client_data.get("challenge")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if policy.expected_challenge is not None:
+        if challenge != policy.expected_challenge:
+            return None
+    return challenge
+
+
+async def locked_assertion_challenge(
+    db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any], policy: AssertionPolicy
+) -> WebAuthnChallenge:
+    signed = signed_assertion_challenge(assertion, policy)
+    query = select(WebAuthnChallenge).where(
+        WebAuthnChallenge.purpose == policy.purpose,
+        WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
+    )
+    row = None
+    if signed:
+        row = await db.scalar(query.where(WebAuthnChallenge.challenge == signed).with_for_update())
+    if row is None:
+        row = await authentication_fallback_challenge(db, user_id, policy)
+    if row is None:
+        raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
+    if row.user_id is not None:
+        if row.user_id != user_id:
+            raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
+    return row
+
+
+async def authentication_fallback_challenge(
+    db: AsyncSession, user_id: uuid.UUID, policy: AssertionPolicy
+) -> WebAuthnChallenge | None:
+    # Only ordinary authentication supports the legacy latest-challenge lookup.
+    # Action-bound deletion proofs never enter this fallback.
+    if policy.purpose != "authentication":
+        return None
+    if policy.expected_challenge is not None:
+        return None
+    return await db.scalar(
+        select(WebAuthnChallenge)
+        .where(
+            WebAuthnChallenge.user_id == user_id,
+            WebAuthnChallenge.purpose == policy.purpose,
+            WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
+        )
+        .order_by(WebAuthnChallenge.created_at.desc())
+        .with_for_update()
+    )
+
+
+def verify_assertion_signature(
+    credential: str | dict[str, Any],
+    target: WebAuthnCredential,
+    challenge: WebAuthnChallenge,
+    policy: AssertionPolicy,
+) -> int:
+    try:
+        verification = webauthn.verify_authentication_response(
+            credential=credential,
+            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge.challenge),
+            expected_rp_id=policy.rp_id,
+            expected_origin=policy.origins,
+            credential_public_key=bytes.fromhex(target.public_key),
+            credential_current_sign_count=target.sign_count,
+            require_user_verification=True,
+        )
+    except Exception:
+        raise AuthenticationException("Ошибка проверки аутентификации WebAuthn") from None
+    return verification.new_sign_count
 
 
 class WebAuthnService:
@@ -427,104 +553,19 @@ class WebAuthnService:
         expected_challenge: str | None = None,
         commit: bool = True,
     ) -> bool:
-        """
-        Проверка assertion Passkey при входе с поддержкой множественных ключей,
-        защитой от Replay и проверкой актуальности удалённых ключей (G4-PASSKEY, G6-WEBAUTHN).
-        Параметры доверия (RP ID, origin, user verification) поступают строго из конфигурации сервера.
-        """
-        import json
-
+        """Verify the exact server trust policy, lock and consume the assertion once."""
         active_settings = settings or get_settings()
-
-        cred_dict = (
-            json.loads(credential_json) if isinstance(credential_json, str) else credential_json
+        policy = AssertionPolicy(
+            rp_id or active_settings.WEBAUTHN_RP_ID,
+            [origin] if origin else [active_settings.WEBAUTHN_ORIGIN],
+            purpose,
+            expected_challenge,
         )
-        client_raw_id = cred_dict.get("id") or cred_dict.get("rawId")
-        if not client_raw_id:
-            raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
-
-        # Находим все ключи пользователя и точно сопоставляем использованный ключ
-        cred_stmt = (
-            select(WebAuthnCredential)
-            .where(WebAuthnCredential.user_id == user.id)
-            .with_for_update()
-        )
-        creds = (await db.execute(cred_stmt)).scalars().all()
-        if not creds:
-            raise AuthenticationException(
-                "У пользователя отсутствуют зарегистрированные ключи Passkey"
-            )
-
-        target_cred = None
-        for c in creds:
-            if c.credential_id == client_raw_id or _cred_id_to_bytes(
-                c.credential_id
-            ) == _cred_id_to_bytes(client_raw_id):
-                target_cred = c
-                break
-
-        if not target_cred:
-            raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
-
-        # Поиск challenge: сначала пытаемся извлечь подписанный challenge из clientDataJSON
-        challenge_record = None
-        try:
-            resp_obj = cred_dict.get("response", {})
-            client_data_raw = resp_obj.get("clientDataJSON")
-            if client_data_raw:
-                client_data_bytes = webauthn.helpers.base64url_to_bytes(client_data_raw)
-                client_data_dict = json.loads(client_data_bytes.decode("utf-8"))
-                signed_challenge = client_data_dict.get("challenge")
-                if expected_challenge is not None and signed_challenge != expected_challenge:
-                    raise AuthenticationException("Недействительный challenge")
-                if signed_challenge:
-                    stmt = select(WebAuthnChallenge).where(
-                        WebAuthnChallenge.challenge == signed_challenge,
-                        WebAuthnChallenge.purpose == purpose,
-                        WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-                    )
-                    challenge_record = (await db.execute(stmt.with_for_update())).scalars().first()
-        except Exception:
-            pass
-
-        if not challenge_record and purpose == "authentication" and expected_challenge is None:
-            # Fallback к последнему активному challenge пользователя
-            stmt = (
-                select(WebAuthnChallenge)
-                .where(
-                    WebAuthnChallenge.user_id == user.id,
-                    WebAuthnChallenge.purpose == purpose,
-                    WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-                )
-                .order_by(WebAuthnChallenge.created_at.desc())
-            )
-            challenge_record = (await db.execute(stmt)).scalars().first()
-
-        if not challenge_record or (
-            challenge_record.user_id is not None and challenge_record.user_id != user.id
-        ):
-            raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
-
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
-        expected_origins = [origin] if origin else [active_settings.WEBAUTHN_ORIGIN]
-
-        try:
-            verification = webauthn.verify_authentication_response(
-                credential=credential_json,
-                expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_record.challenge),
-                expected_rp_id=effective_rp_id,
-                expected_origin=expected_origins,
-                credential_public_key=bytes.fromhex(target_cred.public_key),
-                credential_current_sign_count=target_cred.sign_count,
-                require_user_verification=True,
-            )
-        except Exception:
-            raise AuthenticationException("Ошибка проверки аутентификации WebAuthn") from None
-
-        # Обновляем sign_count
-        target_cred.sign_count = verification.new_sign_count
-        # Удаляем использованный challenge (Replay Protection)
-        await db.delete(challenge_record)
+        assertion = assertion_dictionary(credential_json)
+        target = await locked_assertion_credential(db, user.id, assertion)
+        challenge = await locked_assertion_challenge(db, user.id, assertion, policy)
+        target.sign_count = verify_assertion_signature(credential_json, target, challenge, policy)
+        await db.delete(challenge)
         from app.models.audit import AuditEvent
 
         db.add(

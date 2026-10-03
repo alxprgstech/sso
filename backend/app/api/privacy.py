@@ -93,37 +93,32 @@ async def deletion_status(user: User = Depends(get_current_user)) -> dict[str, A
     return privacy.deletion_status(user)
 
 
-@router.post("/api/v1/auth/account-deletion/reauthenticate", dependencies=[Depends(verify_csrf)])
-async def reauthenticate(
-    payload: ReauthenticationRequest,
+async def deletion_context(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+) -> privacy.DeletionContext:
+    return privacy.DeletionContext(db, user, session, settings)
+
+
+@router.post("/api/v1/auth/account-deletion/reauthenticate", dependencies=[Depends(verify_csrf)])
+async def reauthenticate(
+    payload: ReauthenticationRequest,
+    context: privacy.DeletionContext = Depends(deletion_context),
 ) -> dict[str, Any]:
-    return await privacy.start_reauthentication(
-        db, user, session, settings, payload.action, payload.current_password
-    )
+    return await privacy.start_reauthentication(context, payload.action, payload.current_password)
 
 
 @router.post("/api/v1/auth/account-deletion/confirm-factor", dependencies=[Depends(verify_csrf)])
 async def confirm_factor(
     payload: FactorRequest,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    context: privacy.DeletionContext = Depends(deletion_context),
 ) -> dict[str, Any]:
     return await privacy.confirm_factor(
-        db,
-        user,
-        session,
-        settings,
-        payload.authorization,
-        payload.action,
-        payload.method,
-        payload.code,
-        payload.credential,
+        context,
+        privacy.ActionProof(payload.authorization, payload.action),
+        privacy.FactorEvidence(payload.method, payload.code, payload.credential),
     )
 
 
@@ -132,12 +127,12 @@ async def request_deletion(
     payload: AuthorizedRequest,
     request: Request,
     response: Response,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    context: privacy.DeletionContext = Depends(deletion_context),
 ) -> dict[str, Any]:
-    result, raw = await privacy.request_deletion(db, user, session, payload.authorization)
+    db, settings = context.db, context.settings
+    result, raw = await privacy.request_deletion(
+        db, context.user, context.session, payload.authorization
+    )
     response.set_cookie(
         get_cookie_name(settings, request),
         raw,
@@ -165,11 +160,10 @@ async def cancel_deletion(
     payload: AuthorizedRequest,
     request: Request,
     response: Response,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    context: privacy.DeletionContext = Depends(deletion_context),
 ) -> dict[str, Any]:
-    result = await privacy.cancel_deletion(db, user, session, payload.authorization)
-    response.delete_cookie(get_cookie_name(settings, request), path="/")
+    result = await privacy.cancel_deletion(
+        context.db, context.user, context.session, payload.authorization
+    )
+    response.delete_cookie(get_cookie_name(context.settings, request), path="/")
     return result

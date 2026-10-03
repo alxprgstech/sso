@@ -28,24 +28,42 @@ export function LegalPage({ path }: { path: string }) {
   </section>;
 }
 
+function resumeAuthorization() {
+  const target = sanitizeReturnTo(new URLSearchParams(location.search).get("return_to"));
+  if (!target) return;
+  if (new URL(target, location.origin).pathname === "/oauth/authorize") location.assign(target);
+}
+
+function useDocumentAcceptance(documents: LegalDocuments | null, refreshUser: () => Promise<void>) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const accept = async () => {
+    if (!documents) return;
+    setBusy(true); setError("");
+    try {
+      await api.acceptLegalDocuments(documents.required_versions);
+      await refreshUser();
+      resumeAuthorization();
+    } catch (failure) { setError(errorMessage(failure, "Не удалось сохранить согласия. Обновите документы.")); }
+    finally { setBusy(false); }
+  };
+  return { error, busy, accept };
+}
+
 export function AcceptancePage() {
   const { documents, error: loadingError } = useLegalDocuments();
   const { refreshUser, logout } = useAuth();
   const [terms, setTerms] = useState(false); const [consent, setConsent] = useState(false);
-  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault(); if (!documents || !terms || !consent) return;
-    setBusy(true); setError("");
-    try {
-      await api.acceptLegalDocuments(documents.required_versions); await refreshUser();
-      const target = sanitizeReturnTo(new URLSearchParams(location.search).get("return_to"));
-      if (target && new URL(target, location.origin).pathname === "/oauth/authorize") location.assign(target);
-    } catch (failure) { setError(errorMessage(failure, "Не удалось сохранить согласия. Обновите документы.")); }
-    finally { setBusy(false); }
+  const { error, busy, accept } = useDocumentAcceptance(documents, refreshUser);
+  const accepted = terms && consent;
+  const canSubmit = Boolean(documents) && accepted && !busy;
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (canSubmit) void accept();
   };
   return <section className="legal-page"><h1>Подтвердите документы</h1><p>Для продолжения работы прочитайте актуальные условия и согласие. Вы также можете выйти или запросить удаление аккаунта.</p>
     {(error || loadingError) && <p role="alert">{error || loadingError}</p>}
-    <form onSubmit={submit}><ConsentFields terms={terms} consent={consent} onTerms={setTerms} onConsent={setConsent} /><button className="ui-button ui-primary" type="submit" disabled={!documents || !terms || !consent || busy}>Подтвердить и продолжить</button></form>
+    <form onSubmit={submit}><ConsentFields terms={terms} consent={consent} onTerms={setTerms} onConsent={setConsent} /><button className="ui-button ui-primary" type="submit" disabled={!canSubmit}>Подтвердить и продолжить</button></form>
     <div className="privacy-actions"><a className="ui-button ui-secondary" href="/account-deletion">Удаление аккаунта</a><button className="ui-button ui-secondary" type="button" onClick={() => void logout()}>Выйти</button></div>
   </section>;
 }

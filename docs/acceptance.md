@@ -295,3 +295,24 @@
 
 
 Финальный контроль 2026-10-03T17:03:08.9401640+03:00: WEB-UI-01..03 done локально. Просмотр исходников — 126 исторических совпадений /0 новых, искусственный образец отклонён. UTF-8/local links в 13 документах, YAML, whitespace и пять ограниченных инвариантов passed. Тестовые Vite/CSP/backend/demo/PG остановлены; шесть owned loopback ports освобождены, прежний localhost:3000 HTTP200. Новые remote CI/Docker/production проверки остаются непроведёнными; код не опубликован и не закоммичен.
+
+
+## PR #2 — наблюдаемые remote CI failures, 2026-10-03T20:25:34.844787+03:00
+
+[Run 37137927331](https://github.com/alxprgstech/sso/actions/runs/37137927331), HEAD 3dbd10b: шесть внутренних jobs passed, backend и Playwright failed. Это дополняет прежние записи «remote CI не проверен» конкретным результатом, без объявления общей приёмки.
+
+Backend `ruff check` passed, полный `ruff format --check` failed: 11 файлов/131 formatted. Локальная read-only проверка воспроизвела оба результата. Уточнение: последнее локальное format подтверждение относилось к четырём UI-related Python файлам; оно не было доказательством полного CI format scope. Backend mypy/migrations/tests в этом job skipped.
+
+Default-off browser: 26 passed/1 failed (appearance light resize, reserve mismatch 105.18787499999999 px); enabled skipped. Неизменённый целевой тест в диагностической серии 8 passed, отдельный mocked UI probe 22/30 transient mismatches, после двух кадров mismatch 0. Ни тот ни другой не считается исправленным CI или реальной auth/PG проверкой. Подробности и следующие проверки: [анализ CI](reviews/pr-2-ci.md).
+
+
+## PR-FIX-02 — промежуточные проверки 2026-10-03T21:02:45.617407+03:00
+
+Исправления PR #2: 35 CodeScene замечаний в 13 файлах, CI formatter и cookies resize race. Локальные проверки новой реализации: полный Ruff scope lint/format (142 files), mypy (47 source files), frontend typecheck/typecheck:tests/ESLint/build, 11 unit/26 component; appearance UI unit browser 19 passed, SDK real browser 9 passed. Default-off pytest 340 passed +16 subtests, 5 штатно deselected external email; enabled subset CI 21 passed. Настоящая PostgreSQL 16.15; downgrade/upgrade 0004 с legacy privacy cleanup passed, backup/restore со свежим журналом входит в полный pytest. Сканы: 126 исторических сигналов, новых 0; искусственный контроль отклонён, пять ограниченных инвариантов и версии passed. Обе полные E2E кампании и удалённые CI/CodeScene ещё идут/предстоят.
+
+Первый PostgreSQL запуск получил connection timeout из-за default port 5432 вместо 55439; исправлен только свой стенд. Следующий полный pytest дал 330 passed/2 failed из-за enabled-флагов локального .env, после явного default-off профиля CI — 340 passed. Браузерный harness после освобождения собственного preview-порта был interrupted при зависшем sandbox process cleanup; отдельный повтор с доступом к native lifecycle дал 9 passed. Assertions, crypto/UV/CSRF, default flags и обязательные suites не ослаблялись.
+
+
+PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный изменённый E2E runner --suite all **passed**, default-off **28**, enabled **8**, настоящая PostgreSQL, локальный SMTP и виртуальный WebAuthn UV. Первый campaign выявил ошибку перенаправления runner из локального .env; собственный FRONTEND_URL теперь явно 5173, regression добавлена. Browser SDK **9**, component **26**, typechecks/lint/build прошли после последнего UI extraction. Последний focused backend/runner прогон ещё выполняется; удалённые gates предстоят.
+
+Финальный focused прогон после TOTP predicate и runner redirect fix (2026-10-03T21:09:50.637616+03:00): `35 passed, 1 warning in 29.22s`. Команда: pytest tests/integration/test_privacy_pg.py tests/integration/test_passkey_pg.py tests/test_server_lifecycle.py; настоящая PostgreSQL, включая process lifecycle.

@@ -10,7 +10,15 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
+def base_columns():
+    # Historical DDL stays independent of later ORM models.
+    return [
+        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    ]
+
+
+def extend_account_state() -> None:
     for name in ("deletion_requested_at", "deletion_scheduled_for", "deletion_request_allowed_at"):
         op.add_column("users", sa.Column(name, sa.DateTime(timezone=True), nullable=True))
     op.create_index("ix_users_deletion_scheduled_for", "users", ["deletion_scheduled_for"])
@@ -35,16 +43,11 @@ def upgrade() -> None:
     )
     op.add_column("totp_credentials", sa.Column("last_verified_step", sa.Integer(), nullable=True))
 
-    # Explicit schema definitions keep this historical migration independent of later models.
-    def base():
-        return [
-            sa.Column("id", UUID(as_uuid=True), primary_key=True),
-            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        ]
 
+def create_legal_acceptances() -> None:
     op.create_table(
         "legal_acceptances",
-        *base(),
+        *base_columns(),
         sa.Column(
             "user_id",
             UUID(as_uuid=True),
@@ -59,9 +62,12 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_legal_acceptances_user_id", "legal_acceptances", ["user_id"])
+
+
+def create_deletion_authorizations() -> None:
     op.create_table(
         "deletion_authorizations",
-        *base(),
+        *base_columns(),
         sa.Column(
             "user_id",
             UUID(as_uuid=True),
@@ -88,9 +94,12 @@ def upgrade() -> None:
     op.create_index(
         "ix_deletion_authorizations_expires_at", "deletion_authorizations", ["expires_at"]
     )
+
+
+def create_retention_tables() -> None:
     op.create_table(
         "privacy_rate_windows",
-        *base(),
+        *base_columns(),
         sa.Column("key_hash", sa.String(64), nullable=False, unique=True),
         sa.Column("attempts", sa.Integer(), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
@@ -98,11 +107,14 @@ def upgrade() -> None:
     op.create_index("ix_privacy_rate_windows_expires_at", "privacy_rate_windows", ["expires_at"])
     op.create_table(
         "deleted_subjects",
-        *base(),
+        *base_columns(),
         sa.Column("subject_id", UUID(as_uuid=True), nullable=False, unique=True),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_deleted_subjects_deleted_at", "deleted_subjects", ["deleted_at"])
+
+
+def remove_legacy_personal_data() -> None:
     # Previously collected geo and full User-Agent are unnecessary. This privacy
     # cleanup is intentionally irreversible even if the schema is downgraded.
     op.execute("UPDATE sessions SET user_agent=NULL")
@@ -112,6 +124,14 @@ def upgrade() -> None:
     op.execute(
         "UPDATE pending_registrations SET request_details=request_details - ARRAY['city','country','user_agent']"
     )
+
+
+def upgrade() -> None:
+    extend_account_state()
+    create_legal_acceptances()
+    create_deletion_authorizations()
+    create_retention_tables()
+    remove_legacy_personal_data()
 
 
 def downgrade() -> None:

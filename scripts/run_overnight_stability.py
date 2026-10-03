@@ -1479,9 +1479,13 @@ def run_recover_stage(
         recovery_env["TEST_DATABASE_URL"] = test_db_url
         recovery = subprocess.run(
             [sys.executable, "-m", "pytest", "tests/test_ops_backup_restore_totp.py", "-q"],
-            cwd=ROOT_DIR, env=recovery_env, capture_output=True,
+            cwd=ROOT_DIR,
+            env=recovery_env,
+            capture_output=True,
         )
-        assert recovery.returncode == 0, "Isolated backup/restore failed; inspect local test artifacts"
+        assert recovery.returncode == 0, (
+            "Isolated backup/restore failed; inspect local test artifacts"
+        )
         steps_result["backup_restore"] = "passed"
 
     finally:

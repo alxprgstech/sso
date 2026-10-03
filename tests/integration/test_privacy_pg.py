@@ -47,7 +47,7 @@ async def subject(db, *, admin=False, accepted=True):
 
 async def permission(db, user, session, action):
     result = await privacy.start_reauthentication(
-        db, user, session, get_settings(), action, PASSWORD
+        privacy.DeletionContext(db, user, session, get_settings()), action, PASSWORD
     )
     assert result["factor_required"] is False
     row = await db.scalar(
@@ -91,7 +91,7 @@ async def test_wait_cancel_cooldown_and_no_token_resurrection(pg_session):
     assert fresh.purpose == "full"
     with pytest.raises(HTTPException) as error:
         await privacy.start_reauthentication(
-            pg_session, user, fresh, get_settings(), "request", PASSWORD
+            privacy.DeletionContext(pg_session, user, fresh, get_settings()), "request", PASSWORD
         )
     assert error.value.status_code == 429
 
@@ -105,7 +105,10 @@ async def test_permission_binding_expiry_and_last_admin(pg_session):
     for action, bound in [("cancel", session), ("request", other)]:
         with pytest.raises(HTTPException):
             await privacy.authorization_row(
-                pg_session, user.id, bound.id, raw, action, "authorized"
+                pg_session,
+                privacy.AuthorizationScope(user.id, bound.id),
+                privacy.ActionProof(raw, action),
+                "authorized",
             )
     with pytest.raises(AuthorizationException):
         await privacy.request_deletion(pg_session, user, session, raw)
@@ -119,7 +122,10 @@ async def test_permission_binding_expiry_and_last_admin(pg_session):
     await pg_session.commit()
     with pytest.raises(HTTPException):
         await privacy.authorization_row(
-            pg_session, user_id, session_id, raw, "request", "authorized"
+            pg_session,
+            privacy.AuthorizationScope(user_id, session_id),
+            privacy.ActionProof(raw, "request"),
+            "authorized",
         )
 
 
@@ -236,7 +242,10 @@ async def test_cancel_deadline_and_permission_reuse(pg_session):
     )
     with pytest.raises(HTTPException):
         await privacy.authorization_row(
-            pg_session, user.id, session.id, raw, "request", "authorized"
+            pg_session,
+            privacy.AuthorizationScope(user.id, session.id),
+            privacy.ActionProof(raw, "request"),
+            "authorized",
         )
     await pg_session.refresh(user)
     cancel = await permission(pg_session, user, limited, "cancel")
@@ -268,42 +277,32 @@ async def test_totp_reauthentication_cannot_be_bypassed_or_replayed(pg_session):
     await pg_session.refresh(user)
     settings = get_settings().model_copy(update={"FEATURE_TOTP_ENABLED": True})
     proof = await privacy.start_reauthentication(
-        pg_session, user, session, settings, "request", PASSWORD
+        privacy.DeletionContext(pg_session, user, session, settings), "request", PASSWORD
     )
     assert proof["factor_required"] and "totp" in proof["methods"]
     with pytest.raises(HTTPException):
         await privacy.request_deletion(pg_session, user, session, proof["authorization"])
     with pytest.raises(HTTPException):
         await privacy.confirm_factor(
-            pg_session,
-            user,
-            session,
-            settings,
-            proof["authorization"],
-            "request",
-            "totp",
-            "wrong",
-            None,
+            privacy.DeletionContext(pg_session, user, session, settings),
+            privacy.ActionProof(proof["authorization"], "request"),
+            privacy.FactorEvidence("totp", "wrong", None),
         )
     second = await privacy.start_reauthentication(
-        pg_session, user, session, settings, "request", PASSWORD
+        privacy.DeletionContext(pg_session, user, session, settings), "request", PASSWORD
     )
     code = pyotp.TOTP(secret).now()
     approved = await privacy.confirm_factor(
-        pg_session, user, session, settings, proof["authorization"], "request", "totp", code, None
+        privacy.DeletionContext(pg_session, user, session, settings),
+        privacy.ActionProof(proof["authorization"], "request"),
+        privacy.FactorEvidence("totp", code, None),
     )
     assert approved["authorization"] != proof["authorization"]
     with pytest.raises(HTTPException):
         await privacy.confirm_factor(
-            pg_session,
-            user,
-            session,
-            settings,
-            second["authorization"],
-            "request",
-            "totp",
-            code,
-            None,
+            privacy.DeletionContext(pg_session, user, session, settings),
+            privacy.ActionProof(second["authorization"], "request"),
+            privacy.FactorEvidence("totp", code, None),
         )
     await privacy.request_deletion(pg_session, user, session, approved["authorization"])
 

@@ -37,7 +37,10 @@ export function AccountDeletionPage() {
     finally { setCode(""); setBusy(false); }
   };
   const submit = async (event: React.FormEvent) => {
-    event.preventDefault(); if (!proof || proof.factor_required || !confirmed) return;
+    event.preventDefault();
+    if (!proof) return;
+    if (proof.factor_required) return;
+    if (!confirmed) return;
     setBusy(true); setError("");
     try {
       const result = await api.submitDeletion(action, proof.authorization); setStatus(result); setProof(null); setConfirmed(false);

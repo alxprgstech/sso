@@ -106,7 +106,9 @@ async def test_oidc_service_issues_isolated_codes_for_two_clients_unit():
     mock_db = AsyncMock()
     mock_db.add = MagicMock()
     mock_db.scalar.return_value = user
-    mock_db.execute.return_value = MagicMock(all=MagicMock(return_value=list(REQUIRED_DOCUMENTS.items())))
+    mock_db.execute.return_value = MagicMock(
+        all=MagicMock(return_value=list(REQUIRED_DOCUMENTS.items()))
+    )
 
     # 3. Инициализируем SDK для обоих клиентов
     sdk1 = SSOClient(

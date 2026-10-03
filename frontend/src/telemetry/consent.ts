@@ -8,22 +8,40 @@ if (typeof window !== "undefined") window.addEventListener("storage", event => {
   if (event.key === PRIVACY_KEY || event.key === null) memoryChoice = null;
 });
 
-export function readPrivacyChoice(): PrivacyChoice | null {
-  if (memoryChoice) {
-    if (memoryChoice.expiresAt > Date.now()) return memoryChoice;
-    memoryChoice = null;
-  }
+function validExpiry(value: unknown, now: number): value is number {
+  if (typeof value !== "number") return false;
+  if (!Number.isFinite(value)) return false;
+  return value > now && value <= now + LIFETIME;
+}
+
+function choiceFields(value: unknown): PrivacyChoice | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<PrivacyChoice>;
+  if (item.version !== VERSION) return null;
+  if (typeof item.diagnostics !== "boolean") return null;
+  if (typeof item.replay !== "boolean") return null;
+  return item as PrivacyChoice;
+}
+
+function parseChoice(value: unknown): PrivacyChoice | null {
+  const item = choiceFields(value);
+  if (!item) return null;
+  if (!validExpiry(item.expiresAt, Date.now())) return null;
+  if (item.replay && !item.diagnostics) return null;
+  return item;
+}
+
+function readStoredChoice(): PrivacyChoice | null {
   try {
     const raw = window.localStorage.getItem(PRIVACY_KEY);
-    if (!raw) return null;
-    const value: unknown = JSON.parse(raw);
-    if (!value || typeof value !== "object") return null;
-    const item = value as PrivacyChoice;
-    if (item.version !== VERSION || typeof item.diagnostics !== "boolean" || typeof item.replay !== "boolean" ||
-        typeof item.expiresAt !== "number" || !Number.isFinite(item.expiresAt) || item.expiresAt <= Date.now() ||
-        item.expiresAt > Date.now() + LIFETIME || (item.replay && !item.diagnostics)) return null;
-    return item;
+    return raw ? parseChoice(JSON.parse(raw)) : null;
   } catch { return null; }
+}
+
+export function readPrivacyChoice(): PrivacyChoice | null {
+  if (memoryChoice && memoryChoice.expiresAt > Date.now()) return memoryChoice;
+  memoryChoice = null;
+  return readStoredChoice();
 }
 
 export function savePrivacyChoice(diagnostics: boolean, replay: boolean): boolean {

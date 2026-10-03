@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -45,13 +46,46 @@ async def database_now(db: AsyncSession) -> datetime:
     return (await db.execute(select(func.clock_timestamp()))).scalar_one()
 
 
-async def consume_rate_limit(
-    db: AsyncSession, settings: Settings, bucket: str, identity: str, limit: int, seconds: int = 60
-) -> None:
+@dataclass(frozen=True)
+class RateLimit:
+    bucket: str
+    identity: str
+    limit: int
+    seconds: int = 60
+
+
+@dataclass(frozen=True)
+class DeletionContext:
+    db: AsyncSession
+    user: User
+    session: Session
+    settings: Settings
+
+
+@dataclass(frozen=True)
+class AuthorizationScope:
+    user_id: uuid.UUID
+    session_id: uuid.UUID
+
+
+@dataclass(frozen=True)
+class ActionProof:
+    token: str
+    action: str
+
+
+@dataclass(frozen=True)
+class FactorEvidence:
+    method: str
+    code: str | None = None
+    credential: dict[str, Any] | None = None
+
+
+async def consume_rate_limit(db: AsyncSession, settings: Settings, policy: RateLimit) -> None:
     """Atomic sliding expiration shared across instances; never retains a raw IP."""
     digest = hmac.new(
         settings.SESSION_SECRET_KEY.encode(),
-        f"privacy:{bucket}:{identity}".encode(),
+        f"privacy:{policy.bucket}:{policy.identity}".encode(),
         hashlib.sha256,
     ).hexdigest()
     try:
@@ -61,7 +95,7 @@ async def consume_rate_limit(
             created_at=now,
             key_hash=digest,
             attempts=1,
-            expires_at=now + timedelta(seconds=seconds),
+            expires_at=now + timedelta(seconds=policy.seconds),
         )
         counted = stmt.on_conflict_do_update(
             index_elements=[PrivacyRateWindow.key_hash],
@@ -70,7 +104,7 @@ async def consume_rate_limit(
                     "CASE WHEN privacy_rate_windows.expires_at <= clock_timestamp() THEN 1 ELSE privacy_rate_windows.attempts + 1 END"
                 ),
                 "expires_at": text(
-                    f"CASE WHEN privacy_rate_windows.expires_at <= clock_timestamp() THEN clock_timestamp() + interval '{seconds} seconds' ELSE privacy_rate_windows.expires_at END"
+                    f"CASE WHEN privacy_rate_windows.expires_at <= clock_timestamp() THEN clock_timestamp() + interval '{policy.seconds} seconds' ELSE privacy_rate_windows.expires_at END"
                 ),
             },
         ).returning(PrivacyRateWindow.attempts)
@@ -85,7 +119,7 @@ async def consume_rate_limit(
         raise rejection(
             "service_unavailable", "Не удалось проверить лимиты безопасности.", 503
         ) from error
-    if attempts > limit:
+    if attempts > policy.limit:
         raise rejection(
             "rate_limit_exceeded", "Слишком много запросов. Повторите через минуту.", 429
         )
@@ -143,17 +177,22 @@ def deletion_status(user: User) -> dict[str, Any]:
     }
 
 
-def factor_methods(user: User, settings: Settings) -> list[str]:
-    totp = bool(user.totp_credential and user.totp_credential.is_confirmed)
-    passkey = bool(user.webauthn_credentials)
-    if (totp and not settings.FEATURE_TOTP_ENABLED) or (
-        passkey and not settings.FEATURE_PASSKEY_ENABLED
-    ):
+def require_enabled_factor(required: bool, enabled: bool) -> None:
+    if not required:
+        return
+    if not enabled:
         raise rejection(
             "required_factor_disabled",
             "Обязательный фактор отключён. Обратитесь к администратору.",
             403,
         )
+
+
+def factor_methods(user: User, settings: Settings) -> list[str]:
+    totp = bool(user.totp_credential and user.totp_credential.is_confirmed)
+    passkey = bool(user.webauthn_credentials)
+    require_enabled_factor(totp, settings.FEATURE_TOTP_ENABLED)
+    require_enabled_factor(passkey, settings.FEATURE_PASSKEY_ENABLED)
     methods = []
     if totp:
         methods.append("totp")
@@ -164,52 +203,98 @@ def factor_methods(user: User, settings: Settings) -> list[str]:
     return methods
 
 
-async def start_reauthentication(
-    db: AsyncSession, user: User, session: Session, settings: Settings, action: str, password: str
-) -> dict[str, Any]:
-    await consume_rate_limit(db, settings, "deletion-reauth", str(user.id), 5)
-    # Lock the account before issuing a permission; a concurrent erasure/request
-    # must not leave a proof bound to a session that has already been revoked.
+async def lock_active_user(db: AsyncSession, user_id: uuid.UUID) -> User:
     current = await db.scalar(
         select(User)
-        .where(User.id == user.id)
+        .where(User.id == user_id)
         .with_for_update()
         .execution_options(populate_existing=True)
     )
-    valid_session = await db.scalar(
+    if current is None:
+        raise rejection("invalid_credentials", "Аккаунт недоступен.", 401)
+    if not current.is_active:
+        raise rejection("invalid_credentials", "Аккаунт недоступен.", 401)
+    return current
+
+
+async def verify_reauthentication(context: DeletionContext, password: str) -> User:
+    # Account lock precedes proof issuance and competes with erasure/request.
+    user = await lock_active_user(context.db, context.user.id)
+    valid_session = await context.db.scalar(
         select(Session.id).where(
-            Session.id == session.id,
+            Session.id == context.session.id,
             Session.user_id == user.id,
             Session.expires_at > func.clock_timestamp(),
         )
     )
-    if not current or not current.is_active or not valid_session:
-        raise rejection("invalid_credentials", "Аккаунт или сессия недоступны.", 401)
-    user = current
-    if settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified:
+    if not valid_session:
+        raise rejection("invalid_credentials", "Сессия недоступна.", 401)
+    if context.settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified:
         raise rejection("email_verification_required", "Необходимо подтвердить email.", 403)
-    if not user.password_credential or not await asyncio.to_thread(
-        verify_password, password, user.password_credential.password_hash
-    ):
+    credential = user.password_credential
+    if credential is None:
         raise rejection("invalid_credentials", "Неверный пароль.", 401)
-    methods = factor_methods(user, settings)
-    now = await database_now(db)
-    if action == "cancel" and (
-        not user.deletion_scheduled_for or now >= user.deletion_scheduled_for
-    ):
-        raise rejection(
-            "deletion_not_cancellable", "Удаление уже наступило либо заявка отсутствует."
-        )
-    if (
-        action == "request"
-        and user.deletion_request_allowed_at
-        and now < user.deletion_request_allowed_at
-    ):
+    if not await asyncio.to_thread(verify_password, password, credential.password_hash):
+        raise rejection("invalid_credentials", "Неверный пароль.", 401)
+    return user
+
+
+def require_cancellable(user: User, now: datetime) -> None:
+    deadline = user.deletion_scheduled_for
+    if deadline is None:
+        raise rejection("deletion_not_cancellable", "Заявка отсутствует.")
+    if now >= deadline:
+        raise rejection("deletion_not_cancellable", "Срок отмены истёк.")
+
+
+def require_no_cooldown(user: User, now: datetime) -> None:
+    allowed_at = user.deletion_request_allowed_at
+    if allowed_at is None:
+        return
+    if now < allowed_at:
         raise rejection("deletion_cooldown", "Повторная заявка доступна после указанной даты.", 429)
+
+
+def require_available_action(user: User, action: str, now: datetime) -> None:
+    if action == "cancel":
+        require_cancellable(user, now)
+    elif action == "request":
+        require_no_cooldown(user, now)
+    else:
+        raise rejection("invalid_deletion_action", "Неизвестное действие.", 400)
+
+
+async def deletion_passkey_options(
+    context: DeletionContext, proof: DeletionAuthorization
+) -> dict[str, Any]:
+    from app.services.mfa_service import WebAuthnService
+
+    options = await WebAuthnService.get_authentication_options(
+        context.db,
+        context.user,
+        settings=context.settings,
+        purpose=f"deletion_{proof.action}",
+        commit=False,
+    )
+    proof.webauthn_challenge = options["challenge"]
+    return options
+
+
+async def start_reauthentication(
+    context: DeletionContext, action: str, password: str
+) -> dict[str, Any]:
+    db = context.db
+    await consume_rate_limit(
+        db, context.settings, RateLimit("deletion-reauth", str(context.user.id), 5)
+    )
+    user = await verify_reauthentication(context, password)
+    methods = factor_methods(user, context.settings)
+    now = await database_now(db)
+    require_available_action(user, action, now)
     raw = generate_random_token(32)
     authorization = DeletionAuthorization(
         user_id=user.id,
-        session_id=session.id,
+        session_id=context.session.id,
         action=action,
         token_hash=hash_token(raw),
         expires_at=now + AUTHORIZATION_TTL,
@@ -219,12 +304,7 @@ async def start_reauthentication(
     db.add(authorization)
     options = None
     if "passkey" in methods:
-        from app.services.mfa_service import WebAuthnService
-
-        options = await WebAuthnService.get_authentication_options(
-            db, user, settings=settings, purpose=f"deletion_{action}", commit=False
-        )
-        authorization.webauthn_challenge = options["challenge"]
+        options = await deletion_passkey_options(context, authorization)
     await db.commit()
     return {
         "authorization": raw,
@@ -235,76 +315,93 @@ async def start_reauthentication(
     }
 
 
+def valid_authorization(row: DeletionAuthorization, stage: str, now: datetime) -> bool:
+    if row.stage != stage:
+        return False
+    if row.expires_at <= now:
+        return False
+    return row.failed_attempts < 5
+
+
 async def authorization_row(
-    db: AsyncSession, user_id: uuid.UUID, session_id: uuid.UUID, raw: str, action: str, stage: str
+    db: AsyncSession, scope: AuthorizationScope, proof: ActionProof, stage: str
 ) -> DeletionAuthorization:
     row = await db.scalar(
         select(DeletionAuthorization)
         .where(
-            DeletionAuthorization.token_hash == hash_token(raw),
-            DeletionAuthorization.user_id == user_id,
-            DeletionAuthorization.session_id == session_id,
-            DeletionAuthorization.action == action,
+            DeletionAuthorization.token_hash == hash_token(proof.token),
+            DeletionAuthorization.user_id == scope.user_id,
+            DeletionAuthorization.session_id == scope.session_id,
+            DeletionAuthorization.action == proof.action,
         )
         .with_for_update()
     )
-    now = await database_now(db)
-    if not row or row.stage != stage or row.expires_at <= now or row.failed_attempts >= 5:
-        raise rejection(
-            "invalid_deletion_authorization",
-            "Подтверждение истекло, уже использовано или недействительно.",
-            401,
+    if row is not None:
+        if valid_authorization(row, stage, await database_now(db)):
+            return row
+    raise rejection(
+        "invalid_deletion_authorization",
+        "Подтверждение истекло, уже использовано или недействительно.",
+        401,
+    )
+
+
+async def consume_deletion_recovery_code(context: DeletionContext, code: str) -> bool:
+    from app.services.mfa_service import RecoveryCodesService
+
+    digest = hash_token(RecoveryCodesService._normalize_code(code))
+    consumed = await context.db.scalar(
+        update(RecoveryCode)
+        .where(
+            RecoveryCode.user_id == context.user.id,
+            RecoveryCode.code_hash == digest,
+            RecoveryCode.is_used.is_(False),
         )
-    return row
+        .values(is_used=True, used_at=await database_now(context.db))
+        .returning(RecoveryCode.id)
+    )
+    return consumed is not None
+
+
+async def verify_deletion_factor(
+    context: DeletionContext, row: DeletionAuthorization, evidence: FactorEvidence
+) -> bool:
+    from app.services.mfa_service import TOTPService, WebAuthnService
+
+    if evidence.method not in factor_methods(context.user, context.settings):
+        return False
+    if evidence.method == "passkey":
+        if not evidence.credential:
+            return False
+        return await WebAuthnService.verify_authentication(
+            context.db,
+            context.user,
+            evidence.credential,
+            settings=context.settings,
+            purpose=f"deletion_{row.action}",
+            expected_challenge=row.webauthn_challenge,
+            commit=False,
+        )
+    if not evidence.code:
+        return False
+    if evidence.method == "totp":
+        return await TOTPService.verify_totp(context.db, context.user, evidence.code, commit=False)
+    return await consume_deletion_recovery_code(context, evidence.code)
 
 
 async def confirm_factor(
-    db: AsyncSession,
-    user: User,
-    session: Session,
-    settings: Settings,
-    raw: str,
-    action: str,
-    method: str,
-    code: str | None,
-    credential: dict[str, Any] | None,
+    context: DeletionContext, proof: ActionProof, evidence: FactorEvidence
 ) -> dict[str, Any]:
-    await consume_rate_limit(db, settings, "deletion-factor", str(user.id), 5)
-    row = await authorization_row(db, user.id, session.id, raw, action, "factor")
-    valid = False
-    methods = factor_methods(user, settings)
+    db = context.db
+    await consume_rate_limit(
+        db, context.settings, RateLimit("deletion-factor", str(context.user.id), 5)
+    )
+    scope = AuthorizationScope(context.user.id, context.session.id)
+    row = await authorization_row(db, scope, proof, "factor")
+    # Disabled required factors must raise 403 rather than become an invalid code.
+    factor_methods(context.user, context.settings)
     try:
-        if method in methods and method == "totp" and code:
-            from app.services.mfa_service import TOTPService
-
-            valid = await TOTPService.verify_totp(db, user, code, commit=False)
-        elif method in methods and method == "recovery_code" and code:
-            from app.services.mfa_service import RecoveryCodesService
-
-            digest = hash_token(RecoveryCodesService._normalize_code(code))
-            consumed = await db.scalar(
-                update(RecoveryCode)
-                .where(
-                    RecoveryCode.user_id == user.id,
-                    RecoveryCode.code_hash == digest,
-                    RecoveryCode.is_used.is_(False),
-                )
-                .values(is_used=True, used_at=await database_now(db))
-                .returning(RecoveryCode.id)
-            )
-            valid = consumed is not None
-        elif method in methods and method == "passkey" and credential:
-            from app.services.mfa_service import WebAuthnService
-
-            valid = await WebAuthnService.verify_authentication(
-                db,
-                user,
-                credential,
-                settings=settings,
-                purpose=f"deletion_{action}",
-                expected_challenge=row.webauthn_challenge,
-                commit=False,
-            )
+        valid = await verify_deletion_factor(context, row, evidence)
     except HTTPException:
         valid = False
     if not valid:
@@ -312,7 +409,7 @@ async def confirm_factor(
         await db.commit()
         raise rejection("invalid_factor", "Второй фактор не прошёл проверку.", 401)
     row.stage = "authorized"
-    # Rotate the secret: a factor-step token must not be a deletion permission.
+    # Rotate the secret: factor-step tokens cannot authorize erasure/cancellation.
     authorized = generate_random_token(32)
     row.token_hash = hash_token(authorized)
     await db.commit()
@@ -325,20 +422,14 @@ async def request_deletion(
     from app.core.rbac import ensure_not_last_admin, lock_admin_invariant
 
     await lock_admin_invariant(db)
-    locked = await db.scalar(
-        select(User)
-        .where(User.id == user.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
+    locked = await lock_active_user(db, user.id)
+    await authorization_row(
+        db, AuthorizationScope(user.id, session.id), ActionProof(raw, "request"), "authorized"
     )
-    if not locked or not locked.is_active:
-        raise rejection("invalid_credentials", "Аккаунт недоступен.", 401)
-    await authorization_row(db, user.id, session.id, raw, "request", "authorized")
     now = await database_now(db)
     if locked.deletion_scheduled_for:
         raise rejection("deletion_already_pending", "Удаление уже запланировано; срок не изменён.")
-    if locked.deletion_request_allowed_at and now < locked.deletion_request_allowed_at:
-        raise rejection("deletion_cooldown", "Повторная заявка пока недоступна.", 429)
+    require_no_cooldown(locked, now)
     await ensure_not_last_admin(db, user.id)
     locked.deletion_requested_at = now
     locked.deletion_scheduled_for = now + GRACE
@@ -368,18 +459,12 @@ async def cancel_deletion(
     from app.core.rbac import lock_admin_invariant
 
     await lock_admin_invariant(db)
-    locked = await db.scalar(
-        select(User)
-        .where(User.id == user.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
+    locked = await lock_active_user(db, user.id)
+    await authorization_row(
+        db, AuthorizationScope(user.id, session.id), ActionProof(raw, "cancel"), "authorized"
     )
-    if not locked or not locked.is_active:
-        raise rejection("invalid_credentials", "Аккаунт недоступен.", 401)
-    await authorization_row(db, user.id, session.id, raw, "cancel", "authorized")
     now = await database_now(db)
-    if not locked.deletion_scheduled_for or now >= locked.deletion_scheduled_for:
-        raise rejection("deletion_not_cancellable", "Срок отмены истёк либо заявка отсутствует.")
+    require_cancellable(locked, now)
     locked.deletion_requested_at = None
     locked.deletion_scheduled_for = None
     locked.deletion_request_allowed_at = now + COOLDOWN

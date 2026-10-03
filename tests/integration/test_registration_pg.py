@@ -33,7 +33,10 @@ async def test_registration_closed_mode_rejected_pg(
     # 2. Выполняем попытку регистрации
     resp = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "rejected_user",
             "email": "rejected@alxprgs.tech",
             "password": "SecurePassword2026!",
@@ -74,7 +77,10 @@ async def test_registration_bootstrap_incomplete_rejected_pg(
 
     resp = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "early_bird",
             "email": "early@alxprgs.tech",
             "password": "SecurePassword2026!",
@@ -117,7 +123,10 @@ async def test_registration_success_open_mode_pg(
     # 2. Выполняем регистрацию
     resp = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "charlie_reg",
             "email": "charlie@alxprgs.tech",
             "password": "CharliePassword2026!",
@@ -235,7 +244,10 @@ async def test_registration_code_attempts_resend_and_expiry_pg(
     monkeypatch.setattr(registration_service, "new_code", lambda: next(codes))
     registration = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "code_rules",
             "email": "code_rules@alxprgs.tech",
             "password": "CodeRules2026!",
@@ -302,7 +314,10 @@ async def test_registration_delivery_failure_keeps_pending_pg(
     monkeypatch.setattr(registration_service, "deliver_message", fail_message)
     response = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "mail_failure",
             "email": "mail_failure@alxprgs.tech",
             "password": "MailFailure2026!",
@@ -349,7 +364,10 @@ async def test_registration_duplicate_collisions_pg(
     # Создаем первого пользователя
     r1 = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "existing_user",
             "email": "existing@alxprgs.tech",
             "password": "Password1234!",
@@ -369,7 +387,10 @@ async def test_registration_duplicate_collisions_pg(
     # Попытка 1: тот же username, другой email -> 409 Conflict
     r_dup_uname = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "existing_user",
             "email": "different_email@alxprgs.tech",
             "password": "Password1234!",
@@ -387,7 +408,10 @@ async def test_registration_duplicate_collisions_pg(
     # Попытка 2: другой username, тот же email -> 409 Conflict
     r_dup_email = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "different_user",
             "email": "existing@alxprgs.tech",
             "password": "Password1234!",
@@ -403,7 +427,10 @@ async def test_registration_duplicate_collisions_pg(
     r_dup_case = await pg_client.post(
         "/api/v1/auth/register",
         headers={"X-Forwarded-For": "192.0.2.37"},
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "another_user",
             "email": "ExIsTiNg@alxprgs.tech",
             "password": "Password1234!",

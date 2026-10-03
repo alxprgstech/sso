@@ -24,36 +24,59 @@ test.afterEach(async ({ page }) => {
 });
 
 async function mockUI(page: Page, user: UserProfile | null = null, enabled = false) {
+  const fixtures: Record<string, { status?: number; json: unknown }> = {
+    "GET /api/v1/auth/capabilities": { json: { totp_enabled: enabled, passkey_enabled: enabled, recovery_codes_enabled: enabled, email_verification_enabled: true, require_verified_email: false, registration_mode: "open" } },
+    "GET /api/v1/auth/telemetry-config": { json: { enabled: false, replay_enabled: false, environment: "production" } },
+    "GET /api/v1/legal/documents": { json: documents },
+    "GET /api/v1/auth/me": { status: user ? 200 : 401, json: user ?? { detail: "Not authenticated" } },
+    "GET /api/v1/auth/sessions": { json: [] },
+    "GET /api/v1/mfa/passkey/credentials": { json: [] },
+    "GET /api/v1/admin/users": { json: [] },
+    "GET /api/v1/auth/account-deletion": { json: { pending: false, requested_at: null, scheduled_for: null, request_allowed_at: null } },
+    "POST /api/v1/auth/account-deletion/reauthenticate": { json: { authorization: "synthetic-ui-proof", factor_required: false, expires_at: "2099-01-01T00:00:00Z" } },
+    "POST /api/v1/auth/account-deletion": { status: 403, json: { detail: { error: "forbidden", detail: "Запрещено удалять, блокировать или лишать прав последнего активного администратора системы" } } },
+    "POST /api/v1/mfa/totp/setup": { json: { secret: "SYNTHETICUIQR", otpauth_url: "otpauth://totp/UI?secret=SYNTHETICUIQR&issuer=UI" } }, // pragma: allowlist secret -- synthetic UI QR fixture
+  };
   await page.route("**/api/v1/**", async route => {
-    const path = new URL(route.request().url()).pathname;
-    let json: unknown;
-    let status = 200;
-    if (path.endsWith("/capabilities")) json = { totp_enabled: enabled, passkey_enabled: enabled, recovery_codes_enabled: enabled, email_verification_enabled: true, require_verified_email: false, registration_mode: "open" };
-    else if (path.endsWith("/telemetry-config")) json = { enabled: false, replay_enabled: false, environment: "production" };
-    else if (path === "/api/v1/legal/documents") json = documents;
-    else if (path === "/api/v1/auth/me") { json = user ?? { detail: "Not authenticated" }; if (!user) status = 401; }
-    else if (path.endsWith("/sessions") || path.endsWith("/passkeys") || path.startsWith("/api/v1/admin/users")) json = [];
-    else if (path.endsWith("/account-deletion") && route.request().method() === "GET") json = { pending: false, requested_at: null, scheduled_for: null, request_allowed_at: null };
-    else if (path.endsWith("/reauthenticate")) json = { authorization: "synthetic-ui-proof", factor_required: false, expires_at: "2099-01-01T00:00:00Z" };
-    else if (path.endsWith("/account-deletion") && route.request().method() === "POST") {
-      status = 403; json = { detail: { error: "forbidden", detail: "Запрещено удалять, блокировать или лишать прав последнего активного администратора системы" } };
-    } else if (path.endsWith("/totp/setup")) json = { secret: "SYNTHETICUIQR", otpauth_url: "otpauth://totp/UI?secret=SYNTHETICUIQR&issuer=UI" }; // pragma: allowlist secret -- synthetic UI QR fixture
-    else { status = 500; json = { detail: `Unconfigured UI fixture: ${path}` }; }
-    await route.fulfill({ status, json });
+    const request = route.request();
+    const key = `${request.method()} ${new URL(request.url()).pathname}`;
+    const fixture = fixtures[key] ?? { status: 500, json: { detail: `Unconfigured UI fixture: ${key}` } };
+    await route.fulfill({ status: fixture.status ?? 200, json: fixture.json });
   });
 }
 
 async function bannerAtBottom(page: Page) {
-  const banner = page.getByRole("region", { name: "Cookies и диагностика" });
-  const bounds = await banner.boundingBox();
-  expect(bounds).not.toBeNull();
-  expect(Math.abs(bounds!.y + bounds!.height - page.viewportSize()!.height)).toBeLessThan(2);
-  const reserved = await page.locator(".app-shell").evaluate(element => parseFloat(getComputedStyle(element).paddingBottom));
-  expect(Math.abs(reserved - bounds!.height)).toBeLessThan(2);
-  const scrollBounds = await page.locator(".app-scroll").boundingBox();
-  expect(scrollBounds!.y + scrollBounds!.height).toBeLessThanOrEqual(bounds!.y + 1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(page.getByRole("region", { name: "Cookies и диагностика" })).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const banner = document.querySelector(".cookie-banner")!.getBoundingClientRect();
+    const content = document.querySelector(".app-scroll")!.getBoundingClientRect();
+    return { bottom: banner.bottom, height: banner.height, top: banner.top, contentBottom: content.bottom,
+      viewport: innerHeight, fitsWidth: document.documentElement.scrollWidth <= innerWidth };
+  });
+  expect(Math.abs(geometry.bottom - geometry.viewport)).toBeLessThan(2);
+  expect(Math.abs(geometry.viewport - geometry.contentBottom - geometry.height)).toBeLessThan(2);
+  expect(geometry.contentBottom).toBeLessThanOrEqual(geometry.top + 1);
+  expect(geometry.fitsWidth).toBe(true);
 }
+
+test("cookies layout remains consistent through repeated resizes without ResizeObserver", async ({ page }) => {
+  await page.addInitScript(() => { Object.defineProperty(window, "ResizeObserver", { value: undefined }); });
+  await mockUI(page);
+  await page.goto("/login");
+  await bannerAtBottom(page);
+  for (const width of [390, 1280, 390, 768, 320, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await bannerAtBottom(page);
+  }
+  await page.getByRole("button", { name: "Настроить", exact: true }).click();
+  await bannerAtBottom(page);
+  await page.setViewportSize({ width: 390, height: 600 });
+  await bannerAtBottom(page);
+  await page.getByRole("button", { name: "Только необходимые" }).click();
+  await expect(page.getByRole("region", { name: "Cookies и диагностика" })).toHaveCount(0);
+  const bottom = await page.locator(".app-scroll").evaluate(element => element.getBoundingClientRect().bottom);
+  expect(Math.abs(bottom - page.viewportSize()!.height)).toBeLessThan(2);
+});
 
 test("system theme, explicit choice, reload and cross-tab changes", async ({ page, context }) => {
   await mockUI(page);
@@ -157,7 +180,7 @@ for (const theme of ["light", "dark"] as const) {
       }
     });
 
-    test(`consent actions and cookies reserve: ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
+    test(`consent actions and cookies layout: ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport); await mockUI(page, { ...profile, legal_acceptance_required: true });
       await page.goto("/");
       await page.getByRole("combobox", { name: "Тема оформления" }).selectOption(theme);

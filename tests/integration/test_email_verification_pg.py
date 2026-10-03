@@ -128,7 +128,10 @@ async def test_email_verification_ses_provider_with_fake_client_pg(
         assert code == 0
         registration = await pg_client.post(
             "/api/v1/auth/register",
-            json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+            json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "ses_signup_user",
                 "email": "ses_fake@alxprgs.tech",
                 "password": sample_credential,

@@ -110,10 +110,12 @@ async def check_registration_rate_limit(db: AsyncSession, ip: str) -> None:
     """
     check_in_memory_rate_limit(ip)
 
-    from app.services.privacy_service import consume_rate_limit
+    from app.services.privacy_service import RateLimit, consume_rate_limit
 
     await consume_rate_limit(
-        db, get_settings(), "registration", ip, DB_MAX_ATTEMPTS_PER_WINDOW, DB_WINDOW_SECONDS
+        db,
+        get_settings(),
+        RateLimit("registration", ip, DB_MAX_ATTEMPTS_PER_WINDOW, DB_WINDOW_SECONDS),
     )
 
 
@@ -124,8 +126,8 @@ async def check_email_request_rate_limit(db: AsyncSession, ip: str) -> None:
     """
     check_in_memory_rate_limit(f"email_req_{ip}")
 
-    from app.services.privacy_service import consume_rate_limit
+    from app.services.privacy_service import RateLimit, consume_rate_limit
 
     await consume_rate_limit(
-        db, get_settings(), "email", ip, DB_EMAIL_MAX_ATTEMPTS, DB_EMAIL_WINDOW_SECONDS
+        db, get_settings(), RateLimit("email", ip, DB_EMAIL_MAX_ATTEMPTS, DB_EMAIL_WINDOW_SECONDS)
     )

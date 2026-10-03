@@ -178,7 +178,10 @@ async def test_concurrent_user_registration_race_pg(
     monkeypatch.setattr(registration_service, "new_code", lambda: "000123")
     pending = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "race_contestant",
             "email": "contestant@alxprgs.tech",
             "password": "PasswordContestant2026!",
@@ -457,7 +460,10 @@ async def test_distributed_rate_limiting_registration_pg(
     for i in range(3):
         res = await pg_client.post(
             "/api/v1/auth/register",
-            json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+            json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": f"rl_user_{i}",
                 "email": f"rl_user_{i}@alxprgs.tech",
                 "password": f"PasswordRl{i}2026!",
@@ -470,7 +476,10 @@ async def test_distributed_rate_limiting_registration_pg(
     # 3. Четвёртый запрос блокируется HTTP 429.
     blocked_res = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "rl_user_blocked",
             "email": "rl_blocked@alxprgs.tech",
             "password": "PasswordRlBlocked2026!",

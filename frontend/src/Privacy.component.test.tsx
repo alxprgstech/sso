@@ -65,3 +65,20 @@ it("traps Tab/Shift+Tab, closes on Escape and returns focus to the trigger", () 
   fireEvent.keyDown(document, {key:"Tab"}); expect(document.activeElement).toBe(first);
   fireEvent.keyDown(document, {key:"Escape"}); expect(screen.queryByRole("dialog")).toBeNull(); expect(document.activeElement).toBe(trigger);
 });
+
+
+it("keeps an empty busy dialog focused, handles dynamic controls and disconnected triggers", () => {
+  const onClose = vi.fn();
+  const trigger = document.createElement("button"); document.body.append(trigger); trigger.focus();
+  const view = render(<AccessibleDialog label="Динамический" onClose={onClose} className="test" busy><span>Ожидание</span></AccessibleDialog>);
+  const dialog = screen.getByRole("dialog");
+  expect(document.activeElement).toBe(dialog);
+  fireEvent.keyDown(document, { key:"Tab", shiftKey:true }); expect(document.activeElement).toBe(dialog);
+  fireEvent.keyDown(document, { key:"Escape" }); expect(onClose).not.toHaveBeenCalled();
+  view.rerender(<AccessibleDialog label="Динамический" onClose={onClose} className="test"><button disabled>Недоступен</button><div hidden><button>Скрыт</button></div><button>Новый</button></AccessibleDialog>);
+  trigger.focus();
+  fireEvent.keyDown(document, { key:"Tab" }); expect(document.activeElement).toBe(screen.getByRole("button", { name:"Новый" }));
+  fireEvent.keyDown(document, { key:"Escape" }); expect(onClose).toHaveBeenCalledOnce();
+  trigger.remove(); view.unmount();
+  expect(document.activeElement).toBe(document.body);
+});

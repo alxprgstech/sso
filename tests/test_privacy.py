@@ -69,3 +69,19 @@ def test_journal_rejects_stale_or_untrusted_sql_and_retention(tmp_path):
     unrelated.write_text("preserve")
     assert purge_backups(tmp_path) == 1
     assert unrelated.exists() and not old.exists()
+
+
+@pytest.mark.parametrize("deleted_offset", [timedelta(days=-1), timedelta(days=31)])
+def test_journal_rejects_future_or_expired_deletion_times(tmp_path, deleted_offset):
+    now = datetime.now(timezone.utc)
+    document = {
+        "version": 1,
+        "generated_at": now.isoformat(),
+        "subjects": [
+            {"subject_id": str(uuid.uuid4()), "deleted_at": (now - deleted_offset).isoformat()}
+        ],
+    }
+    path = tmp_path / "journal.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid deletion time"):
+        restore_sql(path)

@@ -460,3 +460,54 @@ def test_real_frontend_lifecycle_and_port_release():
             s.settimeout(0.5)
             with pytest.raises((socket.error, ConnectionRefusedError, OSError)):
                 s.connect(("127.0.0.1", port))
+
+
+@pytest.mark.parametrize("failure_stage", range(5))
+def test_browser_campaign_fails_closed_and_cleans_up(failure_stage, monkeypatch):
+    """Unit orchestration: seed/start/preflight/browser/stop failure cannot pass."""
+    from scripts import run_e2e_suite as runner
+
+    calls = []
+    cleanups = []
+
+    def command(cmd, cwd=None, env=None):
+        calls.append((cmd, env))
+        return 7 if len(calls) - 1 == failure_stage else 0
+
+    monkeypatch.setattr(runner, "run_cmd", command)
+    monkeypatch.setattr(runner, "ensure_frontend_build", lambda: 0)
+    monkeypatch.setattr(runner, "start_browser_frontend", lambda paths: 0)
+    monkeypatch.setattr(runner, "cleanup_browser_campaign", cleanups.append)
+    result = runner.run_e2e("all")
+    assert result != 0
+    assert len(cleanups) == 1
+    assert len(calls) == failure_stage + 1
+    assert calls[0][1]["FEATURE_PASSKEY_ENABLED"] == "false"
+    if failure_stage >= 3:
+        browser_command = calls[3][0]
+        assert "e2e/appearance.spec.ts" in browser_command
+        assert "e2e/privacy.spec.ts" in browser_command
+
+
+def test_browser_campaign_profiles_preserve_flags_and_required_suites():
+    from scripts.run_e2e_suite import browser_profiles
+
+    profiles = browser_profiles("all", {"SMTP_HOST": "127.0.0.1"})
+    assert [profile.name for profile in profiles] == ["default-off", "enabled"]
+    assert profiles[0].env["FEATURE_TOTP_ENABLED"] == "false"
+    assert profiles[1].env["FEATURE_TOTP_ENABLED"] == "true"
+    for profile in profiles:
+        assert profile.env["FEATURE_EMAIL_VERIFICATION_ENABLED"] == "true"
+        assert profile.env["SMTP_HOST"] == "127.0.0.1"
+        assert "e2e/privacy.spec.ts" in profile.specs
+    assert "e2e/passkey.spec.ts" in profiles[1].specs
+
+
+def test_browser_environment_pins_redirects_to_its_own_frontend(monkeypatch):
+    from scripts.run_e2e_suite import browser_environment
+
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3000")
+    env = browser_environment()
+    assert env["FRONTEND_URL"] == "http://localhost:5173"
+    assert env["PLAYWRIGHT_BASE_URL"] == env["FRONTEND_URL"]
+    assert env["WEBAUTHN_ORIGIN"] == env["FRONTEND_URL"]

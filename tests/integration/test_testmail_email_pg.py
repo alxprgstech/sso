@@ -73,7 +73,10 @@ async def test_registration_delivery(mode, pg_client, pg_session, external_email
     start = checkpoint()
     response = await pg_client.post(
         "/api/v1/auth/register",
-        json={"terms_accepted": True, "data_processing_consent": True, "legal_versions": REQUIRED_DOCUMENTS,
+        json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": username,
             "email": box.address,
             "password": PASSWORD,
