@@ -62,3 +62,12 @@ Absence of Expected Change Pattern для run_e2e_suite/manage_test_server — �
 ## Ограничения выполненного анализа
 
 Report UI CodeScene не удалось открыть, но полный предоставленный отчёт, письмо и все 35 inline-комментариев доступны. Прочитаны отмеченные функции и связанные тесты на текущей ревизии. Новых функциональных тестов, CVE-аудита или CodeScene CLI не запускалось. Реализация не изменена, suppression/установки/merge/push не выполнялись. Сохранены только локальные результаты анализа и рабочие документы.
+
+
+## Исправления по поручению владельца — 2026-10-03T21:17:43.813587+03:00
+
+Коммит [921ddcb](https://github.com/alxprgstech/sso/commit/921ddcbf57884a6c1717f8965409cafc2eea2b73) устранил оба CI failures; [CI37143192991](https://github.com/alxprgstech/sso/actions/runs/37143192991) полностью success. Cookies занимают нижнюю CSS flex-строку без JS reserve; строгие геометрические assertions сохранены, добавлены repeated resize и отсутствие ResizeObserver. Ruff применяется ко всему CI scope. Рефакторинг сохраняет trust policy/UV, CSRF, password/MFA, UTC deadlines, блокировки и одноразовость; все обязательные проверки остаются в CI.
+
+Первый повтор CodeScene [7799296](https://codescene.io/projects/85555/delta/results/7799296) подтвердил два passed gates и девять новых файлов10.00; остался один Complex Method verify_reauthentication (10 threshold9). [8b3e958](https://github.com/alxprgstech/sso/commit/8b3e958933f98ead16767b11335ffbeb1d4924c3) разделяет session и password/email проверки; 23 targeted PG tests, Ruff/mypy passed. Последний remote result пока ожидается; прежний анализ выше сохраняется как история, resolved старые inline-тексты не считаются новыми failed rules.
+
+Окончательный результат 2026-10-03T21:22:54.861387+03:00: [CI37143596385](https://github.com/alxprgstech/sso/actions/runs/37143596385) и [CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) для 8b3e958 **success**, все8 внутренних CI jobs и все3 quality gates passed. Все блокирующие причины этого анализа устранены; suppression/ослабления защиты/тестов не было. Детали проверок — в [acceptance](../acceptance.md).

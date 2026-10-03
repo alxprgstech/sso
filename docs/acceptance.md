@@ -321,3 +321,10 @@ PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный и
 Удалённый CI [37143192991](https://github.com/alxprgstech/sso/actions/runs/37143192991) на 921ddcb **success**: 8 внутренних jobs, external SES job штатно skipped на PR. Backend: Ruff lint/full format142, mypy47, PostgreSQL default-off333 +14 subtests (8 прежних skips платформы/lifecycle и 5 external-email deselected), enabled21. E2E default-off28/enabled8; frontend/SDK/containers/dependency scan/CD/version passed. [CodeScene7799296](https://codescene.io/projects/85555/delta/results/7799296): два gates passed, осталось только privacy_service.verify_reauthentication Complex Method10 threshold9, score9.69. Девять других новых файлов10.00; backup10.00, runner9.22, mfa7.11.
 
 Последнее исправление (2026-10-03T21:16:49.946963+03:00) разделяет session/password проверки; целевые privacy/MFA/WebAuthn PG: 23 passed, 10 warnings in 21.63s; Ruff/mypy/whitespace passed. Новый удалённый gate ещё не оценён.
+
+
+### PR-FIX-02 — итог 2026-10-03T21:22:54.861387+03:00
+
+[CI37143596385](https://github.com/alxprgstech/sso/actions/runs/37143596385) для 8b3e958 **success**, восемь внутренних jobs: backend PostgreSQL333 +14 subtests, enabled21, Ruff142/mypy47, browser28+8, frontend build/components/real SDK browser, SDK clean install/build, container packaging, dependencies, version и inactive CD. Восемь существующих platform/lifecycle skips и пять external email deselected не менялись; local Windows full340 +16 subtests, последние focused35 и privacy/MFA23 прошли. Внешняя SES job skipped по PR policy.
+
+[CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) **success: все три quality gates passed**. Новые файлы соответствуют строгому10.00; mfa_service6.81→7.11, backup9.49→10.00, runner7.93→9.22. Исходные failed причины устранены без suppression, изменения профиля качества или ослабления assertions/security. Фактические ранние failures и ограничения среды сохранены выше. Общая production/legal/provider приёмка остаётся отдельной; исправления не развёртывались и PR не merged.

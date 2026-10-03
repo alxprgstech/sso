@@ -383,3 +383,8 @@ PR-FIX-02-01..03 done локально, 04 in_progress. Полный CI format s
 ## Исправления PR #2 — 2026-10-03T21:15:15.954576+03:00
 
 CI 37143192991 success (8 internal jobs); CodeScene 7799296 — 2 gates passed, 1 failed: единственный Complex Method verify_reauthentication (10 при пороге9), privacy_service9.69. Остальные новые файлы10.00. Выполняется последняя декомпозиция проверки сессии/парольной политики и целевые PG tests; PR-FIX-02-04 in_progress. Стенд будет поднят только для этих проверок, после них снова остановлен.
+
+
+## Исправления PR #2 — завершение 2026-10-03T21:22:54.861387+03:00
+
+PR-FIX-02-01..04 done: 921ddcb и 8b3e958 опубликованы в new, PR #2 от alxprgs обновлён. CI37143596385 success (8 внутренних jobs), CodeScene7799341 success (все3 gates; новые файлы соответствуют10.00). Исправлены format/layout и все блокирующие замечания, защита и обязательные suites сохранены. Стенд остановлен; external SES job штатно skipped, merge/production не выполнялись. Итог учёта сохраняется docs-only коммитом; его CI проверяется отдельно. Далее review/merge владельцем и прежние production/legal/provider условия общей приёмки.

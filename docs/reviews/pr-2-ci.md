@@ -62,3 +62,12 @@ Real SES email integration and browser E2E skipped по условию PR; эт�
 Сначала устранить форматирование и рассинхронизацию resize; затем необходимая backend/PostgreSQL и default-off/enabled браузерная регрессия, новый CI. CodeScene рефакторинг и повторный анализ сохраняются как отдельная группа требований.
 
 Код и workflow не менялись, исправления/commit/push/rerun CI не выполнялись. Локальные результаты находятся в рабочих документах; сырые CI logs/probe в ignored artifacts/ci-pr2, не для коммита. Собственный preview остановлен после диагностики; пользовательский localhost:3000 не изменялся.
+
+
+## Исправления по поручению владельца — 2026-10-03T21:17:43.813587+03:00
+
+Коммит [921ddcb](https://github.com/alxprgstech/sso/commit/921ddcbf57884a6c1717f8965409cafc2eea2b73) устранил оба CI failures; [CI37143192991](https://github.com/alxprgstech/sso/actions/runs/37143192991) полностью success. Cookies занимают нижнюю CSS flex-строку без JS reserve; строгие геометрические assertions сохранены, добавлены repeated resize и отсутствие ResizeObserver. Ruff применяется ко всему CI scope. Рефакторинг сохраняет trust policy/UV, CSRF, password/MFA, UTC deadlines, блокировки и одноразовость; все обязательные проверки остаются в CI.
+
+Первый повтор CodeScene [7799296](https://codescene.io/projects/85555/delta/results/7799296) подтвердил два passed gates и девять новых файлов10.00; остался один Complex Method verify_reauthentication (10 threshold9). [8b3e958](https://github.com/alxprgstech/sso/commit/8b3e958933f98ead16767b11335ffbeb1d4924c3) разделяет session и password/email проверки; 23 targeted PG tests, Ruff/mypy passed. Последний remote result пока ожидается; прежний анализ выше сохраняется как история, resolved старые inline-тексты не считаются новыми failed rules.
+
+Окончательный результат 2026-10-03T21:22:54.861387+03:00: [CI37143596385](https://github.com/alxprgstech/sso/actions/runs/37143596385) и [CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) для 8b3e958 **success**, все8 внутренних CI jobs и все3 quality gates passed. Все блокирующие причины этого анализа устранены; suppression/ослабления защиты/тестов не было. Детали проверок — в [acceptance](../acceptance.md).
