@@ -329,6 +329,32 @@ PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный и
 
 [CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) **success: все три quality gates passed**. Новые файлы соответствуют строгому10.00; mfa_service6.81→7.11, backup9.49→10.00, runner7.93→9.22. Исходные failed причины устранены без suppression, изменения профиля качества или ослабления assertions/security. Фактические ранние failures и ограничения среды сохранены выше. Общая production/legal/provider приёмка остаётся отдельной; исправления не развёртывались и PR не merged.
 
+### CI-SES-01 — условный пропуск внешнего CI, 2026-10-03T21:55:12+03:00
+
+По прямому поручению владельца GOAL CI-03 уточняет запуск SES в обычном CI. В ci.yml job email-e2e-credentials без checkout проверяет только наличие двух AWS-ключей и передаёт boolean output: любой отсутствующий ключ даёт notice/summary и skipped для всего email-e2e; оба ключа разрешают прежние preflight, PostgreSQL API и browser сценарии. Явный run_email_tests=true, включая release, без ключей остаётся failed и блокирует release build. Прежние внутренние проверки и политика email не меняются.
+
+| Требование / проверка | Команда / артефакт | Фактический результат |
+| --- | --- | --- |
+| CI-03: оба отсутствуют, отсутствует один, оба доступны; обычный/обязательный режим; связь gate и SES job | `.venv-sentry/Scripts/python.exe -m pytest tests/test_ci_email_credentials.py -q -o cache_dir=artifacts/ci-ses-pytest-cache` | 9 passed, 1 прежний Authlib deprecation warning in 1.50s; Bash из workflow выполняется с синтетическими значениями, без AWS/testmail запросов |
+| CI-01/02, REL-01: прежние SES команды, trusted-main условие, обязательный release input и dependency | `tests/test_ci_email_credentials.py` | Структура обоих workflows проверена вместе с offline gate; удалённый Actions scheduler не запускался |
+| Качество нового Python теста | `.venv-sentry/Scripts/python.exe -m ruff check tests/test_ci_email_credentials.py`; `-m ruff format --check tests/test_ci_email_credentials.py` | passed; Ruff 0.16.8 |
+| CI-02: секреты | `.venv-sentry/Scripts/python.exe scripts/check_secret_scan.py --self-test` | Синтетический контроль отклонён; 126 исторических кандидатов, 0 новых |
+| DOC-TRACK: контракт и ссылки | GOAL 1.4/CI-03, AGENTS, README, docs/testing/email.md, уточнения ADR 0007/0009, plan/status/worklog; YAML/UTF-8/local-link проверка; `git diff --check` | YAML обоих workflows, новые локальные ссылки и whitespace passed; результаты локальны |
+
+Стенд: Windows, Python 3.12.14, pytest 9.1.1, PyYAML 6.0.3, Git Bash. Прежняя .venv не создала процесс; использована существующая .venv-sentry. Cache warning первого прогона устранён выбором собственной cache_dir; проверки не отключались. Фактическое начало 2026-10-03T21:46:13+03:00, завершение локальной задачи 2026-10-03T21:55:12+03:00.
+
+Не проверено: фактический skipped в новом удалённом main run, SES delivery, release dry-run. Изменения локальны в new, без commit/push; указанный владельцем run 37144517132 не перезапускался. Пропуск не считается успешной live-приёмкой TASK-103 и не закрывает GOAL раздел 8. Следующий шаг — применить workflow к main и оценить следующий CI.
+
+### CI-SES-02 — публикация 2026-10-03T22:05:29+03:00
+
+[71a0ea5](https://github.com/alxprgstech/sso/commit/71a0ea51b3976f08e9f9172c4f6c9194a21b7dd6) опубликован в new; [PR #3](https://github.com/alxprgstech/sso/pull/3) проверен: open/non-draft, alxprgs, new → main, head SHA соответствует коммиту. В AGENTS.md добавлено правило только new, codex-ветка не создавалась. Повторные staged whitespace/состав и secret self-test прошли (126 прежних/0 новых); после основного коммита дерево чистое. Initial remote checks: 4 внутренних success, 4 in_progress, CodeScene queued; оба external jobs skipped по PR condition. Успех полной удалённой кампании пока не заявляется. Финальный учёт публикуется отдельным docs-only коммитом; main skip без ключей и live delivery требуют последующих проверок.
+
+Уточнение 2026-10-03T22:15:53+03:00: окончательный формат владельца new/название закреплён [31bbf46](https://github.com/alxprgstech/sso/commit/31bbf467bdf21f17b36731b1fb3f2b2de1134def). Итоговая ветка new/skip-ses-without-credentials, [PR #4](https://github.com/alxprgstech/sso/pull/4) open/non-draft, alxprgs, в main. PR #3 closed и заменён. Git ancestry/remote SHA проверены, временная ветка удалена с lease и без потери коммитов; staged whitespace passed. Runtime не менялся, новые проверки доставки не заявляются; CI итогового PR HEAD оценивается отдельно.
+
+2026-10-03T22:22:22+03:00: CodeScene7799670 выявил единственный Complex Method test_credential_gate (новый файл9.69). Проверки report и скрытия ключей выделены в helpers с сохранением всех assertions/матрицы. Повтор прежней pytest-команды: 9 passed, 1 прежний Authlib warning in1.04s; Ruff lint/format/whitespace passed. Новая remote проверка предстоит; suppression/ослабление проверок не применялись.
+
+2026-10-03T22:25:13+03:00: [308eddb](https://github.com/alxprgstech/sso/commit/308eddbf8e0f0c50ba336ff0d40ad385692385c4) опубликован в PR #4; [CodeScene7799705](https://codescene.io/projects/85555/delta/results/7799705) success, все3 gates passed. Повторный secret self-test126/0 passed. На этом SHA 6 внутренних jobs success, backend/browser in_progress, два external jobs skipped по PR condition. Новый тест исправлен без suppression и изменения profile; полная удалённая кампания итогового HEAD пока не заявлена успешной. Runtime/workflow не менялись при декомпозиции теста; live/main prerequisites сохраняются.
+
 ## UI-DELETE-01 — одна ссылка удаления, 2026-10-03T22:43:44.0203407+03:00
 
 Требования UI-01, UI-02, PRIV-04. Дубль возникал из независимых ссылок DashboardPage и общей оболочки App. Нижняя ссылка и её CSS удалены; в кабинете остаётся ссылка в «Управление данными». Страница согласий сохраняет собственный доступ к удалению. Начало 2026-10-03T22:37:47.2800071+03:00, завершение 2026-10-03T22:43:44.0203407+03:00; исполнитель Codex.
@@ -343,3 +369,7 @@ PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный и
 Node v24.20.0, npm 11.19.0, Vitest 5.0.2, Vite 8.3.1, Playwright 1.63.0. Браузерные cases — явно mocked API UI tests на production frontend build; они не являются новой приёмкой auth/PostgreSQL/фактического удаления. Первый typecheck отказал из-за неподдерживаемого `exact` в новых Testing Library queries; исправлен тест, повтор checks passed. Сценарий удаления и backend не менялись. Свой loopback preview остановлен, порт 5174 свободен. Изменения локальные, новый remote CI/production не выполнялись.
 
 Финальный контроль 2026-10-03T22:45:38.9554899+03:00: strict UTF-8 9 файлов, добавленная local link 1/1 и git diff --check passed; версия Playwright подтверждена CLI.
+
+### UI-DELETE-01 — проверка разрешённого merge, 2026-10-03T23:07:11.4884061+03:00
+
+Merge HEAD54220f2 с incoming4484fe7: четыре trailing conflicts в acceptance/plan/status/worklog. Обе полные стадии каждой стороны сохранены как упорядоченные последовательности непустых строк, marker нет. Strict UTF-812 incoming файлов; восемь бесконфликтных incoming совпадают с MERGE_HEAD, пять UI-файлов совпадают с HEAD; четыре добавленные local links и whitespace passed. .venv-sentry Python pytest tests/test_ci_email_credentials.py -q -p no:cacheprovider с новым private temp:9 passed/1 прежний Authlib warning, Ruff lint/format passed; scripts/check_secret_scan.py --self-test126/0, synthetic rejected; npm run test:components -- --reporter=dot28 passed. Операции внешней доставки не выполнялись; полный PG/browser прогон не повторялся. Merge commit/push выполняются далее по поручению владельца.

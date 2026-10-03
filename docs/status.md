@@ -389,6 +389,36 @@ CI 37143192991 success (8 internal jobs); CodeScene 7799296 — 2 gates passed, 
 
 PR-FIX-02-01..04 done: 921ddcb и 8b3e958 опубликованы в new, PR #2 от alxprgs обновлён. CI37143596385 success (8 внутренних jobs), CodeScene7799341 success (все3 gates; новые файлы соответствуют10.00). Исправлены format/layout и все блокирующие замечания, защита и обязательные suites сохранены. Стенд остановлен; external SES job штатно skipped, merge/production не выполнялись. Итог учёта сохраняется docs-only коммитом; его CI проверяется отдельно. Далее review/merge владельцем и прежние production/legal/provider условия общей приёмки.
 
+## Пропуск внешнего SES CI — 2026-10-03T21:47:34+03:00
+
+CI-SES-01 done локально, Codex, ветка new; завершение 2026-10-03T21:55:12+03:00. Credentials gate без checkout разрешает email-e2e только с обоими AWS-ключами; обычный CI без любого ключа даёт skipped и notice/summary. Явный release run_email_tests=true сохраняет обязательный отказ без ключей, при доступных ключах прежние проверки/ошибки сохраняются. Offline regression: 9 passed, 1 прежний Authlib warning; Ruff lint/format, YAML/UTF-8/ссылки/whitespace и secret self-test passed (126 исторических сигналов/0 новых). Использована существующая .venv-sentry после ошибки запуска прежней .venv.
+
+Точка продолжения: изменения локальны, без commit/push; следующий main CI после применения workflow должен подтвердить skipped на GitHub. Удалённая проверка и реальная доставка не выполнены; release требует credentials/SES production access, прежние внешние ограничения общей приёмки сохраняются. Новые тестовые серверы, БД или реальные письма не создавались; общая цель GOAL не объявляется завершённой.
+
+## Коммит и PR для SES CI — 2026-10-03T21:58:14+03:00
+
+CI-SES-02 done, Codex; завершение 2026-10-03T22:05:29+03:00. [71a0ea5](https://github.com/alxprgstech/sso/commit/71a0ea51b3976f08e9f9172c4f6c9194a21b7dd6) опубликован в new, [PR #3](https://github.com/alxprgstech/sso/pull/3) open, new → main, автор alxprgs; ссылка прикреплена к чату. Правило только new закреплено в AGENTS.md. Проверки CI-SES-01 актуальны, повторный secret self-test/индекс/whitespace passed; после основного коммита рабочее дерево чистое. На initial SHA 4 внутренних checks success, 4 in_progress, CodeScene queued, внешние jobs skipped по PR condition.
+
+Итоговый docs-only учёт сохраняется в той же ветке. Следующий шаг — оценить CI итогового HEAD, review/merge владельцем и последующий main CI для проверки нового условия пропуска. Main skip без ключей, live SES/release и прежние внешние условия общей приёмки пока не проверены; merge/release не выполнялись.
+
+Уточнение 2026-10-03T22:08:21+03:00: CI-SES-02 снова in_progress по исправленному указанию владельца `new/название`. AGENTS.md теперь задаёт префикс new/*; ближайший шаг — перенос текущей new в new/skip-ses-without-credentials с сохранением коммитов и обновлением PR. Предыдущий PR #3 может быть закрыт штатным rename head; окончательная ссылка будет записана после переноса. Реализация SES и её проверки не меняются.
+
+## Итог публикации — 2026-10-03T22:15:53+03:00
+
+CI-SES-02 done с окончательным указанием владельца: ветки new/название, правило в AGENTS.md. [PR #4](https://github.com/alxprgstech/sso/pull/4) open, new/skip-ses-without-credentials → main, автор alxprgs; [31bbf46](https://github.com/alxprgstech/sso/commit/31bbf467bdf21f17b36731b1fb3f2b2de1134def) содержит правило и прежний SES-коммит71a0ea5. PR #3 закрыт при переименовании и заменён. Временное remote имя убрано после проверки ancestry и lease, все коммиты сохранены. Последний учёт публикуется в той же new/ветке.
+
+Точка продолжения — CI/review PR #4 и последующий main run. Прежние локальные 9 тестов/Ruff/YAML/секреты актуальны; новый remote успех ещё не заявлен, main skip без ключей и live SES/release не проверены. Merge/release не выполнялись, общая GOAL не закрыта.
+
+2026-10-03T22:20:55+03:00: CI-SES-02 in_progress до устранения нового CodeScene замечания к тесту. Итоговый PR HEAD8b8fab4 опубликован и проверен, дерево чистое; CodeScene7799670 failed только Complex Method test_credential_gate (9.69), другие gates passed. План — helpers для summary/секретов, прежние 9 tests/Ruff и новый gate в том же PR. Ветка и правило new/название остаются окончательными.
+
+2026-10-03T22:22:22+03:00: проверки report/секретов выделены в helpers, 9 passed in1.04s и Ruff/whitespace passed. Публикация и оценка нового CodeScene продолжаются; workflow и application не менялись, матрица/assertions сохранены.
+
+## Итог поручения — 2026-10-03T22:25:13+03:00
+
+CI-SES-02 done. Окончательные ветка new/skip-ses-without-credentials и [PR #4](https://github.com/alxprgstech/sso/pull/4) опубликованы; AGENTS задаёт префикс new/название. [308eddb](https://github.com/alxprgstech/sso/commit/308eddbf8e0f0c50ba336ff0d40ad385692385c4) устранил сложность regression test: 9 passed, Ruff/whitespace и повторный secret self-test126/0 passed; [CodeScene7799705](https://codescene.io/projects/85555/delta/results/7799705) все3 gates success. На этом SHA 6 внутренних CI jobs success, backend/browser ещё выполняются, external jobs skipped на PR. Последний учёт сохраняется docs-only коммитом той же ветки.
+
+Точка продолжения: проверить CI итогового PR HEAD и review/merge владельцем; main skip без ключей требует следующего main run. Реальная SES доставка/release и прежние общие внешние условия не проверены. Merge/release не выполнялись; общая GOAL остаётся отдельной приёмкой.
+
 ## UI-DELETE-01 — 2026-10-03T22:37:47.2800071+03:00
 
 По запросу владельца устраняется двойная ссылка удаления аккаунта: одна находится в DashboardPage, другая в общей оболочке App. Задача `in_progress`; остаётся ссылка блока «Управление данными». Следующий шаг — компонентная регрессия для обеих ролей, исправление и frontend проверки. Новые проверки ещё не выполнены.
@@ -402,3 +432,9 @@ UI-DELETE-01, 2026-10-03T22:43:11.9195124+03:00: frontend typechecks/lint/build 
 Исполнитель Codex; начало 2026-10-03T22:37:47.2800071+03:00. Устранён нижний дубль удаления, единственная ссылка кабинета находится в «Управление данными». 28 component tests, frontend typechecks/lint/build и четыре browser UI cases light/dark desktop/mobile passed, включая переход к форме. Статус done локально; собственный preview остановлен, 5174 свободен. Инструкция и матрица приёмки обновлены. Точка продолжения: review и сохранение в Git по поручению владельца; новый remote CI/production и полный backend/E2E не запускались, прежние внешние критерии остаются открытыми.
 
 UI-DELETE-01, 2026-10-03T22:46:51.1880031+03:00: подготовлено локальное сохранение исправления, тестов и документации одним коммитом в main по поручению владельца. Предыдущие успешные проверки применимы к неизменённому коду. После commit следующий шаг — публикация и remote CI по отдельному поручению.
+
+UI-DELETE-01, 2026-10-03T23:04:27.5221098+03:00: по поручению владельца завершается текущий merge main и публикация. Четыре конфликтующих документа содержат независимые дополнения UI-DELETE-01 и CI-SES-01/02; обе части сохраняются по времени. Этап in_progress, далее проверки и обычный push.
+
+UI-DELETE-01, 2026-10-03T23:07:11.4884061+03:00: конфликты четырёх документов устранены без потери строк; incoming workflow/test/правила и локальное исправление UI сохранены. Проверки9 SES gate/28 components и static/docs/secret passed. Ближайший шаг — завершить merge и выполнить разрешённый push.
+
+UI-DELETE-01, 2026-10-03T23:08:33.2844177+03:00: первый merge/push заблокирован auto-review до выполнения; read-only remote проверка подтверждает MERGE_HEAD=origin/main4484fe7 и diff только9 файлов исправления/учёта. SES изменения уже находятся в remote main. Следующий шаг — повтор разрешённого merge/push с доказанным составом.
