@@ -5,6 +5,8 @@ from app.core.rbac import ROLE_ADMIN, ROLE_USER
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.privacy import accept_current_documents
+
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
@@ -28,6 +30,7 @@ async def test_full_auth_login_me_logout_pg(pg_session: AsyncSession, pg_client:
         "/api/v1/auth/login",
         json={"username": "alice", "password": "WrongPassword123!"},
     )
+    await accept_current_documents(pg_client, r_fail)
     assert r_fail.status_code == 401
     assert r_fail.json()["error"] == "invalid_credentials"
 
@@ -42,6 +45,7 @@ async def test_full_auth_login_me_logout_pg(pg_session: AsyncSession, pg_client:
         "/api/v1/auth/login",
         json={"username": "alice", "password": "AliceSecurePassword123!"},
     )
+    await accept_current_documents(pg_client, r_login)
     assert r_login.status_code == 200
     login_data = r_login.json()
     assert login_data["status"] == "ok"
@@ -122,6 +126,7 @@ async def test_change_password_revokes_other_sessions_pg(
         "/api/v1/auth/login",
         json={"username": "bob_pwd", "password": "OriginalPassword123!"},
     )
+    await accept_current_documents(pg_client, r_login1)
     assert r_login1.status_code == 200
     token1 = r_login1.json()["csrf_token"]
     cookie1 = pg_client.cookies.get("alx_session")
@@ -134,6 +139,7 @@ async def test_change_password_revokes_other_sessions_pg(
             "/api/v1/auth/login",
             json={"username": "bob_pwd", "password": "OriginalPassword123!"},
         )
+        await accept_current_documents(client2, r_login2)
         assert r_login2.status_code == 200
         cookie2 = client2.cookies.get("alx_session")
         assert cookie1 != cookie2
@@ -167,6 +173,7 @@ async def test_change_password_revokes_other_sessions_pg(
             "/api/v1/auth/login",
             json={"username": "bob_pwd", "password": "OriginalPassword123!"},
         )
+        await accept_current_documents(pg_client, r_old_login)
         assert r_old_login.status_code == 401
 
         # 8. Вход с новым паролем работает
@@ -174,6 +181,7 @@ async def test_change_password_revokes_other_sessions_pg(
             "/api/v1/auth/login",
             json={"username": "bob_pwd", "password": "NewSecretPassword2026!"},
         )
+        await accept_current_documents(pg_client, r_new_login)
         assert r_new_login.status_code == 200
 
 
@@ -200,6 +208,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
         "/api/v1/auth/login",
         json={"username": "the_only_admin", "password": "AdminPassword123!"},
     )
+    await accept_current_documents(pg_client, r_adm_login)
     adm_csrf = r_adm_login.json()["csrf_token"]
     admin_id = r_adm_login.json()["user"]["id"]
 
@@ -263,6 +272,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
             "/api/v1/auth/login",
             json={"username": "regular_user_1", "password": "UserPassword123!"},
         )
+        await accept_current_documents(user_client, r_user_login)
         assert r_user_login.status_code == 200
 
         # Попытка доступа к /api/v1/admin/users -> 403 Forbidden

@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.legal import validate_versions
 from app.config import Settings
 from app.core.rbac import ROLE_USER
 from app.core.rate_limit import check_email_request_rate_limit, check_registration_rate_limit
@@ -87,7 +88,10 @@ class RegistrationService:
         user_agent: str | None,
         details: dict[str, str],
         settings: Settings,
+        legal_versions: dict[str, str],
     ) -> PendingRegistration:
+
+        validate_versions(legal_versions)
         if await SystemService.get_registration_mode(db) != "open":
             await AuditService.log_event(
                 db,
@@ -158,6 +162,8 @@ class RegistrationService:
         pending.code_hash = code_hash(settings, pending.id, code)
         pending.link_hash = link_digest(link)
         pending.request_details = details
+        pending.legal_versions = legal_versions
+        pending.legal_accepted_at = now
         pending.expires_at = now + timedelta(seconds=CODE_TTL_SECONDS)
         try:
             await db.commit()
@@ -186,6 +192,7 @@ class RegistrationService:
         now = datetime.now(timezone.utc)
         if not pending or pending.created_at <= now - timedelta(hours=1):
             raise _invalid_challenge()
+        validate_versions(pending.legal_versions)
         if pending.send_count >= MAX_SENDS:
             raise HTTPException(status_code=429, detail={"error": "rate_limit_exceeded"})
         code, link = new_code(), new_link()
@@ -253,6 +260,8 @@ class RegistrationService:
         )
         if not pending or pending.expires_at <= datetime.now(timezone.utc):
             raise _invalid_challenge()
+
+        validate_versions(pending.legal_versions)
         return pending.request_details
 
     @staticmethod
@@ -312,6 +321,10 @@ class RegistrationService:
             email_verified=True,
         )
         db.add(user)
+        await db.flush()
+        from app.services.privacy_service import record_acceptance
+
+        await record_acceptance(db, user.id, pending.legal_versions, pending.legal_accepted_at)
         db.add(PasswordCredential(user_id=user.id, password_hash=pending.password_hash))
         db.add(UserRole(user_id=user.id, role_id=role.id))
         db.add(

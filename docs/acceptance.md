@@ -247,3 +247,84 @@
 - 2026-10-02T18:09:56+03:00, Codex, SENTRY-04: окончательная единая сборка artifacts/sentry-release-final3 + private sentry-private-final3 и offline Sentry validation **passed**, exit 0. Source maps/Debug IDs/minified→TSX/identity/checksums проверены; upload disabled. Установки и сборка выполнялись без credentials. После неё frontend не пересобирался.
 
 - 2026-10-02T18:18:26+03:00: post-build privacy 31 passed, artifact/upload 23 passed; final3 повторно validated без rebuild. Main gzip level 9 после final3 125647 bytes. Local links/UTF-8/secret/structural/diff checks passed. Owned PostgreSQL/test servers stopped; перечисленные loopback ports свободны. Live Sentry/SaaS/Docker/remote CI gates не выполнены.
+
+## PRIVACY-01..06 — локальная приёмка 2026-10-03T06:18:32.6464381+03:00
+
+Ветка `new` от main `9e31fe9`, dirty working tree; публикации/commit/deploy нет. Стенд: Windows, Python 3.12.14, PostgreSQL 16.15 (собственный новый cluster, loopback 55439, маркированная test DB), Node 24.20.0. Синтетические данные; реальные PostgreSQL, Argon2/TOTP/WebAuthn и browser SDK. Defaults не включались ради тестов: enabled выбран отдельно, обязательный WebAuthn UV сохранён.
+
+| Проверка / фактическая команда | Результат |
+| --- | --- |
+| `python -m pytest tests -m 'not external_email' --basetemp artifacts/privacy-pytest-verified -q` | **328 passed +16 subtests**, 5 внешних email deselected. После этого добавлены stale OIDC/resend tests и исправлена проверка resend; финальная целевая проверка ниже |
+| `pytest tests/integration/test_privacy_pg.py tests/integration/test_registration_pg.py tests/test_registration.py tests/test_privacy.py tests/integration/test_admin_status_audit_pg.py tests/test_g8_sec_regression.py tests/test_security_and_negative_scenarios.py -q` | **51 passed** после последних изменений. Обsolete consent блокирует resend до отправки письма; OIDC/userinfo запрещены при устаревших версиях |
+| PostgreSQL privacy scenarios | 14 дней, cancel строго до границы, proof expiry/action/session/reuse, 7 дней и возобновление после паузы, duplicate/racing requests, worker catch-up/два экземпляра, cancel-vs-worker, admin role/block race, cascades/audit PII/90/30-day retention, independent rate limits, TOTP replay/неверный factor, CSRF и direct API gate |
+| Миграции | Fresh 0001→0004 ранее passed; финальный downgrade до 0003 и upgrade 0004 с синтетическим legacy UA/geo — **passed**, очищены необратимо. Первая диагностическая попытка отклонена Windows Proactor loop; использован штатный Selector loop |
+| Backup/restore (`test_ops_backup_restore_totp.py`, входит в полный pytest) | **passed**, отдельные собственные маркированные source/restore DB; удалённый после dump субъект и его audit PII отсутствуют после восстановления со свежим журналом; TOTP/credentials действующего пользователя сохранены |
+| `npm --prefix frontend run test:unit` / `test:components` | **11 unit +25 component passed**: browser storage failure/expired/malformed, explicit checkbox, consent gate, telemetry permissions, focus trapping/restore |
+| `playwright test privacy.spec.ts` на явных default-off/enabled профилях | **3+3 passed**, только клавиатура: skip/native navigation/forms/consent/cookies/reload/две вкладки; request/cancel, limited access, userinfo/refresh revocation/cooldown; admin dialog Tab/Shift+Tab/Escape. Enabled использует настоящий виртуальный CTAP2 с UV и точный localhost RP/origin |
+| Ordinary Playwright `sso.spec.ts`, `multi_client_sso.spec.ts`, `passkey.spec.ts`, `telemetry.spec.ts` | **6 default +5 enabled passed** (default 5 и отдельный real two-client/installed SDK 1). SMTP действительно доставляет код в локальный capture; обязательный email не обходился. Direct/proxy OIDC return_to сохраняет state/PKCE и работает как относительный адрес |
+| `npm --prefix frontend run test:telemetry:browser` | **9 passed**, реальные SDK envelopes/compressed Replay; production hard-off, нет запуска до согласия, отдельное Replay permission, отзыв останавливает без отправки сегмента |
+| Ruff backend/tests/scripts; mypy backend/SDK; frontend typecheck + typecheck:tests + ESLint + production build | **passed**; mypy 47 файлов. Build предупреждает о JS chunk >500 kB; это не скрыто настройкой и не ошибка сборки |
+| Сканирование секретов с контрольным образцом; инварианты конфигурации; whitespace; Markdown/UTF-8/links | **passed**, 126 historical candidates/0 new, контрольный искусственный секрет отклонён; пять invariants (не полноценный CVE-аудит); 24 local links без missing targets |
+
+Первоначальные тестовые сбои не объявлялись успешными: исправлены mock-контракты после row locks, stale pytest temp permissions (новый basetemp), interprocess fixed-port/proxy harness, неверный тестовый RP IP, browser selectors и relative return_to. Серверные лимиты/CSRF/MFA/email/UV и обязательные assertions сохранены. В Python остаются 27/11 предупреждений (Authlib deprecation и AsyncMock coroutine warnings в unit mocks); PostgreSQL/browser crypto не заменялись mock.
+
+**Не проверено / внешние условия:** production реквизиты/провайдеры/локализация и юридическая достаточность draft, реальные внешние архивы/retention jobs, Docker/Nginx, remote GitHub CI/release dry-run, реальная SES/testmail рассылка и прежние Sentry SaaS/staging/p95/alerts gates. Эта локальная задача не закрывает общую приёмку GOAL раздела 8. Telemetry defaults off; production Replay off. Собственный test cluster/servers остановлены; контроль портов 55439..55442/5187 и оставшихся owned test processes passed.
+
+
+## WEB-UI-01..03 — тема и раскладка, 03.10.2026
+
+Проверки ветки new, локальная dirty revision, Codex. Начало: 2026-10-03T16:10:54.9182182+03:00. Среда: Windows, Python 3.12.14, Node 24.20.0, Playwright 1.63.0, отдельная маркированная PostgreSQL 16.15 на loopback; synthetic accounts. Время промежуточной фиксации: 2026-10-03T16:54:11.4499531+03:00. Общая приёмка GOAL и remote CI этим отчётом не закрываются.
+
+| Проверка | Фактический результат |
+| --- | --- |
+| npm typecheck/typecheck:tests/lint/build | passed; 316 modules, основной JS 561.11 kB, gzip 172.83 kB; прежнее предупреждение о chunk >500 kB сохраняется |
+| npm test:unit / test:components | 11 / 25 passed; ожидаемый синтетический ErrorBoundary stack не является падением |
+| appearance.spec.ts | 18 browser-hosted UI unit cases с явно подставленными контрактами прошли на production build, локальный HTTP server с enforced CSP script-src/style-src self; policy violations 0. Это не доказательство реального auth/MFA |
+| Palette | Проверенные обычные тексты ≥4.5, focus/control borders ≥3 в обеих темах; QR белый с тёмными модулями |
+| Mouse/labels | Login и оба password поля регистрации: click → actual focus → keyboard type при 1908×901 и 390×844, в обеих темах, с cookies |
+| Brave | Установленный Brave product 154.1.96.59, Chromium engine 154.0.8037.58; headless отдельный профиль без расширений. Реальные click/type на текущих localhost:3000 login/register и новом localhost:5187 login прошли в обоих размерах. Однократный сбой не воспроизведён. Новый реальный backend имеет closed registration; его скрытая форма не открывалась подменой capabilities |
+| Privacy E2E | 3 default-off + 3 enabled passed; повтор enabled после изменения scroll area и финальный default-off по 3 passed. Настоящие PostgreSQL, cookie/CSRF/ограниченные сессии, отмена и virtual WebAuthn с обязательным UV |
+| Last admin | Отдельный настоящий браузерный запрос synthetic admin к PostgreSQL: POST 403; сообщение отображается в strong alert с красным фоном/границей. Серверная защита не менялась |
+| Demo | 6 выбранных rendering/store/callback CSRF/escaping unit tests passed; два HTTP demo подтвердили system/manual/reload/native select в настоящем браузере |
+| Python focused | pytest tests/test_demo_theme.py tests/test_demo_sessions.py tests/test_privacy.py tests/test_server_lifecycle.py -k 'not real': 17 passed, 2 неизменённых process lifecycle cases deselected; Ruff check/format 4 files passed |
+| CI | ci.yml и run_e2e_suite.py включают appearance/default privacy и enabled privacy; PYTHON_BIN/profile передаются явно. YAML/команды проверяются локально; удалённый CI не запущен |
+
+Визуально просмотрены light/dark desktop/mobile consent и настоящий last-admin alert; изображения в ignored artifacts/ui. Проверка мобильной admin page обнаружила переполнение старых flex rows/tabs; добавлены переносы, повтор 18/18 прошёл. Ошибки первого стенда: слишком широкий mock route перехватил src/api; early documentElement в CSP monitor был null; Windows Uvicorn требовал штатный SelectorEventLoop; одна npm команда была вызвана из корня. Причины исправлены, assertions/защиты не ослаблялись.
+
+Автоматический просмотр исходников обнаружил только искусственный QR-content UI unit fixture; точечная pragma на этой строке документирует его происхождение, baseline/правила не расширялись. Финальные результаты просмотра исходников/ссылок и остановки стенда дополняются после завершения. Docker CLI здесь недоступен: контейнер localhost:3000 не пересобирался. Для появления изменений в нём нужна обычная пересборка frontend. Production, реальные письма, публикация и SaaS не выполнялись.
+
+
+Финальный контроль 2026-10-03T17:03:08.9401640+03:00: WEB-UI-01..03 done локально. Просмотр исходников — 126 исторических совпадений /0 новых, искусственный образец отклонён. UTF-8/local links в 13 документах, YAML, whitespace и пять ограниченных инвариантов passed. Тестовые Vite/CSP/backend/demo/PG остановлены; шесть owned loopback ports освобождены, прежний localhost:3000 HTTP200. Новые remote CI/Docker/production проверки остаются непроведёнными; код не опубликован и не закоммичен.
+
+
+## PR #2 — наблюдаемые remote CI failures, 2026-10-03T20:25:34.844787+03:00
+
+[Run 37137927331](https://github.com/alxprgstech/sso/actions/runs/37137927331), HEAD 3dbd10b: шесть внутренних jobs passed, backend и Playwright failed. Это дополняет прежние записи «remote CI не проверен» конкретным результатом, без объявления общей приёмки.
+
+Backend `ruff check` passed, полный `ruff format --check` failed: 11 файлов/131 formatted. Локальная read-only проверка воспроизвела оба результата. Уточнение: последнее локальное format подтверждение относилось к четырём UI-related Python файлам; оно не было доказательством полного CI format scope. Backend mypy/migrations/tests в этом job skipped.
+
+Default-off browser: 26 passed/1 failed (appearance light resize, reserve mismatch 105.18787499999999 px); enabled skipped. Неизменённый целевой тест в диагностической серии 8 passed, отдельный mocked UI probe 22/30 transient mismatches, после двух кадров mismatch 0. Ни тот ни другой не считается исправленным CI или реальной auth/PG проверкой. Подробности и следующие проверки: [анализ CI](reviews/pr-2-ci.md).
+
+
+## PR-FIX-02 — промежуточные проверки 2026-10-03T21:02:45.617407+03:00
+
+Исправления PR #2: 35 CodeScene замечаний в 13 файлах, CI formatter и cookies resize race. Локальные проверки новой реализации: полный Ruff scope lint/format (142 files), mypy (47 source files), frontend typecheck/typecheck:tests/ESLint/build, 11 unit/26 component; appearance UI unit browser 19 passed, SDK real browser 9 passed. Default-off pytest 340 passed +16 subtests, 5 штатно deselected external email; enabled subset CI 21 passed. Настоящая PostgreSQL 16.15; downgrade/upgrade 0004 с legacy privacy cleanup passed, backup/restore со свежим журналом входит в полный pytest. Сканы: 126 исторических сигналов, новых 0; искусственный контроль отклонён, пять ограниченных инвариантов и версии passed. Обе полные E2E кампании и удалённые CI/CodeScene ещё идут/предстоят.
+
+Первый PostgreSQL запуск получил connection timeout из-за default port 5432 вместо 55439; исправлен только свой стенд. Следующий полный pytest дал 330 passed/2 failed из-за enabled-флагов локального .env, после явного default-off профиля CI — 340 passed. Браузерный harness после освобождения собственного preview-порта был interrupted при зависшем sandbox process cleanup; отдельный повтор с доступом к native lifecycle дал 9 passed. Assertions, crypto/UV/CSRF, default flags и обязательные suites не ослаблялись.
+
+
+PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный изменённый E2E runner --suite all **passed**, default-off **28**, enabled **8**, настоящая PostgreSQL, локальный SMTP и виртуальный WebAuthn UV. Первый campaign выявил ошибку перенаправления runner из локального .env; собственный FRONTEND_URL теперь явно 5173, regression добавлена. Browser SDK **9**, component **26**, typechecks/lint/build прошли после последнего UI extraction. Последний focused backend/runner прогон ещё выполняется; удалённые gates предстоят.
+
+Финальный focused прогон после TOTP predicate и runner redirect fix (2026-10-03T21:09:50.637616+03:00): `35 passed, 1 warning in 29.22s`. Команда: pytest tests/integration/test_privacy_pg.py tests/integration/test_passkey_pg.py tests/test_server_lifecycle.py; настоящая PostgreSQL, включая process lifecycle.
+
+
+Удалённый CI [37143192991](https://github.com/alxprgstech/sso/actions/runs/37143192991) на 921ddcb **success**: 8 внутренних jobs, external SES job штатно skipped на PR. Backend: Ruff lint/full format142, mypy47, PostgreSQL default-off333 +14 subtests (8 прежних skips платформы/lifecycle и 5 external-email deselected), enabled21. E2E default-off28/enabled8; frontend/SDK/containers/dependency scan/CD/version passed. [CodeScene7799296](https://codescene.io/projects/85555/delta/results/7799296): два gates passed, осталось только privacy_service.verify_reauthentication Complex Method10 threshold9, score9.69. Девять других новых файлов10.00; backup10.00, runner9.22, mfa7.11.
+
+Последнее исправление (2026-10-03T21:16:49.946963+03:00) разделяет session/password проверки; целевые privacy/MFA/WebAuthn PG: 23 passed, 10 warnings in 21.63s; Ruff/mypy/whitespace passed. Новый удалённый gate ещё не оценён.
+
+
+### PR-FIX-02 — итог 2026-10-03T21:22:54.861387+03:00
+
+[CI37143596385](https://github.com/alxprgstech/sso/actions/runs/37143596385) для 8b3e958 **success**, восемь внутренних jobs: backend PostgreSQL333 +14 subtests, enabled21, Ruff142/mypy47, browser28+8, frontend build/components/real SDK browser, SDK clean install/build, container packaging, dependencies, version и inactive CD. Восемь существующих platform/lifecycle skips и пять external email deselected не менялись; local Windows full340 +16 subtests, последние focused35 и privacy/MFA23 прошли. Внешняя SES job skipped по PR policy.
+
+[CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) **success: все три quality gates passed**. Новые файлы соответствуют строгому10.00; mfa_service6.81→7.11, backup9.49→10.00, runner7.93→9.22. Исходные failed причины устранены без suppression, изменения профиля качества или ослабления assertions/security. Фактические ранние failures и ограничения среды сохранены выше. Общая production/legal/provider приёмка остаётся отдельной; исправления не развёртывались и PR не merged.

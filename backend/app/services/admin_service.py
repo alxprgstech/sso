@@ -5,7 +5,7 @@ from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.exceptions import AuthorizationException
-from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin
+from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin, lock_admin_invariant
 from app.core.security import generate_random_token, hash_password
 from app.models.audit import AuditEvent
 from app.models.oidc import OIDCClient, OIDCRedirectUri
@@ -26,6 +26,7 @@ class AdminService:
                 .outerjoin(Role, Role.id == UserRole.role_id)
                 .where(
                     User.is_active.is_(True),
+                    User.deletion_scheduled_for.is_(None),
                     or_(User.is_superuser.is_(True), Role.name == ROLE_ADMIN),
                 )
             )
@@ -62,7 +63,9 @@ class AdminService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    async def get_user_by_id(
+        db: AsyncSession, user_id: uuid.UUID, *, lock: bool = False
+    ) -> User | None:
         stmt = (
             select(User)
             .options(
@@ -71,6 +74,8 @@ class AdminService:
             )
             .where(User.id == user_id)
         )
+        if lock:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -148,7 +153,8 @@ class AdminService:
         roles: list[str] | None = None,
         new_password: str | None = None,
     ) -> User:
-        user = await AdminService.get_user_by_id(db, user_id)
+        await lock_admin_invariant(db)
+        user = await AdminService.get_user_by_id(db, user_id, lock=True)
         if not user:
             raise AuthorizationException("Пользователь не найден")
 
@@ -173,6 +179,7 @@ class AdminService:
                 must_revoke_sessions = True
             await AuditService.log_event(
                 db,
+                commit=False,
                 event_type="user_blocked" if not is_active else "user_unblocked",
                 user_id=current_admin.id,
                 details={"target_user_id": str(user.id)},
@@ -202,6 +209,7 @@ class AdminService:
             must_revoke_sessions = True
             await AuditService.log_event(
                 db,
+                commit=False,
                 event_type="admin_password_reset",
                 user_id=current_admin.id,
                 details={"target_user_id": str(user.id)},

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import socket
 import subprocess
 import sys
 
@@ -10,6 +11,7 @@ from app.core.rate_limit import (
     check_registration_rate_limit,
     get_client_ip,
 )
+from app.legal import REQUIRED_DOCUMENTS
 from fastapi import HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,6 +115,7 @@ async def test_spoofed_headers_cannot_bypass_rate_limit_pg(
     from app.services.audit_service import AuditService
 
     for i in range(5):
+        await check_registration_rate_limit(pg_session, attacker_peer_ip)
         await AuditService.log_event(
             pg_session,
             event_type="registration_attempt",
@@ -150,8 +153,11 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
     4. Доказывается, что лимит срабатывает суммарно по PostgreSQL, а не изолированно в памяти.
     """
     test_db_url = get_test_database_url()
-    port1 = 8011
-    port2 = 8012
+    with socket.socket() as first, socket.socket() as second:
+        first.bind(("127.0.0.1", 0))
+        second.bind(("127.0.0.1", 0))
+        port1 = first.getsockname()[1]
+        port2 = second.getsockname()[1]
 
     # Создаём админа в тестовой БД и открываем регистрацию
     from app.cli.bootstrap_admin import execute_bootstrap
@@ -216,7 +222,7 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
 
     try:
         # Ожидаем готовности обоих процессов
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
             ready1 = False
             ready2 = False
             for _ in range(40):
@@ -260,6 +266,9 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
 
             for idx, url in enumerate(urls, 1):
                 payload = {
+                    "terms_accepted": True,
+                    "data_processing_consent": True,
+                    "legal_versions": REQUIRED_DOCUMENTS,
                     "username": f"dist_user_{idx}",
                     "email": f"dist_{idx}@alxprgs.tech",
                     "password": "Password123!",
@@ -277,6 +286,9 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
             res_4 = await client.post(
                 f"http://127.0.0.1:{port2}/api/v1/auth/register",
                 json={
+                    "terms_accepted": True,
+                    "data_processing_consent": True,
+                    "legal_versions": REQUIRED_DOCUMENTS,
                     "username": "dist_user_4",
                     "email": "dist_4@alxprgs.tech",
                     "password": "Password123!",
@@ -298,8 +310,16 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
 
     finally:
         try:
-            proc1.terminate()
-            proc2.terminate()
+            if sys.platform == "win32":
+                for process in (proc1, proc2):
+                    subprocess.run(
+                        ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                        capture_output=True,
+                        check=False,
+                    )
+            else:
+                proc1.terminate()
+                proc2.terminate()
             proc1.wait(timeout=5)
             proc2.wait(timeout=5)
         except Exception:
@@ -333,6 +353,9 @@ async def test_fail_closed_on_database_failure():
     class BrokenDbSession:
         async def execute(self, stmt):
             raise ConnectionRefusedError("Database connection lost during rate limit query")
+
+        async def rollback(self):
+            pass
 
     broken_db = BrokenDbSession()
 

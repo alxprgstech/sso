@@ -13,21 +13,22 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
 
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentPage(user ? "dashboard" : "login")}>
-          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm">
+      <div className="navbar-inner max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <button type="button" className="flex items-center space-x-3 cursor-pointer brand-button" onClick={() => setCurrentPage(user ? "dashboard" : "login")} aria-label="ALXPRGS SSO — личный кабинет">
+          <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-sm" aria-hidden="true">
             A
           </div>
           <div>
             <span className="text-xl font-bold tracking-tight text-gray-900">ALXPRGS</span>
             <span className="text-xl font-medium text-blue-600 ml-1">SSO</span>
           </div>
-        </div>
+        </button>
 
         {user ? (
-          <div className="flex items-center space-x-4">
-            <nav className="flex space-x-2">
+          <div className="navbar-account flex items-center gap-3">
+            <nav className="flex space-x-2" aria-label="Основная навигация">
               <button
+                type="button" aria-current={currentPage === "dashboard" ? "page" : undefined}
                 onClick={() => setCurrentPage("dashboard")}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   currentPage === "dashboard"
@@ -39,6 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
               </button>
               {isAdmin && (
                 <button
+                  type="button" aria-current={currentPage === "admin" ? "page" : undefined}
                   onClick={() => setCurrentPage("admin")}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     currentPage === "admin"
@@ -53,7 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
 
             <div className="h-5 w-px bg-gray-200" />
 
-            <div className="flex items-center space-x-3">
+            <div className="navbar-details flex items-center gap-3">
               <div className="text-right">
                 <div className="text-sm font-semibold text-gray-900 leading-none">{user.username}</div>
                 <div className="text-xs text-gray-500 mt-0.5">{user.email}</div>

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from app.legal import REQUIRED_DOCUMENTS
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -40,6 +41,9 @@ def test_registration_when_closed_rejected():
         res = client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "newuser",
                 "email": "newuser@alxprgs.tech",
                 "password": "ValidPassword123!",
@@ -69,6 +73,9 @@ def test_registration_when_bootstrap_incomplete_rejected():
         res = client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "earlyuser",
                 "email": "early@alxprgs.tech",
                 "password": "ValidPassword123!",
@@ -105,11 +112,16 @@ def test_registration_success_open_mode(monkeypatch: pytest.MonkeyPatch):
     # 4. get Role user
     # 5. refresh
     res_cfg = MagicMock(scalar_one_or_none=MagicMock(return_value=config))
-    res_rl = MagicMock(scalar_one_or_none=MagicMock(return_value=0))
     res_coll = MagicMock(scalar_one_or_none=MagicMock(return_value=None))
     res_role = MagicMock(scalar_one_or_none=MagicMock(return_value=role_user))
 
-    mock_db.execute.side_effect = [res_cfg, res_rl, res_coll, res_role]
+    mock_db.execute.side_effect = [
+        res_cfg,
+        MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc))),
+        MagicMock(scalar_one=MagicMock(return_value=1)),
+        res_coll,
+        res_role,
+    ]
 
     async def _mock_get_db():
         yield mock_db
@@ -119,6 +131,9 @@ def test_registration_success_open_mode(monkeypatch: pytest.MonkeyPatch):
         res = client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "valid_user",
                 "email": "valid_user@alxprgs.tech",
                 "password": "SecurePassword123!",
@@ -147,6 +162,9 @@ def test_registration_rejects_privileged_fields():
         {"email_verified": True},
     ]:
         body = {
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "hacker",
             "email": "hacker@alxprgs.tech",
             "password": "Password123!",
@@ -163,6 +181,9 @@ def test_registration_validation_errors():
     r1 = client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "user1",
             "email": "u1@alxprgs.tech",
             "password": "Password123!",
@@ -175,6 +196,9 @@ def test_registration_validation_errors():
     r2 = client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "user2",
             "email": "u2@alxprgs.tech",
             "password": "short",
@@ -187,6 +211,9 @@ def test_registration_validation_errors():
     r3 = client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "user3",
             "email": "not-an-email",
             "password": "Password123!",
@@ -211,10 +238,14 @@ def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(AuthService, "register_user", fake_register)
 
     res_cfg = MagicMock(scalar_one_or_none=MagicMock(return_value=config))
-    res_rl = MagicMock(scalar_one_or_none=MagicMock(return_value=0))
     res_coll = MagicMock(scalar_one_or_none=MagicMock(return_value=existing_user))
 
-    mock_db.execute.side_effect = [res_cfg, res_rl, res_coll]
+    mock_db.execute.side_effect = [
+        res_cfg,
+        MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc))),
+        MagicMock(scalar_one=MagicMock(return_value=1)),
+        res_coll,
+    ]
 
     async def _mock_get_db():
         yield mock_db
@@ -224,6 +255,9 @@ def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
         res = client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "existing",
                 "email": "existing@alxprgs.tech",
                 "password": "Password123!",
@@ -244,6 +278,9 @@ def test_registration_invalid_origin_rejected():
     res = client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "origin_test",
             "email": "origin@alxprgs.tech",
             "password": "Password123!",
@@ -262,9 +299,12 @@ def test_registration_rate_limiting():
 
     res_cfg = MagicMock(scalar_one_or_none=MagicMock(return_value=config))
     # Лимит превышен: count = 10 (>= 5)
-    res_rl = MagicMock(scalar_one_or_none=MagicMock(return_value=10))
 
-    mock_db.execute.side_effect = [res_cfg, res_rl]
+    mock_db.execute.side_effect = [
+        res_cfg,
+        MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc))),
+        MagicMock(scalar_one=MagicMock(return_value=10)),
+    ]
 
     async def _mock_get_db():
         yield mock_db
@@ -274,6 +314,9 @@ def test_registration_rate_limiting():
         res = client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "flooder",
                 "email": "flood@alxprgs.tech",
                 "password": "Password123!",

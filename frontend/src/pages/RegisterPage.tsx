@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
 import type { RegisterResponse } from "../types/api";
+import { ConsentFields, useLegalDocuments } from "./LegalPage";
 
 interface RegisterPageProps {
   onNavigateToLogin: () => void;
@@ -20,6 +21,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
   const [challenge, setChallenge] = useState<RegisterResponse | null>(null);
   const [code, setCode] = useState("");
   const [verified, setVerified] = useState(false);
+  const { documents, error: documentError } = useLegalDocuments();
+  const [terms, setTerms] = useState(false);
+  const [consent, setConsent] = useState(false);
 
   const isClosed = capabilities && capabilities.registration_mode !== "open";
 
@@ -27,6 +31,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    if (!documents || !terms || !consent) {
+      setError("Прочитайте документы и подтвердите условия и согласие на обработку данных.");
+      return;
+    }
 
     // Валидация на клиенте
     if (username.trim().length < 3) {
@@ -52,6 +60,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
         email: email.trim(),
         password,
         confirm_password: confirmPassword,
+        terms_accepted: true,
+        data_processing_consent: true,
+        legal_versions: documents.required_versions,
       });
 
       setChallenge(res);
@@ -98,7 +109,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="auth-page flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="w-12 h-12 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-2xl shadow-md">
           A
@@ -138,9 +149,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
             </div>
           ) : (
             <>
-              {error && (
-                <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
-                  {error}
+              {(error || documentError) && (
+                <div role="alert" id="registration-error" className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
+                  {error || documentError}
                 </div>
               )}
 
@@ -167,11 +178,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
               ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="registerpage-field-1" className="block text-sm font-medium text-gray-700">
                     Имя пользователя (логин)
                   </label>
                   <div className="mt-1">
-                    <input
+                    <input id="registerpage-field-1" name="username" autoComplete="username"
                       type="text"
                       required
                       minLength={3}
@@ -187,9 +198,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Email адрес</label>
+                  <label htmlFor="registerpage-field-2" className="block text-sm font-medium text-gray-700">Email адрес</label>
                   <div className="mt-1">
-                    <input
+                    <input id="registerpage-field-2" name="email" autoComplete="email"
                       type="email"
                       required
                       value={email}
@@ -201,9 +212,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Пароль</label>
+                  <label htmlFor="registerpage-field-3" className="block text-sm font-medium text-gray-700">Пароль</label>
                   <div className="mt-1">
-                    <input
+                    <input id="registerpage-field-3" name="password" autoComplete="new-password"
                       type="password"
                       required
                       minLength={8}
@@ -216,11 +227,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="registerpage-field-4" className="block text-sm font-medium text-gray-700">
                     Подтверждение пароля
                   </label>
                   <div className="mt-1">
-                    <input
+                    <input id="registerpage-field-4" name="password_confirmation" autoComplete="new-password"
                       type="password"
                       required
                       minLength={8}
@@ -231,10 +242,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                   </div>
                 </div>
 
+                <ConsentFields terms={terms} consent={consent} onTerms={setTerms} onConsent={setConsent} />
                 <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={loading || Boolean(success)}
+                    disabled={loading || Boolean(success) || !documents || !terms || !consent}
                     className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
                   >
                     {loading ? "Регистрация..." : "Зарегистрироваться"}

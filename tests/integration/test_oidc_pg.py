@@ -9,6 +9,8 @@ from app.cli.bootstrap_admin import execute_bootstrap
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.privacy import accept_current_documents
+
 
 def make_pkce_pair() -> tuple[str, str]:
     verifier = base64.urlsafe_b64encode(os.urandom(32)).decode("ascii").rstrip("=")
@@ -74,6 +76,7 @@ async def test_oidc_client_creation_and_redirect_uri_strict_validation_pg(
         "/api/v1/auth/login",
         json={"username": "admin_client_mgr", "password": "AdminClientPass2026!"},
     )
+    await accept_current_documents(pg_client, login_res)
     adm_csrf = login_res.json()["csrf_token"]
 
     # 2. Регистрируем клиента через админ API
@@ -177,6 +180,7 @@ async def test_oidc_authorization_code_pkce_flow_pg(
         "/api/v1/auth/login",
         json={"username": "oidc_user_pkce", "password": "OidcPassword2026!"},
     )
+    await accept_current_documents(pg_client, login_res)
     adm_csrf = login_res.json()["csrf_token"]
 
     c_res = await pg_client.post(
@@ -312,6 +316,7 @@ async def test_oidc_userinfo_and_id_token_rejection_pg(
         "/api/v1/auth/login",
         json={"username": "userinfo_tester", "password": "UserinfoPassword123!"},
     )
+    await accept_current_documents(pg_client, login_res)
     adm_csrf = login_res.json()["csrf_token"]
 
     c_res = await pg_client.post(
@@ -399,6 +404,7 @@ async def test_refresh_token_rotation_and_replay_family_revocation_pg(
         "/api/v1/auth/login",
         json={"username": "rotation_user", "password": "RotationPassword123!"},
     )
+    await accept_current_documents(pg_client, login_res)
     adm_csrf = login_res.json()["csrf_token"]
 
     c_res = await pg_client.post(
@@ -525,6 +531,7 @@ async def test_seamless_cross_client_sso_and_rp_logout_pg(
         "/api/v1/auth/login",
         json={"username": "sso_wanderer", "password": "WandererPass2026!"},
     )
+    await accept_current_documents(pg_client, login_res)
     assert login_res.status_code == 200
     adm_csrf = login_res.json()["csrf_token"]
 

@@ -520,19 +520,20 @@ jobs:
           python scripts/manage_test_server.py start --port 8000 --pidfile /tmp/backend.pid --logfile /tmp/backend_default_off.log --profile default-off
           python scripts/manage_test_server.py preflight --profile default-off --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
 
-      - name: Run Default-off Playwright E2E Tests (sso.spec.ts & multi_client_sso.spec.ts)
+      - name: Run Default-off Playwright E2E and UI Regressions
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: "http://localhost:5173"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           PYTHON_BIN: python
+          PRIVACY_ENABLED_PROFILE: "0"
           E2E_CLIENT1_SECRET: analytics_client_secret_123
           E2E_CLIENT2_SECRET: docs_client_secret_123
           E2E_USERNAME: compose_admin
           E2E_PASSWORD: ComposeAdminPass2026!
           E2E_MAILBOX_PATH: /tmp/sso-e2e-mailbox.jsonl
         run: |
-          npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts e2e/telemetry.spec.ts
+          npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts e2e/telemetry.spec.ts e2e/privacy.spec.ts e2e/appearance.spec.ts
 
       - name: Stop Default-off Backend Server
         run: |
@@ -563,13 +564,15 @@ jobs:
           python scripts/manage_test_server.py start --port 8000 --pidfile /tmp/backend.pid --logfile /tmp/backend_enabled.log --profile enabled
           python scripts/manage_test_server.py preflight --profile enabled --backend-url http://127.0.0.1:8000 --frontend-url http://localhost:5173
 
-      - name: Run Enabled Playwright E2E Tests (passkey.spec.ts)
+      - name: Run Enabled Playwright E2E and Privacy Tests
         working-directory: frontend
         env:
           PLAYWRIGHT_BASE_URL: "http://localhost:5173"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          PYTHON_BIN: python
+          PRIVACY_ENABLED_PROFILE: "1"
         run: |
-          npx playwright test e2e/passkey.spec.ts e2e/telemetry.spec.ts
+          npx playwright test e2e/passkey.spec.ts e2e/telemetry.spec.ts e2e/privacy.spec.ts
 
       - name: Stop Enabled Backend Server
         if: always()

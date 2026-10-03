@@ -1,10 +1,15 @@
 // Synthetic SDK integration harness. This entry is never in the production build.
 import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
-import { initializeTelemetry } from "../../src/telemetry/sentry";
+import { initializeTelemetry, watchTelemetryConsent } from "../../src/telemetry/sentry";
+
+import { savePrivacyChoice } from "../../src/telemetry/consent";
+const consentMode = new URLSearchParams(location.search).get("consent");
+if (consentMode !== "none") savePrivacyChoice(true, consentMode !== "diagnostics"); // Explicit synthetic permission.
 
 const environment = new URLSearchParams(location.search).get("environment") === "staging" ? "staging" : "production";
 const parameters = new URLSearchParams(location.search);
+parameters.delete("consent");
 parameters.delete("environment"); // Test control, never a user/auth parameter.
 history.replaceState(null, "", location.pathname + (parameters.size ? "?" + parameters.toString() : ""));
 initializeTelemetry({ enabled: true, dsn: "https://public@o1.ingest.de.sentry.io/1", environment,
@@ -27,3 +32,5 @@ window.addEventListener("sdk-test", () => {
     void fetch("https://external.invalid/api/telemetry-propagation?secret=" + secret).catch(() => {});
   });
 });
+
+window.addEventListener("privacy-revoke", () => { savePrivacyChoice(false, false); watchTelemetryConsent(); });

@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 class TOTPCredential(Base):
     __tablename__ = "totp_credentials"
 
+    last_verified_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),

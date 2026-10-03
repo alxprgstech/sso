@@ -62,7 +62,7 @@ python scripts/backup_db.py --docker --output-dir backups/
 ### 5.2. Восстановление данных
 Восстановление производится с явным подтверждением:
 ```bash
-python scripts/restore_db.py backups/<backup_file>.sql --confirm --docker
+python scripts/restore_db.py backups/<backup_file>.sql --confirm --deletion-journal <свежий-журнал.json> --docker
 ```
 
 ### 5.3. Генерация и ротация ключей

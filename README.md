@@ -257,3 +257,14 @@ python scripts/send_test_verification_email.py --to recipient@example.com --clea
 Backend/frontend errors и static tracing реализованы с default-off flags и нулевыми rates. Конфигурация браузера приходит из публичного database-free `/api/v1/auth/telemetry-config` с bootstrap timeout 300 ms. Production Replay выключен кодом; staging использует отдельный локальный worker после privacy-приёмки. Release identity общая VERSION/full SHA; private source maps не входят в deploy artifacts. Настройка, отключение, проверки, live-блокеры: [docs/observability.md](docs/observability.md), [ADR-0010](docs/adr/0010-sentry-observability.md).
 
 Для ручной source-сборки Compose сначала задайте `ALX_BUILD_SHA` полным проверенным SHA (`$env:ALX_BUILD_SHA = git rev-parse HEAD` в PowerShell, `export ALX_BUILD_SHA=$(git rev-parse HEAD)` в Bash). Start scripts выполняют это сами; требуется Git. Для frontend release artifact используйте `frontend/Dockerfile.release`, без повторной компиляции. Это не запускает deployment.
+
+## Конфиденциальность и удаление
+
+Публичные проектные документы доступны на `/privacy`, `/terms`, `/cookies`, `/data-consent`. Регистрация требует отдельных условий и согласия; существующие пользователи принимают актуальные версии после входа. Браузерная диагностика выключена до opt-in, Replay требует отдельного staging-разрешения. Отказ не мешает входу.
+
+Удаление — через 14 дней, с отменой до назначенного срока и новой обычной заявкой через 7 дней после отмены. На время ожидания доступ ограничен управлением удалением. Audit 90 дней, backup/журнал 30 дней; восстановление требует свежего журнала удалений. Примените миграцию `0004_privacy` перед запуском новой версии. [Правила и ограничения](docs/privacy.md), [API](docs/api.md), [эксплуатация](docs/operations.md). Реквизиты оператора и production-инфраструктура требуют подтверждения; проектные тексты не заявляют юридическое соответствие.
+
+
+## Оформление web-интерфейса
+
+На всех страницах SSO, включая вход, регистрацию, документы, удаление, личный кабинет и администрирование, доступен выбор «Как в системе / Светлая / Тёмная». Оба demo поддерживают тот же выбор. Настройка сохраняется только в браузере без идентификатора пользователя; между разными адресами сайтов она независима. Cookies закреплены у нижней границы, содержимое прокручивается в свободной области над баннером. [Решение](docs/adr/0012-web-theme-and-cookie-layout.md), [проверки](docs/acceptance.md).

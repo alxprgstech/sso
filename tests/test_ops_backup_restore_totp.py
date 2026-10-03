@@ -260,6 +260,16 @@ async def test_backup_restore_and_totp_key_recovery(monkeypatch: pytest.MonkeyPa
                     cwd=BACKEND,
                 )
                 seed_source(base, source, password, key, secret)
+                erased_id = uuid.uuid4()
+                with psycopg.connect(pg_uri(source_url)) as conn:
+                    conn.execute(
+                        "INSERT INTO users(id,username,email,is_active,is_superuser,email_verified) VALUES (%s,'erased_subject','erased@example.test',true,false,true)",
+                        (erased_id,),
+                    )
+                    conn.execute(
+                        "INSERT INTO audit_events(id,event_type,user_id,ip_address,user_agent,details) VALUES (gen_random_uuid(),'synthetic_erasure',%s,'192.0.2.1','legacy UA',jsonb_build_object('target_user_id',%s::text,'email','erased@example.test'))",
+                        (erased_id, erased_id),
+                    )
 
                 common = ["--host", base.host, "--port", str(base.port), "--user", base.username]
                 run_checked(
@@ -276,12 +286,30 @@ async def test_backup_restore_and_totp_key_recovery(monkeypatch: pytest.MonkeyPa
                 )
                 backups = list(Path(tmp).glob("*.sql"))
                 assert len(backups) == 1 and backups[0].stat().st_size > 0
+                # Erasure AFTER the backup must survive restoration of that backup.
+                with psycopg.connect(pg_uri(source_url)) as conn:
+                    conn.execute("DELETE FROM users WHERE id=%s", (erased_id,))
+                    conn.execute(
+                        "INSERT INTO deleted_subjects(id,created_at,subject_id,deleted_at) VALUES(gen_random_uuid(),now(),%s,now())",
+                        (erased_id,),
+                    )
+                journal = Path(tmp) / "current-erasure-journal.json"
+                run_checked(
+                    [
+                        sys.executable,
+                        str(ROOT / "scripts" / "export_deletion_journal.py"),
+                        str(journal),
+                    ],
+                    env=env,
+                )
                 run_checked(
                     [
                         sys.executable,
                         str(ROOT / "scripts" / "restore_db.py"),
                         str(backups[0]),
                         "--confirm",
+                        "--deletion-journal",
+                        str(journal),
                         *common,
                         "--db",
                         restore,
@@ -291,6 +319,15 @@ async def test_backup_restore_and_totp_key_recovery(monkeypatch: pytest.MonkeyPa
 
                 with psycopg.connect(pg_uri(db_url(base, restore))) as conn:
                     assert server_identity(conn) == expected_server
+                    assert (
+                        conn.execute(
+                            "SELECT count(*) FROM users WHERE id=%s", (erased_id,)
+                        ).fetchone()[0]
+                        == 0
+                    )
+                    assert conn.execute(
+                        "SELECT user_id,ip_address,user_agent,details FROM audit_events WHERE event_type='synthetic_erasure'"
+                    ).fetchone() == (None, None, None, {})
                     assert (
                         conn.execute(
                             "SELECT count(*) FROM users WHERE username = 'ops_restore_user'"

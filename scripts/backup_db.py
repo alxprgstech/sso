@@ -12,8 +12,13 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from scripts.privacy_journal import EXPORT_SQL, purge_backups
+except ModuleNotFoundError:
+    from privacy_journal import EXPORT_SQL, purge_backups
 
 
 def calculate_sha256(file_path: Path) -> str:
@@ -24,7 +29,7 @@ def calculate_sha256(file_path: Path) -> str:
     return hasher.hexdigest()
 
 
-def main():
+def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backup ALXPRGS SSO Database")
     parser.add_argument("--output-dir", default="backups", help="Directory to save backup files")
     parser.add_argument(
@@ -44,88 +49,114 @@ def main():
         "--db", default=os.getenv("POSTGRES_DB", "sso_db"), help="PostgreSQL database name"
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def postgres_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    if "POSTGRES_PASSWORD" in env:
+        env["PGPASSWORD"] = env["POSTGRES_PASSWORD"]
+    return env
+
+
+def postgres_command(args: argparse.Namespace, tool: str, options: list[str]) -> list[str]:
+    if args.docker:
+        return [
+            "docker",
+            "exec",
+            "-i",
+            args.container,
+            tool,
+            "-U",
+            args.user,
+            "-d",
+            args.db,
+            *options,
+        ]
+    executable = shutil.which(tool)
+    if not executable:
+        raise RuntimeError(
+            f"{tool} is not in PATH; use --docker only for an explicitly verified container"
+        )
+    return [
+        executable,
+        "-w",
+        "-h",
+        args.host,
+        "-p",
+        str(args.port),
+        "-U",
+        args.user,
+        "-d",
+        args.db,
+        *options,
+    ]
+
+
+def create_dump(args: argparse.Namespace, backup_file: Path) -> None:
+    cmd = postgres_command(args, "pg_dump", ["--clean", "--if-exists"])
+    if args.docker:
+        print(f"[*] Executing via Docker container '{args.container}'...")
+        with backup_file.open("wb") as output:
+            subprocess.run(cmd, stdout=output, stderr=subprocess.PIPE, check=True)
+    else:
+        print(f"[*] Executing pg_dump on {args.host}:{args.port}...")
+        subprocess.run(
+            [*cmd, "-f", str(backup_file)],
+            env=postgres_environment(),
+            check=True,
+            stderr=subprocess.PIPE,
+        )
+    if not backup_file.exists():
+        raise RuntimeError("Backup file was not created")
+    if backup_file.stat().st_size == 0:
+        raise RuntimeError("Backup file is empty")
+
+
+def export_snapshot_journal(args: argparse.Namespace, backup_file: Path) -> None:
+    # Restore still requires a NEW journal from the authoritative database,
+    # including erasures performed after this snapshot.
+    cmd = postgres_command(args, "psql", ["-X", "-At", "-v", "ON_ERROR_STOP=1", "-c", EXPORT_SQL])
+    env = os.environ.copy() if args.docker else postgres_environment()
+    journal = subprocess.run(cmd, env=env, check=True, capture_output=True)
+    backup_file.with_suffix(".journal.json").write_bytes(journal.stdout)
+
+
+def remove_failed_backup(backup_file: Path) -> None:
+    for path in (backup_file, backup_file.with_suffix(".journal.json")):
+        if path.exists():
+            path.unlink()
+
+
+def print_backup_result(backup_file: Path) -> None:
+    print("[+] Backup completed successfully!")
+    print(f"    File: {backup_file.resolve()}")
+    print(f"    Size: {backup_file.stat().st_size / 1024:.2f} KB")
+    print(f"    SHA-256: {calculate_sha256(backup_file)}")
+
+
+def main() -> None:
+    args = parse_arguments()
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    purge_backups(out_dir)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_file = out_dir / f"sso_backup_{args.db}_{timestamp}.sql"
-
     print(f"[*] Starting backup for database '{args.db}'...")
-
     try:
-        if args.docker:
-            # Check docker command
-            cmd = [
-                "docker",
-                "exec",
-                "-i",
-                args.container,
-                "pg_dump",
-                "-U",
-                args.user,
-                "-d",
-                args.db,
-                "--clean",
-                "--if-exists",
-            ]
-            print(f"[*] Executing via Docker container '{args.container}'...")
-            with open(backup_file, "wb") as f:
-                subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, check=True)
-        else:
-            # An implicit Docker fallback could address a different PostgreSQL server.
-            pg_dump_path = shutil.which("pg_dump")
-            if not pg_dump_path:
-                raise RuntimeError(
-                    "pg_dump is not in PATH; use --docker only for an explicitly verified container"
-                )
-            env = os.environ.copy()
-            if "POSTGRES_PASSWORD" in os.environ:
-                env["PGPASSWORD"] = os.environ["POSTGRES_PASSWORD"]
-            cmd = [
-                pg_dump_path,
-                "-w",
-                "-h",
-                args.host,
-                "-p",
-                str(args.port),
-                "-U",
-                args.user,
-                "-d",
-                args.db,
-                "--clean",
-                "--if-exists",
-                "-f",
-                str(backup_file),
-            ]
-            print(f"[*] Executing pg_dump on {args.host}:{args.port}...")
-            subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
-
-        if not backup_file.exists() or backup_file.stat().st_size == 0:
-            print("[x] Error: Backup file is empty or was not created.")
-            sys.exit(1)
-
-        size_kb = backup_file.stat().st_size / 1024
-        sha256 = calculate_sha256(backup_file)
-
-        print("[+] Backup completed successfully!")
-        print(f"    File: {backup_file.resolve()}")
-        print(f"    Size: {size_kb:.2f} KB")
-        print(f"    SHA-256: {sha256}")
-
-    except subprocess.CalledProcessError as e:
+        create_dump(args, backup_file)
+        export_snapshot_journal(args, backup_file)
+        print_backup_result(backup_file)
+    except subprocess.CalledProcessError as error:
         print(
-            f"[x] Backup failed (exit {e.returncode}); inspect the server privately",
+            f"[x] Backup failed (exit {error.returncode}); inspect the server privately",
             file=sys.stderr,
         )
-        if backup_file.exists():
-            backup_file.unlink()
+        remove_failed_backup(backup_file)
         sys.exit(1)
-    except Exception as e:
-        print(f"[x] Backup failed: {type(e).__name__}", file=sys.stderr)
-        if backup_file.exists():
-            backup_file.unlink()
+    except Exception as error:
+        print(f"[x] Backup failed: {type(error).__name__}", file=sys.stderr)
+        remove_failed_backup(backup_file)
         sys.exit(1)
 
 

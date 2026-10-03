@@ -7,6 +7,9 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { AdminPage } from "./pages/AdminPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { navigationBreadcrumb } from "./telemetry/sentry";
+import { AppShell } from "./components/AppShell";
+import { AcceptancePage, LegalPage } from "./pages/LegalPage";
+import { AccountDeletionPage } from "./pages/AccountDeletionPage";
 
 const MainContent: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -21,7 +24,7 @@ const MainContent: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center bg-gray-50 py-12">
         <div className="text-gray-500 text-sm font-medium">Загрузка данных сессии...</div>
       </div>
     );
@@ -52,27 +55,30 @@ const MainContent: React.FC = () => {
 
   const isAdmin = user.is_superuser || user.roles.includes("admin");
 
+  if (user.deletion_pending || user.session_purpose === "deletion_management" || window.location.pathname === "/account-deletion") return <AccountDeletionPage />;
+  if (user.legal_acceptance_required !== false) return <AcceptancePage />;
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="flex-1 bg-gray-50 flex flex-col">
       <Navbar currentPage={currentPage} setCurrentPage={page => { navigationBreadcrumb(page); setCurrentPage(page); }} />
-      <main className="flex-1">
+      <div className="flex-1">
         {currentPage === "admin" && isAdmin ? (
           <AdminPage />
         ) : (
           <DashboardPage />
         )}
-      </main>
-      <footer className="border-t border-gray-200 bg-white py-4 text-center text-xs text-gray-500">
-        ALXPRGS SSO &copy; 2026. Закрытая система единого входа для инфраструктуры alxprgs.tech.
-      </footer>
+      </div>
+      <a href="/account-deletion" className="deletion-link">Удаление аккаунта</a>
     </div>
   );
 };
 
 export const App: React.FC = () => {
+  const publicDocument = ["/privacy", "/terms", "/cookies", "/data-consent"].includes(window.location.pathname);
+  if (publicDocument) return <AppShell><LegalPage path={window.location.pathname} /></AppShell>;
   return (
     <AuthProvider>
-      <div data-sentry-block className="sso-sensitive"><MainContent /></div>
+      <AppShell><MainContent /></AppShell>
     </AuthProvider>
   );
 };

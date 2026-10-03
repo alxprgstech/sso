@@ -1,5 +1,6 @@
 import { errorMessage } from "../utils/error";
 import React, { useEffect, useState } from "react";
+import { AccessibleDialog } from "../components/AccessibleDialog";
 import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { AdminClient, AdminUser, AuditEventItem, SystemStatus } from "../types/api";
@@ -250,7 +251,7 @@ export const AdminPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    <div className="admin-page max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       <div className="flex justify-between items-center border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Административная панель</h1>
@@ -258,7 +259,7 @@ export const AdminPage: React.FC = () => {
         </div>
 
         {/* Табы */}
-        <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+        <div className="admin-tabs flex gap-3 bg-gray-100 p-1 rounded-lg">
           <button
             onClick={() => setActiveTab("users")}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -531,7 +532,7 @@ export const AdminPage: React.FC = () => {
 
       {selectedAudit && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedAudit(null); }}>
-          <div role="dialog" aria-modal="true" aria-label="Детали события аудита" className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[85vh] overflow-auto">
+          <AccessibleDialog label="Детали события аудита" onClose={() => setSelectedAudit(null)} className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[85vh] overflow-auto">
             <div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold">Детали события аудита</h2><button type="button" onClick={() => setSelectedAudit(null)} aria-label="Закрыть детали">✕</button></div>
             <dl className="text-sm space-y-2">
               <div><dt className="font-semibold">ID</dt><dd>{selectedAudit.id}</dd></div>
@@ -542,7 +543,7 @@ export const AdminPage: React.FC = () => {
               <div><dt className="font-semibold">User Agent</dt><dd className="break-all">{selectedAudit.user_agent || "—"}</dd></div>
               <div><dt className="font-semibold">Данные</dt><dd><pre className="whitespace-pre-wrap break-all bg-gray-50 rounded p-3">{JSON.stringify(selectedAudit.details, null, 2)}</pre></dd></div>
             </dl>
-          </div>
+          </AccessibleDialog>
         </div>
       )}
 
@@ -688,10 +689,10 @@ export const AdminPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="adminpage-field-1" className="block text-sm font-medium text-gray-700">
                   Текущий пароль администратора (re-authentication)
                 </label>
-                <input
+                <input id="adminpage-field-1"
                   type="password"
                   required
                   value={adminPassword}
@@ -721,7 +722,7 @@ export const AdminPage: React.FC = () => {
       {/* Модальное окно разового показа секрета клиента (USR-09) */}
       {secretModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-gray-100">
+          <AccessibleDialog label="Секрет клиента OIDC" onClose={() => setSecretModal(null)} className="bg-white rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-gray-100">
             <div className="flex items-center space-x-3 text-amber-600">
               <span className="text-2xl">⚠️</span>
               <h3 className="text-lg font-bold text-gray-900">Секрет клиента OIDC (Client Secret)</h3>
@@ -739,19 +740,19 @@ export const AdminPage: React.FC = () => {
             >
               Я сохранил секрет, закрыть
             </button>
-          </div>
+          </AccessibleDialog>
         </div>
       )}
 
       {/* Модальное окно создания пользователя */}
       {showCreateUserModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100">
+          <AccessibleDialog label="Новый пользователь" onClose={() => setShowCreateUserModal(false)} className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100">
             <h3 className="text-lg font-bold text-gray-900">Новый пользователь</h3>
             <form onSubmit={handleCreateUser} className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700">Имя пользователя (username)</label>
-                <input
+                <label htmlFor="adminpage-field-2" className="block text-xs font-medium text-gray-700">Имя пользователя (username)</label>
+                <input id="adminpage-field-2"
                   type="text"
                   required
                   value={newUsername}
@@ -760,8 +761,8 @@ export const AdminPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700">Email</label>
-                <input
+                <label htmlFor="adminpage-field-3" className="block text-xs font-medium text-gray-700">Email</label>
+                <input id="adminpage-field-3"
                   type="email"
                   required
                   value={newEmail}
@@ -770,8 +771,8 @@ export const AdminPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700">Пароль</label>
-                <input
+                <label htmlFor="adminpage-field-4" className="block text-xs font-medium text-gray-700">Пароль</label>
+                <input id="adminpage-field-4"
                   type="password"
                   required
                   value={newPassword}
@@ -807,19 +808,19 @@ export const AdminPage: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
+          </AccessibleDialog>
         </div>
       )}
 
       {/* Модальное окно создания OIDC клиента */}
       {showCreateClientModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100">
+          <AccessibleDialog label="Регистрация OIDC-клиента" onClose={() => setShowCreateClientModal(false)} className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-gray-100">
             <h3 className="text-lg font-bold text-gray-900">Регистрация OIDC-клиента</h3>
             <form onSubmit={handleCreateClient} className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700">Название приложения</label>
-                <input
+                <label htmlFor="adminpage-field-5" className="block text-xs font-medium text-gray-700">Название приложения</label>
+                <input id="adminpage-field-5"
                   type="text"
                   required
                   value={newClientName}
@@ -829,8 +830,8 @@ export const AdminPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700">Тип клиента</label>
-                <select
+                <label htmlFor="adminpage-field-6" className="block text-xs font-medium text-gray-700">Тип клиента</label>
+                <select id="adminpage-field-6"
                   value={newClientType}
                   onChange={(e) => setNewClientType(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 border rounded-lg text-sm"
@@ -840,10 +841,10 @@ export const AdminPage: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700">
+                <label htmlFor="adminpage-field-7" className="block text-xs font-medium text-gray-700">
                   Разрешенные Redirect URIs (по одному на строку)
                 </label>
-                <textarea
+                <textarea id="adminpage-field-7"
                   required
                   rows={3}
                   value={newRedirectUris}
@@ -868,7 +869,7 @@ export const AdminPage: React.FC = () => {
                 </button>
               </div>
             </form>
-          </div>
+          </AccessibleDialog>
         </div>
       )}
     </div>

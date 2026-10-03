@@ -10,10 +10,13 @@ from app.cli.bootstrap_admin import execute_bootstrap
 from app.config import Settings, get_settings
 from app.core.rate_limit import _IN_MEMORY_REQUESTS
 from app.core.security import generate_random_token, hash_token
+from app.legal import REQUIRED_DOCUMENTS
 from app.main import app
 from app.services import registration_service
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.helpers.privacy import accept_current_documents
 
 
 @pytest.mark.postgres
@@ -49,6 +52,7 @@ async def test_concurrent_auth_code_redemption_pg(
         "/api/v1/auth/login",
         json={"username": "code_race_user", "password": "RacePassword2026!"},
     )
+    await accept_current_documents(pg_client, login_res)
     assert login_res.status_code == 200
     adm_csrf = login_res.json()["csrf_token"]
 
@@ -175,6 +179,9 @@ async def test_concurrent_user_registration_race_pg(
     pending = await pg_client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "race_contestant",
             "email": "contestant@alxprgs.tech",
             "password": "PasswordContestant2026!",
@@ -250,6 +257,7 @@ async def test_concurrent_recovery_code_burn_pg(
             "/api/v1/auth/login",
             json={"username": "rec_race_user", "password": "RecRacePassword2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         csrf_tok = login_res.json()["csrf_token"]
         setup_res = await pg_client.post(
             "/api/v1/mfa/totp/setup", headers={"X-CSRF-Token": csrf_tok}
@@ -277,6 +285,7 @@ async def test_concurrent_recovery_code_burn_pg(
             "/api/v1/auth/login",
             json={"username": "rec_race_user", "password": "RecRacePassword2026!"},
         )
+        await accept_current_documents(pg_client, mfa_step1)
         mfa_token = mfa_step1.json()["mfa_token"]
 
         # 2. Параллельно отправляем 2 запроса на погашение одного burn_code
@@ -342,6 +351,7 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
         "/api/v1/auth/login",
         json={"username": "rt_race_user", "password": "RtRacePassword2026!"},
     )
+    await accept_current_documents(pg_client, login_adm)
     assert login_adm.status_code == 200
     adm_csrf = login_adm.json()["csrf_token"]
 
@@ -451,6 +461,9 @@ async def test_distributed_rate_limiting_registration_pg(
         res = await pg_client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": f"rl_user_{i}",
                 "email": f"rl_user_{i}@alxprgs.tech",
                 "password": f"PasswordRl{i}2026!",
@@ -464,6 +477,9 @@ async def test_distributed_rate_limiting_registration_pg(
     blocked_res = await pg_client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": "rl_user_blocked",
             "email": "rl_blocked@alxprgs.tech",
             "password": "PasswordRlBlocked2026!",

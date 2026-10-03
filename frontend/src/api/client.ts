@@ -35,6 +35,25 @@ class ApiClient {
     return this.csrfToken;
   }
 
+  async getLegalDocuments(): Promise<import("../types/api").LegalDocuments> {
+    return this.request("/api/v1/legal/documents");
+  }
+  async acceptLegalDocuments(versions: Record<string, string>): Promise<void> {
+    await this.request("/api/v1/auth/legal-acceptance", { method: "POST", body: JSON.stringify({ terms_accepted: true, data_processing_consent: true, legal_versions: versions }) });
+  }
+  async getDeletionStatus(): Promise<import("../types/api").DeletionStatus> {
+    return this.request("/api/v1/auth/account-deletion");
+  }
+  async reauthenticateDeletion(action: "request" | "cancel", current_password: string): Promise<import("../types/api").DeletionAuthorization> {
+    return this.request("/api/v1/auth/account-deletion/reauthenticate", { method: "POST", body: JSON.stringify({ action, current_password }) });
+  }
+  async confirmDeletionFactor(payload: { action: "request" | "cancel"; authorization: string; method: string; code?: string; credential?: unknown }): Promise<import("../types/api").DeletionAuthorization> {
+    return this.request("/api/v1/auth/account-deletion/confirm-factor", { method: "POST", body: JSON.stringify(payload) });
+  }
+  async submitDeletion(action: "request" | "cancel", authorization: string): Promise<import("../types/api").DeletionStatus> {
+    return this.request("/api/v1/auth/account-deletion", { method: action === "request" ? "POST" : "DELETE", body: JSON.stringify({ authorization }) });
+  }
+
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers = new Headers(options.headers || {});
     headers.set("Accept", "application/json");

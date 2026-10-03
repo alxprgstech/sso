@@ -15,11 +15,14 @@ import pytest
 from app.cli.bootstrap_admin import execute_bootstrap
 from app.config import Settings, get_settings
 from app.core.rbac import ROLE_USER
+from app.legal import REQUIRED_DOCUMENTS
 from app.main import app
 from app.services import verification_email
 from app.services.mfa_service import EmailVerificationService, sent_emails_sink
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.helpers.privacy import accept_current_documents
 
 
 # Простой асинхронный SMTP mock сервер для тестирования локальной доставки
@@ -126,6 +129,9 @@ async def test_email_verification_ses_provider_with_fake_client_pg(
         registration = await pg_client.post(
             "/api/v1/auth/register",
             json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "ses_signup_user",
                 "email": "ses_fake@alxprgs.tech",
                 "password": sample_credential,
@@ -138,6 +144,7 @@ async def test_email_verification_ses_provider_with_fake_client_pg(
             "/api/v1/auth/login",
             json={"username": "ses_signup_user", "password": sample_credential},
         )
+        await accept_current_documents(pg_client, login_before)
         assert login_before.status_code == 401
         assert submitted[0]["region"] == "us-east-1"
         assert submitted[0]["from_email"] == "sso@alxprgs.tech"
@@ -154,6 +161,7 @@ async def test_email_verification_ses_provider_with_fake_client_pg(
             "/api/v1/auth/login",
             json={"username": "ses_signup_user", "password": sample_credential},
         )
+        await accept_current_documents(pg_client, login_after)
         assert login_after.status_code == 200
     finally:
         app.dependency_overrides.pop(get_settings, None)
@@ -222,6 +230,7 @@ async def test_email_verification_full_unverified_flow_no_policy_bypass(
                 "password": "FlowPassword2026!",
             },
         )
+        await accept_current_documents(pg_client, login_res)
         assert login_res.status_code == 401
         res_data = login_res.json()
         assert res_data.get("error") == "email_verification_required" or (
@@ -276,6 +285,7 @@ async def test_email_verification_full_unverified_flow_no_policy_bypass(
                 "password": "FlowPassword2026!",
             },
         )
+        await accept_current_documents(pg_client, login_success)
         assert login_success.status_code == 200
         assert login_success.json()["status"] == "ok"
         assert login_success.json()["user"]["email_verified"] is True

@@ -11,12 +11,23 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+try:
+    from scripts.privacy_journal import restore_sql
+except ModuleNotFoundError:
+    from privacy_journal import restore_sql
 
 
 def main():
     parser = argparse.ArgumentParser(description="Restore ALXPRGS SSO Database")
     parser.add_argument("backup_file", help="Path to SQL backup file")
+    parser.add_argument(
+        "--deletion-journal",
+        required=True,
+        help="Fresh authoritative UUID erasure journal (exported within five minutes)",
+    )
     parser.add_argument(
         "--confirm",
         action="store_true",
@@ -40,6 +51,13 @@ def main():
     )
 
     args = parser.parse_args()
+    try:
+        overlay = restore_sql(Path(args.deletion_journal))
+    except (OSError, ValueError, KeyError, TypeError):
+        print(
+            "[x] Current deletion journal is missing or invalid. Restore rejected.", file=sys.stderr
+        )
+        sys.exit(1)
 
     backup_path = Path(args.backup_file)
     if not backup_path.exists() or backup_path.stat().st_size == 0:
@@ -67,13 +85,18 @@ def main():
                 "-X",
                 "-v",
                 "ON_ERROR_STOP=1",
+                "--single-transaction",
                 "-U",
                 args.user,
                 "-d",
                 args.db,
             ]
-            with open(backup_path, "rb") as f:
-                subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, check=True)
+            with tempfile.TemporaryFile() as combined:
+                with backup_path.open("rb") as source:
+                    shutil.copyfileobj(source, combined)
+                combined.write(b"\n" + overlay.encode("utf-8") + b"\n")
+                combined.seek(0)
+                subprocess.run(cmd, stdin=combined, stderr=subprocess.PIPE, check=True)
         else:
             psql_path = shutil.which("psql")
             if not psql_path:
@@ -89,6 +112,7 @@ def main():
                 "-w",
                 "-v",
                 "ON_ERROR_STOP=1",
+                "--single-transaction",
                 "-h",
                 args.host,
                 "-p",
@@ -101,7 +125,16 @@ def main():
                 str(backup_path),
             ]
             print(f"[*] Executing psql on {args.host}:{args.port}...")
-            subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", suffix=".sql", delete=False
+            ) as journal_file:
+                journal_file.write(overlay)
+            journal_path = Path(journal_file.name)
+            try:
+                cmd.extend(["-f", str(journal_path)])
+                subprocess.run(cmd, env=env, check=True, stderr=subprocess.PIPE)
+            finally:
+                journal_path.unlink(missing_ok=True)
 
         print("[+] Database restored successfully!")
 

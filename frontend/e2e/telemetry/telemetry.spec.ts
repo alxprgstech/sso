@@ -121,3 +121,35 @@ test("missing Worker cannot send the SDK's unsanitized fallback recording", asyn
   expect(items.some(item => item.type.startsWith("replay"))).toBe(false);
   expect(JSON.stringify(items)).not.toContain(secret);
 });
+
+
+test("no consent: real SDK, recorder and transport remain off", async ({page}) => {
+  const {items, requests} = await capture(page);
+  await page.goto("/telemetry-harness.html?environment=staging&consent=none");
+  await page.locator("#error").click();
+  await page.evaluate(() => window.dispatchEvent(new Event("sdk-test")));
+  await page.locator("#flush").click();
+  expect(items).toEqual([]);
+  expect(requests.some(url => /replay\.ts|sentry-replay-worker|ingest\.de\.sentry/.test(url))).toBe(false);
+});
+
+test("diagnostics permission alone cannot start staging Replay", async ({page}) => {
+  const {items, requests} = await capture(page);
+  await page.goto("/telemetry-harness.html?environment=staging&consent=diagnostics");
+  await page.locator("#error").click(); await page.locator("#flush").click();
+  await expect.poll(() => items.some(item => item.type === "event")).toBe(true);
+  expect(items.some(item => item.type.startsWith("replay"))).toBe(false);
+  expect(requests.some(url => /replay\.ts|sentry-replay-worker/.test(url))).toBe(false);
+});
+
+test("revocation stops real Replay without flushing its pending segment", async ({page}) => {
+  const {items, requests} = await capture(page);
+  await page.goto("/telemetry-harness.html?environment=staging");
+  await expect.poll(() => requests.some(url => url.includes("sentry-replay-worker"))).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("privacy-revoke")));
+  const sent = items.length;
+  await page.locator("#error").click();
+  await page.locator("#flush").click();
+  expect(items.length).toBe(sent);
+  expect(items.some(item => item.type === "replay_recording")).toBe(false);
+});

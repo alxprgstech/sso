@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -118,7 +119,16 @@ def default_db_mock():
     mock_result.scalar_one_or_none.return_value = default_config
     mock_result.scalar_one.return_value = default_config
     mock_result.scalars.return_value.all.return_value = []
-    mock_session.execute.return_value = mock_result
+
+    async def execute(stmt, *args, **kwargs):
+        query = str(stmt)
+        if "clock_timestamp" in query and "privacy_rate_windows" not in query:
+            return MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc)))
+        if "privacy_rate_windows" in query:
+            return MagicMock(scalar_one=MagicMock(return_value=1))
+        return mock_result
+
+    mock_session.execute.side_effect = execute
 
     async def _mock_get_db():
         yield mock_session

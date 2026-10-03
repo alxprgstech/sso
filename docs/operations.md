@@ -132,10 +132,10 @@ python scripts/backup_db.py --host localhost --port 5432 --user sso_user --db ss
 
 ```bash
 # Только после проверки контейнера:
-python scripts/restore_db.py <проверенный-dump.sql> --confirm --docker --container <проверенный-контейнер> --db <отдельная-тестовая-БД>
+python scripts/restore_db.py <проверенный-dump.sql> --confirm --deletion-journal <свежий-журнал.json> --docker --container <проверенный-контейнер> --db <отдельная-тестовая-БД>
 
 # Восстановление через локальный psql:
-python scripts/restore_db.py <проверенный-dump.sql> --confirm --host localhost --port 5432 --user sso_user --db <отдельная-тестовая-БД>
+python scripts/restore_db.py <проверенный-dump.sql> --confirm --deletion-journal <свежий-журнал.json> --host localhost --port 5432 --user sso_user --db <отдельная-тестовая-БД>
 ```
 
 Для локальной интеграционной кампании выделите отдельный PostgreSQL 16 на `localhost:5433` с пользователем `sso_test_user` и БД `alxprgs_sso_test`. После миграций и **до** тестов на пустой БД с явным `TEST_DATABASE_URL` выполните `python -m scripts.init_fresh_ci_test_marker --local-fresh`. Команда проверяет точный адрес, отсутствие старого маркера, ожидаемую схему, исходную закрытую конфигурацию и отсутствие данных во всех прикладных таблицах. Fixture pytest и E2E seed больше не создают/исправляют маркер самостоятельно. Если проверка отказала, не изменяйте существующую БД ради теста; подготовьте новую пустую БД. CI использует этот же скрипт для выделенного сервиса на `localhost:5432` без локального флага.
@@ -182,3 +182,20 @@ SES остаётся существующим отправителем; testmail
 ## Эксплуатация Sentry
 
 Flags/rates default-off; EU projects и DSN получены, включение требует live privacy/source-map приёмки. Backend env управляет database-free browser config. Для остановки component flag=false, tracing rates=0, Replay flag=false/rates=0; backend пересоздать, browser tabs перезагрузить. JSON stdout и PostgreSQL audit остаются локальными каналами. Nginx query/IP/Referer не пишет в access log; .map возвращает 404. Exact frontend ingest origin добавляется generated CSP snippet, сначала Report-Only staging, enforce только после browser проверки. Upload token не передавать application containers. Конкретные команды, alerts/quota/smoke и rollback: [observability.md](observability.md).
+
+## Удаление, сроки хранения и восстановление (0004_privacy)
+
+Миграцию `alembic upgrade head` выполнить до запуска нового backend/frontend. Она добавляет состояния и согласия; также необратимо удаляет старую геолокацию и полные User-Agent. Старые пользователи подтверждают текущие документы после входа. Публичный контракт регистрации теперь требует обе отметки и актуальные версии.
+
+Backend lifespan запускает privacy maintenance сразу и затем раз в минуту. Общий PostgreSQL advisory lock исключает несколько владельцев; после простоя выбираются просроченные заявки с исходным сроком. Проверяйте отсутствие `privacy_maintenance_failed` и возраст просроченных заявок (observability.md). Аудит очищается через 90 дней; UUID/время окончательного удаления — через 30.
+
+Backup скрипт удаляет только собственные файлы старше 30 дней. Дополнительно ежедневно выполняйте `python scripts/prune_backups.py <каталог>` даже при остановленном создании backup; для внешнего хранилища задайте тот же retention отдельно. Сторонние файлы и символические ссылки не удаляются.
+
+Перед восстановлением закройте доступ и остановите backend на восстанавливаемой БД. Из актуального источника, а не из backup, экспортируйте `python scripts/export_deletion_journal.py <свежий-журнал.json>` с явно настроенным `DATABASE_URL_SYNC`. Журнал содержит только UUID и UTC-время, действителен для restore пять минут. `python scripts/restore_db.py <backup.sql> --confirm --deletion-journal <свежий-журнал.json>` применяет dump и удаления в одной транзакции с ON_ERROR_STOP. После проверки миграций и отсутствия удалённых субъектов откройте доступ. Без актуального журнала скрипт отказывает; восстановление не продлевает первоначальные сроки. Приложение не может само гарантировать очистку внешних копий: это обязанность эксплуатации.
+
+До production подтвердите реквизиты оператора, фактические провайдеры/локализацию, внешние сроки хранения и тексты docs/privacy.md. Не публикуйте проектные документы как проверенное юридическое соответствие.
+
+
+## Файлы оформления
+
+Сборка frontend включает public/theme вместе с index/assets; доставляйте весь dist. Для запуска demo из checkout необходим каталог frontend/public/theme с theme.js, palette.css и demo.css; API разрешает только эти имена. Смена темы не требует миграции и не меняет auth flags. CSP script-src/style-src self достаточен; inline exceptions не нужны. При обновлении работающего frontend пересоберите и перезапустите его обычным способом: текущий контейнер сам исходные изменения не подхватывает.

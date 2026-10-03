@@ -60,11 +60,11 @@ def test_forged_proxy_geo_headers_are_ignored() -> None:
     ]
     untrusted = request_details(_request("203.0.113.7", headers), _settings())
     assert untrusted["ip"] == "203.0.113.7"
-    assert untrusted["city"] == "Неизвестно"
+    assert "city" not in untrusted and "country" not in untrusted
     assert untrusted["os"] == "Windows"
     trusted = request_details(_request("127.0.0.1", headers), _settings())
     assert trusted["ip"] == "198.51.100.2"
-    assert trusted["city"] == "Fake City"
+    assert "city" not in trusted and "country" not in trusted
 
 
 def test_mime_contains_fallback_amp_schema_and_escaped_details() -> None:
@@ -74,7 +74,7 @@ def test_mime_contains_fallback_amp_schema_and_escaped_details() -> None:
         code="012345",
         link="https://auth.alxprgs.tech/verify-email?token=synthetic",
         action_url="https://auth.alxprgs.tech/api/v1/auth/register/confirm-gmail?challenge_id=abc",
-        details={"city": "<script>", "os": "Windows"},
+        details={"city": "must-not-collect", "os": "<script>"},
         settings=_settings(),
     )
     assert isinstance(message, EmailMessage)
@@ -91,6 +91,7 @@ def test_mime_contains_fallback_amp_schema_and_escaped_details() -> None:
     assert "&lt;Alex&gt;" in html
     assert "&lt;script&gt;" in html
     assert "<script>" not in html
+    assert "must-not-collect" not in html
 
     class FakeSES:
         request: dict[str, object] | None = None

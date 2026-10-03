@@ -8,6 +8,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, update
 
+from tests.helpers.privacy import record_test_consent
+
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.config import get_settings
@@ -66,6 +68,7 @@ async def _create_test_user_and_client(db, client_type="confidential"):
     redirect_uri = "https://app.alxprgs.tech/callback"
     db.add(OIDCRedirectUri(client_id=client_obj.id, uri=redirect_uri))
     await db.commit()
+    await record_test_consent(db, user)
     return user, client_obj, secret, redirect_uri
 
 

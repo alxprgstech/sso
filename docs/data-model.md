@@ -192,3 +192,11 @@ erDiagram
    - Читается и обновляется централизованно всеми экземплярами backend без необходимости перезапуска процессов.
    - Защита от конкурентной инициализации реализуется блокировкой строки `SELECT ... FOR UPDATE`.
 7. **Все даты**: Хранятся строго в `timestamp with time zone` (UTC).
+
+## Privacy — миграция 0004_privacy
+
+`users` содержит nullable UTC deletion_requested_at/deletion_scheduled_for (парная DB CHECK) и deletion_request_allowed_at; `is_active` сохраняет независимую admin-блокировку. `sessions.purpose` CHECK full/deletion_management. `pending_registrations.legal_versions` JSONB и legal_accepted_at переносятся в `legal_acceptances` после email; UNIQUE(user_id,document_id,version).
+
+`deletion_authorizations` связаны FK CASCADE с user/session: hash unique, action request/cancel, stage factor/authorized, expires_at, failed_attempts 0..5, bound WebAuthn challenge. `totp_credentials.last_verified_step` защищает от повтора OTP через FOR UPDATE. `privacy_rate_windows` хранит HMAC ключ bucket/IP либо user UUID и краткое окно, без raw identity; counters атомарны и не зависят от аудита. `deleted_subjects` без user FK хранит только subject UUID и deleted_at (служебные id/created_at), retention 30 дней.
+
+При erasure PostgreSQL CASCADE удаляет credentials/roles/sessions/codes/refresh/consents/permissions. Связанные audit rows очищаются в той же транзакции. Account row lock предшествует token row locks; общий admin advisory lock согласует удаление/блокировку/роли, worker owner lock допускает одного обработчика за tick. Схема rollback не восстанавливает ранее очищенные geo/UA/PII.

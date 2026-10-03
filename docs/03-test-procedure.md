@@ -62,3 +62,12 @@
 1. 100% автоматизированных тестов pytest завершились со статусом `PASSED`;
 2. Отсутствуют ошибки сборки фронтенда (`npm run build`) и линтинга/проверки типов (`npm run typecheck`);
 3. Все критерии приёмки зафиксированы в `docs/acceptance.md` (базовый этап) и `docs/acceptance-registration-setup.md` (этап GOAL-02).
+
+## 5. Конфиденциальность и удаление (PRIV-01..09)
+
+Обязательны PostgreSQL privacy tests и backup/restore; frontend unit/component и privacy браузерные сценарии отдельно в default-off/enabled. Enabled проверяет настоящий виртуальный WebAuthn с UV, точным localhost origin/RP и криптографической верификацией. Запускайте privacy.spec.ts с явными TEST_DATABASE_URL/PYTHON_BIN/PLAYWRIGHT_BASE_URL; для enabled дополнительно PRIVACY_ENABLED_PROFILE=1 и соответствующий сервер. Обычные E2E явно подтверждают документы через UI; прямой API не обходит согласие. Фактические команды, результаты и непроверенные внешние условия — [acceptance.md](acceptance.md); детали политики — [privacy.md](privacy.md).
+
+
+## Web-тема и регрессии раскладки
+
+`cd frontend` → `npx playwright test e2e/appearance.spec.ts`: Browser-hosted UI unit mock-контракты, system/manual/reload/storage/tabs/keyboard/pre-React, contrast ≥4.5 для проверенных текстовых пар и ≥3 для focus/control borders, mouse/labels/password desktop/mobile, fixed cookies reserve/clipping, consent actions, last-admin alert, QR и dialogs. Это не проверка аутентификации. Тот же suite можно направить PLAYWRIGHT_BASE_URL на build с enforced CSP; violations должны отсутствовать. Настоящий `privacy.spec.ts` отдельно использует маркированную PostgreSQL, PYTHON_BIN и PRIVACY_ENABLED_PROFILE=0/1; enabled требует настоящего виртуального WebAuthn с UV. CI и scripts/run_e2e_suite.py включают оба вида проверки. Demo rendering/assets/CSRF unit: `pytest tests/test_demo_theme.py tests/test_demo_sessions.py`; реальный SSO остаётся multi_client_sso.spec.ts.

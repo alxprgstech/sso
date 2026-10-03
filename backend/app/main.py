@@ -18,6 +18,7 @@ from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.mfa import router as mfa_router
 from app.api.oidc import router as oidc_router
+from app.api.privacy import router as privacy_router
 from app.config import get_settings
 from app.core.exceptions import (
     AuthenticationException,
@@ -38,8 +39,16 @@ initialize_sentry(settings)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Действия при запуске приложения
-    yield
+    from app.services.privacy_service import maintenance_loop
+    from contextlib import suppress
+
+    task = asyncio.create_task(maintenance_loop(settings))
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
     import sentry_sdk
 
     sentry_sdk.get_client().close(timeout=2)
@@ -53,6 +62,7 @@ app = TelemetryFastAPI(
     redoc_url=None,
     lifespan=lifespan,
 )
+app.include_router(privacy_router)
 
 # Настройка CORS для доверенных клиентских приложений
 app.add_middleware(

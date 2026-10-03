@@ -6,9 +6,11 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from app.core.rbac import ROLE_USER
 from app.core.security import hash_password
+from app.legal import REQUIRED_DOCUMENTS
 from app.models.user import PasswordCredential, Role, User
 from sqlalchemy import select, text
 
+from tests.helpers.privacy import accept_current_documents
 from tests.helpers.testmail_client import EmailTestError, assert_verification_message, checkpoint
 
 pytestmark = [pytest.mark.email_external, pytest.mark.postgres, pytest.mark.asyncio]
@@ -34,6 +36,7 @@ async def assert_login_and_role(client, session, username):
     response = await client.post(
         "/api/v1/auth/login", json={"username": username, "password": PASSWORD}
     )
+    await accept_current_documents(client, response)
     expect_status(response, 200)
     expect_status(await client.get("/api/v1/auth/me"), 200)
     expect_status(await client.get("/api/v1/admin/users"), 403)
@@ -71,6 +74,9 @@ async def test_registration_delivery(mode, pg_client, pg_session, external_email
     response = await pg_client.post(
         "/api/v1/auth/register",
         json={
+            "terms_accepted": True,
+            "data_processing_consent": True,
+            "legal_versions": REQUIRED_DOCUMENTS,
             "username": username,
             "email": box.address,
             "password": PASSWORD,

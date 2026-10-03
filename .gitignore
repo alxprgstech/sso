@@ -56,6 +56,7 @@ yarn-error.log*
 .pnpm-debug.log*
 frontend/dist/
 frontend/dist-ssr/
+frontend/test-results-*/
 *.local
 
 # Environment variables & secrets

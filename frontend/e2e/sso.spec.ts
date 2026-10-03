@@ -1,3 +1,4 @@
+import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
@@ -77,6 +78,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await page.click('button[type="submit"]');
 
     // Ожидаем загрузки личного кабинета и отображения сессии
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
     await expect(page.locator("header").getByText("compose_admin", { exact: true })).toBeVisible();
     await expect(page.locator("header").getByText("Admin", { exact: true })).toBeVisible();
@@ -133,6 +135,8 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await passwordInputs.nth(0).fill(testPassword);
     await passwordInputs.nth(1).fill(testPassword);
 
+    await page.getByRole("checkbox").nth(0).check();
+    await page.getByRole("checkbox").nth(1).check();
     await page.click('button:has-text("Зарегистрироваться")');
 
     // Код берётся из локального SMTP-приёмника CI, без подмены проверки на backend.
@@ -160,6 +164,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await page.click('button[type="submit"]');
 
     // Проверяем загрузку личного кабинета
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
     await expect(page.locator("header").getByText(testUsername, { exact: true })).toBeVisible();
 
@@ -179,6 +184,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await page.fill('input[type="password"]', "ComposeAdminPass2026!");
     await page.click('button[type="submit"]');
 
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
     await expect(page.locator("header").getByText("compose_admin", { exact: true })).toBeVisible();
 
