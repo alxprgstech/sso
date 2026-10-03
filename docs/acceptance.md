@@ -344,3 +344,7 @@ PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный и
 Стенд: Windows, Python 3.12.14, pytest 9.1.1, PyYAML 6.0.3, Git Bash. Прежняя .venv не создала процесс; использована существующая .venv-sentry. Cache warning первого прогона устранён выбором собственной cache_dir; проверки не отключались. Фактическое начало 2026-10-03T21:46:13+03:00, завершение локальной задачи 2026-10-03T21:55:12+03:00.
 
 Не проверено: фактический skipped в новом удалённом main run, SES delivery, release dry-run. Изменения локальны в new, без commit/push; указанный владельцем run 37144517132 не перезапускался. Пропуск не считается успешной live-приёмкой TASK-103 и не закрывает GOAL раздел 8. Следующий шаг — применить workflow к main и оценить следующий CI.
+
+### CI-SES-02 — публикация 2026-10-03T22:05:29+03:00
+
+[71a0ea5](https://github.com/alxprgstech/sso/commit/71a0ea51b3976f08e9f9172c4f6c9194a21b7dd6) опубликован в new; [PR #3](https://github.com/alxprgstech/sso/pull/3) проверен: open/non-draft, alxprgs, new → main, head SHA соответствует коммиту. В AGENTS.md добавлено правило только new, codex-ветка не создавалась. Повторные staged whitespace/состав и secret self-test прошли (126 прежних/0 новых); после основного коммита дерево чистое. Initial remote checks: 4 внутренних success, 4 in_progress, CodeScene queued; оба external jobs skipped по PR condition. Успех полной удалённой кампании пока не заявляется. Финальный учёт публикуется отдельным docs-only коммитом; main skip без ключей и live delivery требуют последующих проверок.

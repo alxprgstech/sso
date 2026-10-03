@@ -2893,3 +2893,21 @@ Codex; CI-01..03, REL-01, DOC-TRACK-01..07. Владелец разрешил к
 ### 2026-10-03T22:01:33+03:00 — CI-SES-02: уточнение рабочей ветки
 
 Codex. Владелец отдельно поручил закрепить запрет codex-веток и использовать только new; новое правило добавлено в корневой AGENTS.md. Предложенная codex-ветка не создавалась, план изменён на commit/push/PR из текущей new. origin/main сверена fetch, содержимое родителя new совпадает с merged main; GitHub API подтвердил аккаунт alxprgs и отсутствие открытых PR. Sandbox запретил исходные fetch/credential-helper операции; разрешённые повторные вызовы с эскалацией прошли, секреты не выводились. Следующий шаг — контроль состава/секретов и коммит в new.
+
+### 2026-10-03T22:05:29+03:00 — CI-SES-02: коммит опубликован, PR создан
+
+Codex; фактическое начало 2026-10-03T21:58:14+03:00, завершение задачи публикации 2026-10-03T22:05:29+03:00. Повторный secret self-test: контроль отклонён, 126 исторических кандидатов/0 новых; staged whitespace и состав 12 файлов проверены. Создан и опубликован [71a0ea5](https://github.com/alxprgstech/sso/commit/71a0ea51b3976f08e9f9172c4f6c9194a21b7dd6); после коммита git status чистый. [PR #3](https://github.com/alxprgstech/sso/pull/3) создан от alxprgs, open/non-draft, new → main, head SHA71a0ea5 проверен; прикреплён к чату. Ни codex-ветка, ни отдельная копия AGENTS не создавались.
+
+GitHub API checks на 71a0ea5: Container Packaging/Security/Version/CD success, Backend/Frontend/SDK/Browser in_progress; CodeScene queued, SES и credentials jobs skipped на PR. Это не проверка main skip без ключей. Native checks connector сообщил GitHub access is denied for this workspace; проверка выполнена через уже авторизованный Git credential helper/API без вывода секретов. Итоговый учёт plan/status/worklog/acceptance сохраняется docs-only коммитом new. CI-SES-02 done; точка продолжения — оценить итоговый PR HEAD, review/merge владельцем и последующий main CI. Merge/release/live delivery не выполнялись, общая GOAL не закрыта.
+
+### 2026-10-03T22:08:21+03:00 — CI-SES-02: формат new/название
+
+Codex. Владелец исправил прежнее указание: нужен префикс new/название. AGENTS.md уточнён до new/*, CI-SES-02 возвращён in_progress для переноса branch/PR; ветка выбрана new/skip-ses-without-credentials. Основной 71a0ea5 и незакоммиченный учёт сохраняются. Git refs new и new/* конфликтуют; план — штатный rename с сохранением commit SHA и заменяющий PR при закрытии старого head PR. [GitHub](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-branches-in-your-repository/renaming-a-branch) подтверждает закрытие PR при переименовании head. Исторический учёт предыдущего уточнения сохранён. Следующий шаг — локальный/remote rename и публикация окончательного правила.
+
+### 2026-10-03T22:11:17+03:00 — CI-SES-02: способ переноса ветки
+
+Codex; локальный git branch -m new new/skip-ses-without-credentials успешен. Прямой GitHub rename вернул HTTP 422 Validation Failed: 'new/skip-ses-without-credentials' is not a valid branch name; remote не изменён. Следующая попытка — два штатных rename через временное new-ci-ses-rename-71a0ea5, чтобы устранить конфликт new/new/*; каждый шаг проверяет сохранение SHA71a0ea5. Исходные коммиты и рабочие файлы сохраняются.
+
+### 2026-10-03T22:12:37+03:00 — CI-SES-02: временное имя сохраняет коммиты
+
+Codex; первый remote rename в new-ci-ses-rename-71a0ea5 успешен, SHA71a0ea5 сохранён. Второй rename с new/* снова HTTP422. git ls-remote подтвердил: отдельной new уже нет, временная ветка имеет исходный SHA. План уточнён: fetch/prune только tracking refs, коммит окончательного правила, обычный push локальной new/skip-ses-without-credentials; временную remote ветку удалить только после проверки, что все её коммиты присутствуют в итоговой ветке. Затем заменяющий PR и финальный учёт. Реализация SES и тесты не менялись.

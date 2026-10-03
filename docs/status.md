@@ -397,4 +397,8 @@ CI-SES-01 done локально, Codex, ветка new; завершение 202
 
 ## Коммит и PR для SES CI — 2026-10-03T21:58:14+03:00
 
-CI-SES-02 in_progress, Codex. По уточнению владельца коммит/push/PR выполняются в существующей new; правило только new закреплено в AGENTS.md. origin/main проверена, parent new совпадает с main по содержимому, открытых PR нет; GitHub account alxprgs. Проверки CI-SES-01 актуальны; ближайший шаг — контроль индекса и коммит. Общие live/release ограничения сохраняются.
+CI-SES-02 done, Codex; завершение 2026-10-03T22:05:29+03:00. [71a0ea5](https://github.com/alxprgstech/sso/commit/71a0ea51b3976f08e9f9172c4f6c9194a21b7dd6) опубликован в new, [PR #3](https://github.com/alxprgstech/sso/pull/3) open, new → main, автор alxprgs; ссылка прикреплена к чату. Правило только new закреплено в AGENTS.md. Проверки CI-SES-01 актуальны, повторный secret self-test/индекс/whitespace passed; после основного коммита рабочее дерево чистое. На initial SHA 4 внутренних checks success, 4 in_progress, CodeScene queued, внешние jobs skipped по PR condition.
+
+Итоговый docs-only учёт сохраняется в той же ветке. Следующий шаг — оценить CI итогового HEAD, review/merge владельцем и последующий main CI для проверки нового условия пропуска. Main skip без ключей, live SES/release и прежние внешние условия общей приёмки пока не проверены; merge/release не выполнялись.
+
+Уточнение 2026-10-03T22:08:21+03:00: CI-SES-02 снова in_progress по исправленному указанию владельца `new/название`. AGENTS.md теперь задаёт префикс new/*; ближайший шаг — перенос текущей new в new/skip-ses-without-credentials с сохранением коммитов и обновлением PR. Предыдущий PR #3 может быть закрыт штатным rename head; окончательная ссылка будет записана после переноса. Реализация SES и её проверки не меняются.
