@@ -144,7 +144,7 @@ AWS credentials не записываются в репозиторий или �
 
 ### 4.1. Автоматизированные тесты pytest
 
-Реальная доставка SES → testmail.app запускается отдельно: [настройка и email integration/E2E](docs/testing/email.md). Обычный pytest не отправляет внешние письма. Main CI и release требуют credentials и SES production access; отсутствие prerequisites завершает внешний job ошибкой.
+Реальная доставка SES → testmail.app запускается отдельно: [настройка и email integration/E2E](docs/testing/email.md). Обычный pytest не отправляет внешние письма. Main/manual-main CI пропускает внешний job, если отсутствует `AWS_ACCESS_KEY_ID` или `AWS_SECRET_ACCESS_KEY`; причина видна в summary. При наличии ключей ошибки preflight/SES/тестов остаются failed. Release с `run_email_tests=true` требует credentials и SES production access. Пропуск не подтверждает реальную доставку.
 
 ```bash
 # Только на выделенном PostgreSQL после установки зафиксированных зависимостей,

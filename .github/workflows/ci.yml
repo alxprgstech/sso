@@ -38,9 +38,37 @@ env:
   SENTRY_REPLAY_ENABLED: 'false'
 
 jobs:
+  email-e2e-credentials:
+    name: Check availability of CI AWS credentials
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || inputs.run_email_tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      available: ${{ steps.credentials.outputs.available }}
+    steps:
+      - name: Decide whether to run real SES tests
+        id: credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          EMAIL_TESTS_REQUIRED: ${{ inputs.run_email_tests || false }}
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            if [ "$EMAIL_TESTS_REQUIRED" = 'true' ]; then
+              echo '::error::Required CI AWS credentials are missing'
+              exit 1
+            fi
+            echo '::notice::Skipping real SES email integration and browser E2E: AWS credentials are missing'
+            echo 'Real SES email integration and browser E2E skipped: AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY is missing. Real email delivery was not tested.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          fi
+
   email-e2e:
     name: Real SES email integration and browser E2E
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || inputs.run_email_tests)
+    needs: email-e2e-credentials
+    if: needs.email-e2e-credentials.outputs.available == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -101,17 +129,13 @@ jobs:
           npm ci
           npm run build
           npx playwright install --with-deps chromium
-      - name: Check credentials, authenticated API contract and SES production access
+      - name: Check authenticated API contract and SES production access
         env:
           TESTMAIL_API_KEY: ${{ secrets.TESTMAIL_API_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: |
-          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-            echo 'Required CI AWS credentials are missing'
-            exit 1
-          fi
           python -m tests.helpers.testmail_cli preflight
       - name: Migrate and mark fresh dedicated database
         run: |

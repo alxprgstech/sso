@@ -878,3 +878,35 @@ REVIEW-CI-02-01 завершён 2026-10-03T20:25:34.844787+03:00; [анализ
 План: убрать измерение высоты cookies, выделить управление фокусом и согласиями; разделить backend проверки и транзакционные сценарии, затем миграцию и эксплуатационные команды. Полный CI format scope, типы, unit/component, настоящая PostgreSQL и оба браузерных профиля. Сохранить результат и проверить новые удалённые gates без suppression или ослабления тестов.
 
 PR-FIX-02 завершён 2026-10-03T21:22:54.861387+03:00: локальные обязательные проверки и CI37143596385 passed; CodeScene7799341 все3 gates passed. Финальный docs-only учёт публикуется в той же ветке; новый HEAD проверяется отдельно. Следующий шаг — review/merge владельцем, production gates остаются вне этого поручения.
+
+## CI-SES-01 — пропуск внешнего SES job без AWS credentials
+
+Начало 2026-10-03T21:46:13+03:00; исполнитель: Codex. По прямому поручению владельца обычный CI должен пропускать внешнюю SES-проверку при отсутствии AWS credentials. Требования CI-01/02, REL-01 и DOC-TRACK-01..07; явно запрошенная release-проверка остаётся обязательной.
+
+| ID | Приоритет | Зависимости | Критерий готовности | Статус |
+| --- | --- | --- | --- | --- |
+| CI-SES-01 | P1 | нет | При отсутствии любого из двух AWS-ключей обычный CI пропускает весь email-e2e job; при обоих ключах запускает прежние проверки, ошибки не подавляются; release требует credentials; offline regression, YAML и документация проверены | done |
+
+План: выделить проверку наличия ключей без checkout и передать только boolean output в условие email-e2e; сохранить trusted-main ограничения и строгий run_email_tests для release. Проверить комбинации отсутствующих/доступных синтетических ключей и явного обязательного режима; обновить GOAL, инструкцию email, README и матрицу приёмки. Реальная отправка писем и удалённый запуск не входят в локальную проверку.
+
+Завершение 2026-10-03T21:55:12+03:00. Gate и regression реализованы; 9 passed, Ruff lint/format, YAML/UTF-8/новые локальные ссылки, whitespace и secret self-test passed (126 прежних сигналов, 0 новых). Контракт CI-03, README/email/ADR/acceptance синхронизированы. Изменения локальны, без commit/push; фактический статус skipped в удалённом Actions и SES delivery не проверены. Точка продолжения — применить изменения к основной ветке и оценить следующий обычный main CI; release/live-приёмка сохраняет прежние prerequisites.
+
+## CI-SES-02 — коммит и PR изменения SES CI
+
+Начало 2026-10-03T21:58:14+03:00; исполнитель: Codex. Владелец поручил закоммитить CI-SES-01 и при необходимости создать PR.
+
+| ID | Приоритет | Зависимости | Критерий готовности | Статус |
+| --- | --- | --- | --- | --- |
+| CI-SES-02 | P1 | CI-SES-01 | Состав и секреты проверены; изменения закоммичены, ветка new/skip-ses-without-credentials и PR проверены; новый тест проходит CodeScene без suppression; дерево чистое, точка продолжения сохранена | done |
+
+Актуальный план по уточнению владельца: сохранить изменения в new/skip-ses-without-credentials и создать PR в main; в AGENTS.md закрепить префикс new/название. Проверки CI-SES-01 актуальны; перед коммитом проверить индекс/whitespace/секреты, после публикации — SHA/base/head/ссылку и доступные checks. Merge и release не поручены.
+
+Уточнение 2026-10-03T22:08:21+03:00: владелец исправил формат на `new/название`; CI-SES-02 снова in_progress из-за расширения поручения. Актуальный план — обновить AGENTS, переименовать текущую ветку в new/skip-ses-without-credentials с сохранением коммитов, скорректировать PR и опубликовать учёт. Git refs new и new/* конфликтуют; штатный rename GitHub закрывает PR с переименованной head-веткой, поэтому при необходимости создать заменяющий PR. Merge/release не выполняются.
+
+Завершение 2026-10-03T22:05:29+03:00: [71a0ea5](https://github.com/alxprgstech/sso/commit/71a0ea51b3976f08e9f9172c4f6c9194a21b7dd6) опубликован в new; [PR #3](https://github.com/alxprgstech/sso/pull/3) open, new → main, автор alxprgs, прикреплён к чату. Индекс 12 файлов/whitespace и повторный secret self-test passed; после основного коммита рабочее дерево чистое. Initial checks: 4 внутренних success, 4 in_progress; CodeScene queued, оба внешних jobs skipped по PR condition. Итоговый учёт сохраняется отдельным docs-only коммитом той же ветки. Следующий шаг — оценить CI итогового HEAD и review/merge владельцем; main skip без ключей и live delivery ещё не проверены.
+
+Окончательное завершение с исправленным форматом ветки 2026-10-03T22:15:53+03:00: new/skip-ses-without-credentials опубликована, [31bbf46](https://github.com/alxprgstech/sso/commit/31bbf467bdf21f17b36731b1fb3f2b2de1134def) уточняет AGENTS и сохраняет 71a0ea5. [PR #4](https://github.com/alxprgstech/sso/pull/4) open, new/skip-ses-without-credentials → main, alxprgs; PR #3 закрыт при rename и заменён. Временная remote ветка удалена с проверкой ancestry и lease ожидаемого SHA, коммиты сохранены. Финальный учёт публикуется docs-only коммитом; следующий шаг — CI/review PR #4 и последующий main run. Общая live-приёмка не изменяется.
+
+2026-10-03T22:20:55+03:00: публикация завершена на 8b8fab4, но новая CodeScene проверка7799670 выявила Complex Method test_credential_gate (9.69). CI-SES-02 снова in_progress для устранения замечания собственной правки: выделить проверки summary/секретов в короткие helpers, сохранить все assertions/матрицу, повторить 9 tests/Ruff и обновить PR. Другие внешние ограничения не меняются.
+
+Завершение 2026-10-03T22:25:13+03:00: [308eddb](https://github.com/alxprgstech/sso/commit/308eddbf8e0f0c50ba336ff0d40ad385692385c4) опубликован; 9 tests/Ruff/secret self-test passed, [CodeScene7799705](https://codescene.io/projects/85555/delta/results/7799705) success, все3 gates. На этом SHA 6 внутренних CI jobs success, backend/browser ещё in_progress; внешние jobs skipped по PR condition. Учёт сохраняется docs-only коммитом того же PR #4. Поручение commit/PR/new/название выполнено; полный CI итогового HEAD и main skip без ключей остаются следующим шагом, merge/release не выполняются.
