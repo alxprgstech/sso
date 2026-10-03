@@ -25,6 +25,27 @@ def bash_executable() -> str:
     return bash
 
 
+def assert_gate_report(
+    result: subprocess.CompletedProcess[str], summary: Path, available: bool, required: bool
+):
+    if not available and not required:
+        assert "::notice::Skipping real SES" in result.stdout
+        assert "Real email delivery was not tested." in summary.read_text("utf-8")
+    else:
+        assert not summary.exists()
+    if required and not available:
+        assert "::error::Required CI AWS credentials are missing" in result.stdout
+
+
+def assert_keys_not_logged(
+    result: subprocess.CompletedProcess[str], output: Path, access_key: str, secret_key: str
+):
+    captured = result.stdout + result.stderr + output.read_text("utf-8")
+    for key in (access_key, secret_key):
+        if key:
+            assert key not in captured
+
+
 @pytest.mark.parametrize("required", [False, True], ids=["ordinary-ci", "explicit-required"])
 @pytest.mark.parametrize(
     ("access_key", "secret_key"),
@@ -60,16 +81,8 @@ def test_credential_gate(required: bool, access_key: str, secret_key: str, tmp_p
     available = bool(access_key and secret_key)
     assert result.returncode == (1 if required and not available else 0), result.stderr
     assert output.read_text("utf-8").strip() == f"available={str(available).lower()}"
-    if not available and not required:
-        assert "::notice::Skipping real SES" in result.stdout
-        assert "Real email delivery was not tested." in summary.read_text("utf-8")
-    else:
-        assert not summary.exists()
-    if required and not available:
-        assert "::error::Required CI AWS credentials are missing" in result.stdout
-    for key in (access_key, secret_key):
-        if key:
-            assert key not in result.stdout + result.stderr + output.read_text("utf-8")
+    assert_gate_report(result, summary, available, required)
+    assert_keys_not_logged(result, output, access_key, secret_key)
 
 
 def test_real_ses_job_requires_gate_and_release_stays_mandatory():

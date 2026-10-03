@@ -408,3 +408,7 @@ CI-SES-02 done, Codex; завершение 2026-10-03T22:05:29+03:00. [71a0ea5]
 CI-SES-02 done с окончательным указанием владельца: ветки new/название, правило в AGENTS.md. [PR #4](https://github.com/alxprgstech/sso/pull/4) open, new/skip-ses-without-credentials → main, автор alxprgs; [31bbf46](https://github.com/alxprgstech/sso/commit/31bbf467bdf21f17b36731b1fb3f2b2de1134def) содержит правило и прежний SES-коммит71a0ea5. PR #3 закрыт при переименовании и заменён. Временное remote имя убрано после проверки ancestry и lease, все коммиты сохранены. Последний учёт публикуется в той же new/ветке.
 
 Точка продолжения — CI/review PR #4 и последующий main run. Прежние локальные 9 тестов/Ruff/YAML/секреты актуальны; новый remote успех ещё не заявлен, main skip без ключей и live SES/release не проверены. Merge/release не выполнялись, общая GOAL не закрыта.
+
+2026-10-03T22:20:55+03:00: CI-SES-02 in_progress до устранения нового CodeScene замечания к тесту. Итоговый PR HEAD8b8fab4 опубликован и проверен, дерево чистое; CodeScene7799670 failed только Complex Method test_credential_gate (9.69), другие gates passed. План — helpers для summary/секретов, прежние 9 tests/Ruff и новый gate в том же PR. Ветка и правило new/название остаются окончательными.
+
+2026-10-03T22:22:22+03:00: проверки report/секретов выделены в helpers, 9 passed in1.04s и Ruff/whitespace passed. Публикация и оценка нового CodeScene продолжаются; workflow и application не менялись, матрица/assertions сохранены.
