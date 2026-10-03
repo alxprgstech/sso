@@ -229,14 +229,18 @@ async def verify_reauthentication(context: DeletionContext, password: str) -> Us
     )
     if not valid_session:
         raise rejection("invalid_credentials", "Сессия недоступна.", 401)
-    if context.settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified:
+    await verify_deletion_password(user, password, context.settings)
+    return user
+
+
+async def verify_deletion_password(user: User, password: str, settings: Settings) -> None:
+    if settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified:
         raise rejection("email_verification_required", "Необходимо подтвердить email.", 403)
     credential = user.password_credential
     if credential is None:
         raise rejection("invalid_credentials", "Неверный пароль.", 401)
     if not await asyncio.to_thread(verify_password, password, credential.password_hash):
         raise rejection("invalid_credentials", "Неверный пароль.", 401)
-    return user
 
 
 def require_cancellable(user: User, now: datetime) -> None:

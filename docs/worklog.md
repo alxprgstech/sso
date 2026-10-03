@@ -2845,3 +2845,22 @@ Appearance UI unit в браузере: 19 passed, включая повторн
 ### 2026-10-03T21:09:50.637616+03:00 — PR-FIX-02: подготовка commit/PR
 
 Последние focused PostgreSQL/privacy/WebAuthn/runner проверки прошли; итоговая сводка добавлена в acceptance. Полный Ruff CI scope и whitespace повторно passed после всех изменений. Подготовлено обновлённое описание PR без служебной атрибуции с реальными локальными результатами и ожидающими remote gates. Изменения сохраняют первоначальные документы анализа, добавляют ADR-0013 и уточнение действующего layout privacy. Локальные задачи 01..03 завершены, 04 in_progress: commit/push и проверка CodeScene/CI. Никаких suppression, новых dependencies, изменений CI policy или production действий. Следующий шаг — отправить коммит в new, проверить PR HEAD/автора и новые checks.
+
+
+### 2026-10-03T21:11:42.008579+03:00 — PR-FIX-02: публикация и удалённые проверки
+
+Коммит [921ddcb](https://github.com/alxprgstech/sso/commit/921ddcbf57884a6c1717f8965409cafc2eea2b73) опубликован обычным push в new; 39 файлов, без force/merge/служебной атрибуции. PR [#2](https://github.com/alxprgstech/sso/pull/2) обновлён от alxprgs, HEAD и mergeable проверены; подготовленный текст совпадает. [CI 37143192991](https://github.com/alxprgstech/sso/actions/runs/37143192991) in_progress, CodeScene [7799296](https://codescene.io/projects/85555/delta/results/7799296) queued. Результат gates пока не объявлен успешным. Final focused pytest: 35 passed, 1 warning; UTF-8/relative links/full Ruff/whitespace passed.
+
+Собственные SMTP capture и PostgreSQL после проверок остановлены; семь loopback ports свободны, localhost:3000 не затронут. Следующий шаг — результат CI/CodeScene, исправление оставшихся причин при необходимости и итоговый учёт.
+
+
+### 2026-10-03T21:15:15.954576+03:00 — PR-FIX-02: remote CI success, последний CodeScene defect
+
+[CI 37143192991](https://github.com/alxprgstech/sso/actions/runs/37143192991) для 921ddcb завершился success: восемь внутренних jobs; external SES skipped по неизменённой PR condition. Логи подтвердили полный Ruff format (142), mypy (47), PostgreSQL default-off 333 passed/14 subtests/8 platform skips/5 external deselected, enabled 21 passed; браузерные default-off 28 и enabled 8 passed. CI platform skips сохранены и не добавлялись для прохождения; локальный Windows full/process tests прошли выше.
+
+[CodeScene 7799296](https://codescene.io/projects/85555/delta/results/7799296): hotspot decline и critical rules gates passed. Девять новых файлов достигли 10.00, privacy_service 9.69 из-за одного Complex Method verify_reauthentication (10, threshold 9). mfa_service вырос с 6.81 до 7.11; backup_db 9.49 → 10.00, runner 7.93 → 9.22. Старые inline-комментарии местами сохраняют текст; актуальная check summary содержит только одну причину failed. План: отделить проверку пароля/email-политики от row-lock/session validation, сохранить порядок и ошибки, повторить privacy/MFA PostgreSQL и static checks, затем commit/push и новый gate. PR-FIX-02-04 остаётся in_progress.
+
+
+### 2026-10-03T21:16:49.946963+03:00 — PR-FIX-02: последняя декомпозиция проверена
+
+verify_reauthentication теперь сохраняет account/session lock и вызывает отдельную verify_deletion_password для прежних email/password checks. Порядок, Argon2 thread, коды ошибок и границы транзакции не изменены. Ruff full scope/mypy/whitespace passed; pytest tests/integration/test_privacy_pg.py tests/test_mfa_features.py tests/integration/test_passkey_pg.py: 23 passed, 10 warnings in 21.63s, настоящая PostgreSQL. Подготавливается второй коммит и повтор CI/CodeScene. Новые проверки вместо skip/suppression; security policy не менялась.

@@ -373,3 +373,13 @@ Ruff/mypy/frontend static/build, 340 default-off pytest +16 subtests, 21 enabled
 ## Исправления PR #2 — 2026-10-03T21:09:50.637616+03:00
 
 PR-FIX-02-01..03 done локально, 04 in_progress. Полный CI format scope, backend/PG/migration/restore и обе E2E кампании passed; последние focused регрессии: 35 passed, 1 warning in 29.22s. Выполняются commit/push и проверка удалённых CI/CodeScene. Точка продолжения: оценить новый HEAD, устранить оставшиеся gates, затем остановить собственный PostgreSQL/SMTP и записать итог. Production/live условия общей приёмки не меняются.
+
+
+## Исправления PR #2 — 2026-10-03T21:11:42.008579+03:00
+
+Опубликован 921ddcb, PR от alxprgs обновлён; CI 37143192991 in_progress, CodeScene 7799296 queued. PR-FIX-02-04 продолжается до оценки новых gates. Все локальные результаты сохранены; собственный стенд остановлен, семь портов свободны. Точка продолжения: получить новые comments/checks для 921ddcb и устранить оставшиеся замечания без suppression. Production/live условия остаются отдельными.
+
+
+## Исправления PR #2 — 2026-10-03T21:15:15.954576+03:00
+
+CI 37143192991 success (8 internal jobs); CodeScene 7799296 — 2 gates passed, 1 failed: единственный Complex Method verify_reauthentication (10 при пороге9), privacy_service9.69. Остальные новые файлы10.00. Выполняется последняя декомпозиция проверки сессии/парольной политики и целевые PG tests; PR-FIX-02-04 in_progress. Стенд будет поднят только для этих проверок, после них снова остановлен.
