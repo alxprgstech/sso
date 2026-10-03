@@ -897,7 +897,7 @@ PR-FIX-02 завершён 2026-10-03T21:22:54.861387+03:00: локальные 
 
 | ID | Приоритет | Зависимости | Критерий готовности | Статус |
 | --- | --- | --- | --- | --- |
-| CI-SES-02 | P1 | CI-SES-01 | Состав и секреты проверены; изменения закоммичены, ветка new/skip-ses-without-credentials и PR проверены; новый тест проходит CodeScene без suppression; дерево чистое, точка продолжения сохранена | in_progress |
+| CI-SES-02 | P1 | CI-SES-01 | Состав и секреты проверены; изменения закоммичены, ветка new/skip-ses-without-credentials и PR проверены; новый тест проходит CodeScene без suppression; дерево чистое, точка продолжения сохранена | done |
 
 Актуальный план по уточнению владельца: сохранить изменения в new/skip-ses-without-credentials и создать PR в main; в AGENTS.md закрепить префикс new/название. Проверки CI-SES-01 актуальны; перед коммитом проверить индекс/whitespace/секреты, после публикации — SHA/base/head/ссылку и доступные checks. Merge и release не поручены.
 
@@ -908,3 +908,5 @@ PR-FIX-02 завершён 2026-10-03T21:22:54.861387+03:00: локальные 
 Окончательное завершение с исправленным форматом ветки 2026-10-03T22:15:53+03:00: new/skip-ses-without-credentials опубликована, [31bbf46](https://github.com/alxprgstech/sso/commit/31bbf467bdf21f17b36731b1fb3f2b2de1134def) уточняет AGENTS и сохраняет 71a0ea5. [PR #4](https://github.com/alxprgstech/sso/pull/4) open, new/skip-ses-without-credentials → main, alxprgs; PR #3 закрыт при rename и заменён. Временная remote ветка удалена с проверкой ancestry и lease ожидаемого SHA, коммиты сохранены. Финальный учёт публикуется docs-only коммитом; следующий шаг — CI/review PR #4 и последующий main run. Общая live-приёмка не изменяется.
 
 2026-10-03T22:20:55+03:00: публикация завершена на 8b8fab4, но новая CodeScene проверка7799670 выявила Complex Method test_credential_gate (9.69). CI-SES-02 снова in_progress для устранения замечания собственной правки: выделить проверки summary/секретов в короткие helpers, сохранить все assertions/матрицу, повторить 9 tests/Ruff и обновить PR. Другие внешние ограничения не меняются.
+
+Завершение 2026-10-03T22:25:13+03:00: [308eddb](https://github.com/alxprgstech/sso/commit/308eddbf8e0f0c50ba336ff0d40ad385692385c4) опубликован; 9 tests/Ruff/secret self-test passed, [CodeScene7799705](https://codescene.io/projects/85555/delta/results/7799705) success, все3 gates. На этом SHA 6 внутренних CI jobs success, backend/browser ещё in_progress; внешние jobs skipped по PR condition. Учёт сохраняется docs-only коммитом того же PR #4. Поручение commit/PR/new/название выполнено; полный CI итогового HEAD и main skip без ключей остаются следующим шагом, merge/release не выполняются.

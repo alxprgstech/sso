@@ -2925,3 +2925,9 @@ Codex; финальный учёт опубликован [8b8fab4](https://gith
 ### 2026-10-03T22:22:22+03:00 — CI-SES-02: декомпозиция regression test проверена
 
 Codex; tests/test_ci_email_credentials.py: assert_gate_report и assert_keys_not_logged выделяют прежние проверки report/секретов; матрица, реальные Bash команды и все assertions сохранены. Повтор pytest в существующей .venv-sentry: 9 passed, 1 прежний Authlib warning in 1.04s; Ruff lint/format и whitespace passed. Workflow/application не менялись. Следующий шаг — commit/push и актуальный CodeScene; CI-SES-02 in_progress до оценки remote gate.
+
+### 2026-10-03T22:25:13+03:00 — CI-SES-02: quality gate исправлен, итог поручения
+
+Codex; [308eddb](https://github.com/alxprgstech/sso/commit/308eddbf8e0f0c50ba336ff0d40ad385692385c4) опубликован в new/skip-ses-without-credentials, рабочее дерево чистое. Повторный secret self-test: синтетический контроль отклонён, 126 исторических/0 новых. [CodeScene7799705](https://codescene.io/projects/85555/delta/results/7799705) success, все3 gates passed без suppression или изменения profile. Remote CI этого SHA: 6 внутренних jobs success, backend/browser in_progress, оба external jobs skipped по PR condition. Новый runtime happy-path не заявляется, workflow/application не менялись после CI-SES-01.
+
+Поручение commit/PR и окончательный формат new/название выполнены, CI-SES-02 done; фактическое начало21:58:14+03:00, последнее завершение22:25:13+03:00 после уточнений владельца и устранения замечания собственного теста. PR #4 open, new/skip-ses-without-credentials → main; правило AGENTS окончательное. Итог plan/status/worklog/acceptance публикуется docs-only коммитом; после него проверяются PR HEAD/upstream и чистое дерево. Точка продолжения — завершение CI/review PR #4, после merge владельцем main CI с новым условием. Live SES/release и общая GOAL не закрыты; merge/release не выполнялись.
