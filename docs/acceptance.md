@@ -328,3 +328,19 @@ PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный и
 [CI37143596385](https://github.com/alxprgstech/sso/actions/runs/37143596385) для 8b3e958 **success**, восемь внутренних jobs: backend PostgreSQL333 +14 subtests, enabled21, Ruff142/mypy47, browser28+8, frontend build/components/real SDK browser, SDK clean install/build, container packaging, dependencies, version и inactive CD. Восемь существующих platform/lifecycle skips и пять external email deselected не менялись; local Windows full340 +16 subtests, последние focused35 и privacy/MFA23 прошли. Внешняя SES job skipped по PR policy.
 
 [CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) **success: все три quality gates passed**. Новые файлы соответствуют строгому10.00; mfa_service6.81→7.11, backup9.49→10.00, runner7.93→9.22. Исходные failed причины устранены без suppression, изменения профиля качества или ослабления assertions/security. Фактические ранние failures и ограничения среды сохранены выше. Общая production/legal/provider приёмка остаётся отдельной; исправления не развёртывались и PR не merged.
+
+### CI-SES-01 — условный пропуск внешнего CI, 2026-10-03T21:55:12+03:00
+
+По прямому поручению владельца GOAL CI-03 уточняет запуск SES в обычном CI. В ci.yml job email-e2e-credentials без checkout проверяет только наличие двух AWS-ключей и передаёт boolean output: любой отсутствующий ключ даёт notice/summary и skipped для всего email-e2e; оба ключа разрешают прежние preflight, PostgreSQL API и browser сценарии. Явный run_email_tests=true, включая release, без ключей остаётся failed и блокирует release build. Прежние внутренние проверки и политика email не меняются.
+
+| Требование / проверка | Команда / артефакт | Фактический результат |
+| --- | --- | --- |
+| CI-03: оба отсутствуют, отсутствует один, оба доступны; обычный/обязательный режим; связь gate и SES job | `.venv-sentry/Scripts/python.exe -m pytest tests/test_ci_email_credentials.py -q -o cache_dir=artifacts/ci-ses-pytest-cache` | 9 passed, 1 прежний Authlib deprecation warning in 1.50s; Bash из workflow выполняется с синтетическими значениями, без AWS/testmail запросов |
+| CI-01/02, REL-01: прежние SES команды, trusted-main условие, обязательный release input и dependency | `tests/test_ci_email_credentials.py` | Структура обоих workflows проверена вместе с offline gate; удалённый Actions scheduler не запускался |
+| Качество нового Python теста | `.venv-sentry/Scripts/python.exe -m ruff check tests/test_ci_email_credentials.py`; `-m ruff format --check tests/test_ci_email_credentials.py` | passed; Ruff 0.16.8 |
+| CI-02: секреты | `.venv-sentry/Scripts/python.exe scripts/check_secret_scan.py --self-test` | Синтетический контроль отклонён; 126 исторических кандидатов, 0 новых |
+| DOC-TRACK: контракт и ссылки | GOAL 1.4/CI-03, AGENTS, README, docs/testing/email.md, уточнения ADR 0007/0009, plan/status/worklog; YAML/UTF-8/local-link проверка; `git diff --check` | YAML обоих workflows, новые локальные ссылки и whitespace passed; результаты локальны |
+
+Стенд: Windows, Python 3.12.14, pytest 9.1.1, PyYAML 6.0.3, Git Bash. Прежняя .venv не создала процесс; использована существующая .venv-sentry. Cache warning первого прогона устранён выбором собственной cache_dir; проверки не отключались. Фактическое начало 2026-10-03T21:46:13+03:00, завершение локальной задачи 2026-10-03T21:55:12+03:00.
+
+Не проверено: фактический skipped в новом удалённом main run, SES delivery, release dry-run. Изменения локальны в new, без commit/push; указанный владельцем run 37144517132 не перезапускался. Пропуск не считается успешной live-приёмкой TASK-103 и не закрывает GOAL раздел 8. Следующий шаг — применить workflow к main и оценить следующий CI.

@@ -4,6 +4,8 @@
 
 Уточнение 02.10.2026 (TASK-103): ниже сохранено историческое решение. GOAL 1.3 отменил default-off email; самостоятельная регистрация требует подтверждения до создания пользователя. Отправка теперь использует общий verification_email.build_message/deliver_message и SES Content.Raw с plain/AMP/HTML. Обычный CI сохраняет mocks/SMTP; отдельный обязательный main/release job проверяет реальный SES через testmail.app ([ADR 0009](0009-testmail-email-testing.md)). Live-приёмка ждёт production access и credentials.
 
+Уточнение 03.10.2026 (CI-SES-01): GOAL CI-03 разрешает пропуск внешнего main/manual-main job без AWS credentials; явно обязательный release сохраняется. Актуальные условия: [ADR 0009](0009-testmail-email-testing.md) и [инструкция email](../testing/email.md).
+
 ## Контекст
 
 Реальная отправка была сосредоточена в `EmailVerificationService`: текстовое SMTP-письмо через `smtplib`, без общего интерфейса и без других видов уведомлений. ADR-0004 описывал `EmailSender`, которого в коде нет. Проекту нужен SES API v2 с IAM role, не меняющий SMTP по умолчанию и default-off подтверждения email.

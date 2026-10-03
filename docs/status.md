@@ -388,3 +388,13 @@ CI 37143192991 success (8 internal jobs); CodeScene 7799296 — 2 gates passed, 
 ## Исправления PR #2 — завершение 2026-10-03T21:22:54.861387+03:00
 
 PR-FIX-02-01..04 done: 921ddcb и 8b3e958 опубликованы в new, PR #2 от alxprgs обновлён. CI37143596385 success (8 внутренних jobs), CodeScene7799341 success (все3 gates; новые файлы соответствуют10.00). Исправлены format/layout и все блокирующие замечания, защита и обязательные suites сохранены. Стенд остановлен; external SES job штатно skipped, merge/production не выполнялись. Итог учёта сохраняется docs-only коммитом; его CI проверяется отдельно. Далее review/merge владельцем и прежние production/legal/provider условия общей приёмки.
+
+## Пропуск внешнего SES CI — 2026-10-03T21:47:34+03:00
+
+CI-SES-01 done локально, Codex, ветка new; завершение 2026-10-03T21:55:12+03:00. Credentials gate без checkout разрешает email-e2e только с обоими AWS-ключами; обычный CI без любого ключа даёт skipped и notice/summary. Явный release run_email_tests=true сохраняет обязательный отказ без ключей, при доступных ключах прежние проверки/ошибки сохраняются. Offline regression: 9 passed, 1 прежний Authlib warning; Ruff lint/format, YAML/UTF-8/ссылки/whitespace и secret self-test passed (126 исторических сигналов/0 новых). Использована существующая .venv-sentry после ошибки запуска прежней .venv.
+
+Точка продолжения: изменения локальны, без commit/push; следующий main CI после применения workflow должен подтвердить skipped на GitHub. Удалённая проверка и реальная доставка не выполнены; release требует credentials/SES production access, прежние внешние ограничения общей приёмки сохраняются. Новые тестовые серверы, БД или реальные письма не создавались; общая цель GOAL не объявляется завершённой.
+
+## Коммит и PR для SES CI — 2026-10-03T21:58:14+03:00
+
+CI-SES-02 in_progress, Codex. По уточнению владельца коммит/push/PR выполняются в существующей new; правило только new закреплено в AGENTS.md. origin/main проверена, parent new совпадает с main по содержимому, открытых PR нет; GitHub account alxprgs. Проверки CI-SES-01 актуальны; ближайший шаг — контроль индекса и коммит. Общие live/release ограничения сохраняются.
