@@ -12,6 +12,8 @@ from app.services.mfa_service import sent_emails_sink
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.privacy import accept_current_documents
+
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
@@ -58,6 +60,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
             "/api/v1/auth/login",
             json={"username": "mfa_disabled_user", "password": "PasswordDisabled2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         assert login_res.status_code == 200
         csrf_token = login_res.json()["csrf_token"]
 
@@ -140,6 +143,7 @@ async def test_default_off_no_silent_bypass_pg(
         "/api/v1/auth/login",
         json={"username": "mfa_legacy_user", "password": "LegacyPassword2026!"},
     )
+    await accept_current_documents(pg_client, login_res)
     assert login_res.status_code == 401
     assert "второго фактора" in str(login_res.json())
 
@@ -189,6 +193,7 @@ async def test_enabled_profile_totp_lifecycle_encrypted_pg(
             "/api/v1/auth/login",
             json={"username": "totp_tester", "password": "TotpPassword2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         csrf_token = login_res.json()["csrf_token"]
         uid = login_res.json()["user"]["id"]
 
@@ -292,6 +297,7 @@ async def test_enabled_profile_recovery_codes_dependency_and_burn_pg(
             "/api/v1/auth/login",
             json={"username": "recovery_tester", "password": "RecPassword2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         csrf_token = login_res.json()["csrf_token"]
         uid = uuid.UUID(login_res.json()["user"]["id"])
 
@@ -342,6 +348,7 @@ async def test_enabled_profile_recovery_codes_dependency_and_burn_pg(
             "/api/v1/auth/login",
             json={"username": "recovery_tester", "password": "RecPassword2026!"},
         )
+        await accept_current_documents(pg_client, mfa_step1)
         assert mfa_step1.status_code == 200
         step1_data = mfa_step1.json()
         assert step1_data.get("mfa_required") is True
@@ -378,6 +385,7 @@ async def test_enabled_profile_recovery_codes_dependency_and_burn_pg(
             "/api/v1/auth/login",
             json={"username": "recovery_tester", "password": "RecPassword2026!"},
         )
+        await accept_current_documents(pg_client, mfa_step1_rep)
         mfa_token_rep = mfa_step1_rep.json()["mfa_token"]
 
         replay_step2 = await pg_client.post(
@@ -432,6 +440,7 @@ async def test_enabled_profile_email_verification_and_enforcement_pg(
             "/api/v1/auth/login",
             json={"username": "unverified_user", "password": "UnverifiedPassword2026!"},
         )
+        await accept_current_documents(pg_client, login_blocked)
         assert login_blocked.status_code == 401
         assert "подтверждение адреса" in str(login_blocked.json())
 
@@ -483,6 +492,7 @@ async def test_enabled_profile_email_verification_and_enforcement_pg(
             "/api/v1/auth/login",
             json={"username": "unverified_user", "password": "UnverifiedPassword2026!"},
         )
+        await accept_current_documents(pg_client, login_ok)
         assert login_ok.status_code == 200
         assert login_ok.json()["status"] == "ok"
 

@@ -102,7 +102,7 @@ def test_default_features_all_disabled_in_api():
 
     app.dependency_overrides[get_settings] = _get_default_off_settings
     fake_db = AsyncMock()
-    fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=0))
+    fake_db.execute.side_effect = [MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc))), MagicMock(scalar_one=MagicMock(return_value=1)), MagicMock(scalar_one_or_none=MagicMock(return_value=None))]
     fake_db.scalar.return_value = None
 
     async def _get_fake_db():

@@ -777,3 +777,49 @@
 - 2026-10-02T21:53:01+03:00, Codex, SENTRY-01..07: владелец поручил сохранить всю реализацию локальным commit. До commit — secret/self-test, version/invariants, whitespace и index review; после — проверка commit и чистоты рабочего дерева. Статусы live-приёмки сохраняются, push/release/deploy не входят в поручение.
 
 - 2026-10-02T21:58:02+03:00, Codex: pre-commit проверки выполнены успешно; проверенный index содержит 84 файла реализации и документации без secrets/private/generated artifacts. Переход к локальному commit и контролю чистоты дерева; SENTRY-01/03..07 остаются blocked по исходным live-критериям.
+
+## PRIVACY-01..06 — политики и отложенное удаление
+
+Ветка `new` от `main`; исполнитель Codex. Фактическое начало всех связанных задач: 2026-10-03T04:43:12.5075237+03:00; завершение локальной реализации: 2026-10-03T06:18:32.6464381+03:00. Документационные проверки PRIVACY-06 завершены 2026-10-03T06:22:42.6041653+03:00. Политики остаются проектными; production/legal/live gates не объявляются выполненными.
+
+| ID | Приоритет | Зависимости | Критерий готовности / проверка | Статус |
+| --- | --- | --- | --- | --- |
+| PRIVACY-01 | P1 | — | Единые тексты/версии/API; separate registration consent и перенос после email; existing-user/OIDC gate; stale/direct API/resend negative tests | done |
+| PRIVACY-02 | P1 | PRIVACY-01 | 180 дней browser choice, diagnostics/Replay opt-in, production hard-off, отзыв/storage/вкладки; component и настоящий SDK browser | done |
+| PRIVACY-03 | P1 | PRIVACY-01 | 14 дней/strict cancel/7 дней; action-bound hashed reauth/MFA/CSRF, отзыв/restricted session, last-admin atomic guard; PG races и browser default/enabled | done |
+| PRIVACY-04 | P1 | PRIVACY-03 | Geo/full UA исключены; worker/audit90/backup30/journal/restore; real PG cleanup/backup restore/migration и отдельный daily prune | done |
+| PRIVACY-05 | P1 | PRIVACY-01..03 | Native controls/labels/focus/skip/QR; Tab/Shift+Tab/Enter/Space/Escape, focus return; browser и component checks | done |
+| PRIVACY-06 | P1 | PRIVACY-01..05 | Python/PostgreSQL/frontend/browser/migrations/build/secret/docs checks; фактические результаты и внешние ограничения записаны | done |
+
+Результаты: полный pytest 328 +16 subtests; финальные целевые регрессии после последних исправлений 51 passed; frontend 11 unit/25 component; privacy E2E 3+3, ordinary 6+5, SDK browser 9; Ruff/mypy/typechecks/lint/build, migration downgrade/upgrade/legacy cleanup, backup/restore, secrets и local links passed. См. [acceptance.md](acceptance.md).
+
+Точка продолжения: изменения локальны и не закоммичены; production не развёрнут. Перед production подтвердить operator/provider/localization/legal texts и external backup retention, выполнить Docker/remote CI и прежние live gates. Тестовый кластер и собственные серверы остановлены. Общая приёмка GOAL раздела 8 остаётся отдельной.
+
+
+## WEB-UI-01..03 — исправления интерфейса и тема
+
+Ветка `new`; исполнитель Codex; фактическое начало 2026-10-03T16:10:54.9182182+03:00. Исходные privacy-изменения сохраняются.
+
+| ID | Приоритет | Зависимости | Критерий готовности | Статус |
+| --- | --- | --- | --- | --- |
+| WEB-UI-01 | P1 | PRIVACY-05 | Cookies у нижней границы с резервом высоты; одинаковые действия согласия; заметная ошибка последнего администратора; реальный mouse/keyboard focus пароля desktop/mobile | done |
+| WEB-UI-02 | P1 | WEB-UI-01 | Весь web и оба demo: system/light/dark, смена системы/вкладок, сохранение только preference, отказ storage, ранняя тема при CSP self, читаемые формы/диалоги/статусы/QR | done |
+| WEB-UI-03 | P1 | WEB-UI-01, WEB-UI-02 | Компонентные и браузерные UI-регрессии, типы/lint/build, demo security regression, secrets/docs; фактические ограничения записаны | done |
+
+В Brave без расширений пользователь повторно проверил пароль: клик работает. Нужна проверка кликом и вводом, без выдуманной причины и без изменений правил аутентификации.
+
+
+WEB-UI-01..03 завершены 2026-10-03T17:03:08.9401640+03:00, Codex. Требования GOAL UI-01/UI-05 и PRIV-08; ветка new. Реальные password клики проверены также установленным Brave. 18 UI unit browser / 3+3 real privacy / 17 focused Python / 11 unit+25 component и static/build/scans/docs passed; подробности acceptance.md. Точка продолжения: изменения не закоммичены; собственный стенд остановлен, действующий localhost:3000 требует обычной пересборки frontend (Docker CLI здесь отсутствует). Общие production/live gates не меняются.
+
+
+## COMMIT-NEW-01 — локальное сохранение изменений
+
+Исполнитель Codex; начало 2026-10-03T19:19:46.0484648+03:00; ветка `new`. По поручению владельца сохранить весь подготовленный пакет PRIVACY и WEB-UI одним локальным коммитом.
+
+| ID | Приоритет | Зависимости | Критерий готовности | Статус |
+| --- | --- | --- | --- | --- |
+| COMMIT-NEW-01 | P1 | PRIVACY-01..06, WEB-UI-01..03 | Проверен состав индекса, нет новых секретов; локальный коммит в `new`, рабочее дерево чистое | done |
+
+План: повторить сканирование и проверки согласованности, проверить индекс, создать коммит и подтвердить состояние Git. Приёмка реализации остаётся в acceptance.md; внешние ограничения не меняются.
+
+COMMIT-NEW-01 завершён 2026-10-03T19:26:58.756967+03:00, Codex. Локальный коммит создан, ветка и чистое рабочее дерево проверены. Заключительная запись учёта включается в тот же коммит. Продолжение: пересборка действующего frontend и внешние проверки, перечисленные выше.

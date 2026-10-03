@@ -5,7 +5,7 @@ from typing import Literal
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -48,6 +48,10 @@ class UserProfileResponse(BaseModel):
     has_totp: bool = False
     has_passkey: bool = False
     created_at: datetime
+    legal_acceptance_required: bool = True
+    deletion_pending: bool = False
+    deletion_scheduled_for: datetime | None = None
+    session_purpose: str = "full"
 
 
 class SessionInfoResponse(BaseModel):
@@ -85,6 +89,16 @@ class RegisterRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     password: str = Field(..., min_length=8, max_length=128)
     confirm_password: str = Field(..., min_length=8, max_length=128)
+    terms_accepted: Literal[True]
+    data_processing_consent: Literal[True]
+    legal_versions: dict[str, str]
+
+    @field_validator("terms_accepted", "data_processing_consent", mode="before")
+    @classmethod
+    def explicit_consent(cls, value):
+        if value is not True:
+            raise ValueError("Требуется явное согласие")
+        return value
 
     @model_validator(mode="after")
     def validate_passwords_match(self) -> RegisterRequest:

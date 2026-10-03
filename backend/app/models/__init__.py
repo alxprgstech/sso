@@ -1,4 +1,10 @@
 from app.models.audit import AuditEvent
+from app.models.privacy import (
+    LegalAcceptance,
+    DeletionAuthorization,
+    PrivacyRateWindow,
+    DeletedSubject,
+)
 from app.models.mfa import (
     EmailVerificationToken,
     RecoveryCode,
@@ -18,6 +24,10 @@ from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
 
 __all__ = [
+    "LegalAcceptance",
+    "DeletionAuthorization",
+    "PrivacyRateWindow",
+    "DeletedSubject",
     "User",
     "PasswordCredential",
     "Role",

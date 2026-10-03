@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -68,6 +69,21 @@ SYNTHETIC_USERS = [
         "roles": [ROLE_USER],
     },
 ]
+
+
+privacy_username = os.environ.get("PRIVACY_E2E_USERNAME")
+if privacy_username:
+    if not re.fullmatch(r"privacy_e2e_[0-9a-f]{12}", privacy_username):
+        raise ValueError("Invalid synthetic privacy username")
+    SYNTHETIC_USERS.append(
+        {
+            "username": privacy_username,
+            "email": privacy_username + "@example.test",
+            "password": "PasskeyE2E2026!",
+            "is_superuser": False,
+            "roles": [ROLE_USER],
+        }
+    )
 
 
 async def prepare_e2e_data() -> None:

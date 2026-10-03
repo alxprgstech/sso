@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/react";
 import { sanitizeBreadcrumb, sanitizeEvent, sanitizeReplayMetadata, canonicalRoute } from "./privacy";
 import type { TelemetryConfig } from "../types/api";
+import { permitsDiagnostics, permitsReplay, PRIVACY_CHANGE, PRIVACY_KEY } from "./consent";
 
 export function parseConfig(value: unknown): TelemetryConfig | null {
   if (!value || typeof value !== "object") return null;
@@ -44,7 +45,7 @@ export async function bootstrapTelemetry(): Promise<boolean> {
         .then(response => response.ok ? response.json() : null).then(parseConfig),
       new Promise<null>(resolve => { timer = setTimeout(() => { controller.abort(); resolve(null); }, 300); }),
     ]);
-    if (!config?.enabled) return false;
+    if (!config?.enabled || !permitsDiagnostics()) return false;
     return initializeTelemetry(config);
   } catch { return false; }
   finally { clearTimeout(timer); controller.abort(); }
@@ -53,10 +54,10 @@ export async function bootstrapTelemetry(): Promise<boolean> {
 // Also used by the isolated SDK browser harness; no SSO capabilities are replaced.
 export function initializeTelemetry(config: TelemetryConfig): boolean {
   try {
-    if (!parseConfig(config)?.enabled) return false;
+    if (!parseConfig(config)?.enabled || !permitsDiagnostics()) return false;
     // rrweb Meta events bypass the public recording hook. Don't start a recorder
     // on any initial query/fragment URL, including verification/return_to links.
-    const replayAllowed = config.environment === "staging" && config.replay_enabled && !location.search && !location.hash;
+    const replayAllowed = permitsReplay() && config.environment === "staging" && config.replay_enabled && !location.search && !location.hash;
     Sentry.init({
       dsn: config.dsn, environment: config.environment, release: __BUILD_IDENTITY__.release,
       traceLifecycle: "static", sendClientReports: false,
@@ -66,12 +67,14 @@ export function initializeTelemetry(config: TelemetryConfig): boolean {
         const pending = new Set<Promise<unknown>>();
         return {
           send(envelope) {
+            if (!permitsDiagnostics()) return Promise.resolve({});
             const delivery = (async () => {
               const replay = envelope[1].some(item => item[0].type.startsWith("replay"));
-              if (replay && (!replayAllowed || !await import("./replay-envelope").then(module => module.recordingWasSanitized(envelope)))) return {};
+              if (replay && (!replayAllowed || !permitsReplay() || !await import("./replay-envelope").then(module => module.recordingWasSanitized(envelope)))) return {};
               // Block all channels which are outside the v1 capture policy.
               const items = envelope[1].filter(item => ["event", "transaction", "replay_event", "replay_recording"].includes(item[0].type));
               if (!items.length) return {};
+              if (!permitsDiagnostics() || (replay && !permitsReplay())) return {};
               // Dynamic sampling envelope metadata is independent of event hooks.
               const { event_id, sent_at } = envelope[0];
               return transport.send([{ event_id, sent_at, sdk: { name: "sentry.javascript.react", version: Sentry.SDK_VERSION } }, items] as typeof envelope);
@@ -109,6 +112,7 @@ export function initializeTelemetry(config: TelemetryConfig): boolean {
       },
       tracePropagationTargets: config.traces_sample_rate > 0 ? propagationTargets(window.location.origin) : [],
       beforeSend: (event, hint) => {
+        if (!permitsDiagnostics()) return null;
         hint.attachments = [];
         if (isExpectedClientFailure(hint.originalException)) return null;
         const clean = sanitizeEvent(event);
@@ -116,6 +120,7 @@ export function initializeTelemetry(config: TelemetryConfig): boolean {
         return clean;
       },
       beforeSendTransaction: (event, hint) => {
+        if (!permitsDiagnostics()) return null;
         hint.attachments = [];
         const clean = sanitizeEvent(event);
         if (clean) clean.environment = config.environment;
@@ -134,7 +139,7 @@ export function initializeTelemetry(config: TelemetryConfig): boolean {
     if (replayAllowed && (config.replays_session_sample_rate > 0 || config.replays_on_error_sample_rate > 0)) {
       // Do not hold rendering on the optional recorder download.
       void import("./replay").then(({ createReplay }) => {
-        if (!location.search && !location.hash) Sentry.addIntegration(createReplay());
+        if (permitsReplay() && !location.search && !location.hash) Sentry.addIntegration(createReplay());
       }).catch(() => {});
     }
     return true;
@@ -142,9 +147,32 @@ export function initializeTelemetry(config: TelemetryConfig): boolean {
 }
 
 export function navigationBreadcrumb(page: "dashboard" | "admin" | "login" | "register") {
+  if (!permitsDiagnostics()) return;
   Sentry.addBreadcrumb({ category: "sso.navigation", message: page, level: "info" });
 }
 
 export function captureContractFailure(): void {
+  if (!permitsDiagnostics()) return;
   Sentry.captureException(new Error("Unexpected interface failure"));
+}
+
+export function watchTelemetryConsent(): () => void {
+  let previous = ""; let generation = 0;
+  const update = () => {
+    const signature = `${permitsDiagnostics()}:${permitsReplay()}`;
+    if (signature === previous) return;
+    previous = signature;
+    const current = ++generation;
+    const client = Sentry.getClient();
+    if (client) client.getOptions().enabled = false;
+    // Transport checks consent again, including after asynchronous envelope sanitization.
+    void Promise.resolve(Sentry.getReplay()?.stop({ flush: false })).catch(() => {}).then(() => client?.close(0)).catch(() => {}).then(() => {
+      if (current === generation && permitsDiagnostics()) void bootstrapTelemetry();
+    });
+  };
+  const storage = (event: StorageEvent) => { if (event.key === PRIVACY_KEY || event.key === null) update(); };
+  window.addEventListener(PRIVACY_CHANGE, update); window.addEventListener("storage", storage);
+  const timer = window.setInterval(update, 60_000);
+  update();
+  return () => { generation++; clearInterval(timer); window.removeEventListener(PRIVACY_CHANGE, update); window.removeEventListener("storage", storage); };
 }

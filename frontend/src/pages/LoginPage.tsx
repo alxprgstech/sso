@@ -124,7 +124,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="auth-page flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="w-12 h-12 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-2xl shadow-md">
           A
@@ -140,7 +140,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-xl sm:px-10 border border-gray-100">
           {error && (
-            <div className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
+            <div role="alert" id="login-error" className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
               {error}
             </div>
           )}
@@ -148,11 +148,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
           {!mfaStep ? (
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="loginpage-field-1" className="block text-sm font-medium text-gray-700">
                   Имя пользователя или Email
                 </label>
                 <div className="mt-1">
-                  <input
+                  <input id="loginpage-field-1" name="username" autoComplete="username"
                     type="text"
                     required
                     value={username}
@@ -164,9 +164,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Пароль</label>
+                <label htmlFor="loginpage-field-2" className="block text-sm font-medium text-gray-700">Пароль</label>
                 <div className="mt-1">
-                  <input
+                  <input id="loginpage-field-2" name="password" autoComplete="current-password"
                     type="password"
                     required
                     value={password}
@@ -215,11 +215,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
           ) : (
             <form onSubmit={handleMfaSubmit} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="loginpage-field-3" className="block text-sm font-medium text-gray-700">
                   Одноразовый код (TOTP или код восстановления)
                 </label>
                 <div className="mt-1">
-                  <input
+                  <input id="loginpage-field-3"
                     type="text"
                     required
                     value={mfaCode}

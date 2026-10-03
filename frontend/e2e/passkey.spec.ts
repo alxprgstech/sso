@@ -1,3 +1,4 @@
+import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import path from "path";
@@ -85,6 +86,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     await page.fill('input[type="password"]', "PasskeyE2E2026!");
     await page.click('button[type="submit"]');
 
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="passkeys-section"]')).toBeVisible();
 
@@ -142,6 +144,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     await page.fill('input[placeholder="user@alxprgs.tech"]', "e2e_passkey_login_user");
     await page.fill('input[type="password"]', "PasskeyE2E2026!");
     await page.click('button[type="submit"]');
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
 
     await page.fill('[data-testid="passkey-name-input"]', "Resident Login Key");
@@ -156,6 +159,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     await page.click('[data-testid="passkey-login-button"]');
 
     // Ожидаем входа и перехода в Личный кабинет под пользователем e2e_passkey_login_user
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
     await expect(page.locator("header").getByText("e2e_passkey_login_user", { exact: true })).toBeVisible();
   });
@@ -178,6 +182,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     await page.fill('input[placeholder="user@alxprgs.tech"]', "e2e_passkey_delete_user");
     await page.fill('input[type="password"]', "PasskeyE2E2026!");
     await page.click('button[type="submit"]');
+    await acceptDocumentsAfterLogin(page);
     await expect(page.getByText("Личный кабинет")).toBeVisible({ timeout: 10000 });
 
     // Регистрируем временный ключ для последующего удаления

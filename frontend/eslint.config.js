@@ -7,7 +7,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,tsx}", "e2e/**/*.ts", "vite.config.ts"],
+    files: ["src/**/*.{ts,tsx}", "e2e/**/*.ts", "public/theme/*.js", "vite.config.ts"],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

@@ -12,6 +12,11 @@ from app.database import Base
 class PendingRegistration(Base):
     __tablename__ = "pending_registrations"
 
+    legal_versions: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, nullable=False)
+    legal_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)

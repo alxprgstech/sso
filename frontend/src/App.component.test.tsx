@@ -9,6 +9,7 @@ vi.mock("qrcode.react", () => ({
 
 const apiMock = vi.hoisted(() => ({
   getCapabilities: vi.fn(),
+  getLegalDocuments: vi.fn(),
   getMe: vi.fn(),
   login: vi.fn(),
   verifyTotpLogin: vi.fn(),
@@ -50,12 +51,16 @@ const admin: UserProfile = {
   has_totp: false,
   has_passkey: false,
   created_at: "2026-01-01T00:00:00Z",
+  legal_acceptance_required: false,
+  deletion_pending: false,
+  session_purpose: "full",
 };
 
 beforeEach(() => {
   vi.resetAllMocks();
   window.history.replaceState({}, "", "/login");
   apiMock.getCapabilities.mockResolvedValue(disabled);
+  apiMock.getLegalDocuments.mockResolvedValue({ documents: [], required_versions: { terms: "2026-10-03", "data-consent": "2026-10-03" } });
   apiMock.getMe.mockRejectedValue(new Error("No session"));
   apiMock.getSessions.mockResolvedValue([]);
   apiMock.getAdminUsers.mockResolvedValue([]);
@@ -97,6 +102,9 @@ describe("server capabilities and account flows", () => {
     const passwords = document.querySelectorAll<HTMLInputElement>('input[type="password"]');
     fireEvent.change(passwords[0], { target: { value: "SyntheticPassword2026!" } });
     fireEvent.change(passwords[1], { target: { value: "SyntheticPassword2026!" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Зарегистрироваться" }).hasAttribute("disabled")).toBe(true));
+    for (const checkbox of screen.getAllByRole("checkbox")) fireEvent.click(checkbox);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Зарегистрироваться" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Зарегистрироваться" }));
     await screen.findByLabelText("Код из письма");
     expect(apiMock.confirmRegistrationCode).not.toHaveBeenCalled();

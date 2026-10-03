@@ -5,13 +5,14 @@ from __future__ import annotations
 import html
 import os
 import secrets
+from pathlib import Path
 from urllib.parse import urlparse
 
 from alxprgs_sso import SSOClient, UserClaims
 from alxprgs_sso.exceptions import SSOError
 from alxprgs_sso.fastapi import SSOFastAPISecurity
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from examples.demo_sessions import FLOW_TTL, SESSION_ABSOLUTE_TTL, DemoSessions
 
@@ -42,6 +43,17 @@ def make_demo_app(
     flow_cookie = f"{cookie_prefix}{client_id}_flow"
     session_cookie = f"{cookie_prefix}{client_id}_session"
 
+    @app.get("/theme/{asset}", include_in_schema=False)
+    async def theme_asset(asset: str) -> FileResponse:
+        # Explicit allowlist: never expose the rest of the frontend or repository.
+        if asset not in {"theme.js", "palette.css", "demo.css"}:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        return FileResponse(
+            Path(__file__).resolve().parents[1] / "frontend" / "public" / "theme" / asset,
+            media_type="text/javascript" if asset.endswith(".js") else "text/css",
+            headers={"Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff"},
+        )
+
     def cookie_secure(request: Request) -> bool:
         if request.url.scheme == "https":
             return True
@@ -59,25 +71,38 @@ def make_demo_app(
         return html.escape(str(value or ""), quote=True)
 
     def render(session=None) -> str:
+        page_start = (
+            '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f"<title>{escaped(title)}</title>"
+            '<script src="/theme/theme.js"></script>'
+            '<link rel="stylesheet" href="/theme/palette.css">'
+            '<link rel="stylesheet" href="/theme/demo.css"></head><body>'
+            '<div class="demo-toolbar"><label class="theme-control">Тема оформления '
+            '<select data-theme-control aria-label="Тема оформления">'
+            '<option value="system">Как в системе</option><option value="light">Светлая</option>'
+            '<option value="dark">Тёмная</option></select></label></div>'
+            f"<main><h1>{escaped(heading)}</h1>"
+        )
+        page_end = "</main></body></html>"
         if session is None:
             return (
-                f"<html><body><h1>{escaped(heading)}</h1>"
-                '<a id="btn-login" href="/login">Войти через ALXPRGS SSO</a>'
-                "</body></html>"
+                page_start
+                + '<a id="btn-login" href="/login">Войти через ALXPRGS SSO</a>'
+                + page_end
             )
         user = session.info.user
         roles = ", ".join(user.roles)
         return (
-            f"<html><body><h1>{escaped(heading)}</h1>"
-            f'<p id="user-info"><span id="username">{escaped(user.preferred_username)}</span> '
+            page_start
+            + f'<p id="user-info"><span id="username">{escaped(user.preferred_username)}</span> '
             f'<span id="email">{escaped(user.email)}</span> '
             f'<span id="roles">{escaped(roles)}</span></p>'
             f'<a id="link-client-peer" href="{escaped(peer_url)}">Другой клиент</a>'
             f'<form method="post" action="/logout"><input type="hidden" name="csrf" value="{escaped(session.csrf)}">'
             '<button id="btn-logout" type="submit">Локальный выход</button></form>'
             f'<form method="post" action="/sso-logout"><input type="hidden" name="csrf" value="{escaped(session.csrf)}">'
-            '<button id="btn-sso-logout" type="submit">Выход из SSO</button></form>'
-            "</body></html>"
+            '<button id="btn-sso-logout" type="submit">Выход из SSO</button></form>' + page_end
         )
 
     @app.get("/", response_class=HTMLResponse)

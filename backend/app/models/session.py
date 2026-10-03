@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 class Session(Base):
     __tablename__ = "sessions"
 
+    purpose: Mapped[str] = mapped_column(String(32), default="full", nullable=False)
+
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),

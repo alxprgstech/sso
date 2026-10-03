@@ -368,8 +368,8 @@ export const DashboardPage: React.FC = () => {
         )}
         <form onSubmit={handleChangePassword} className="max-w-md space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Текущий пароль</label>
-            <input
+            <label htmlFor="dashboardpage-field-1" className="block text-sm font-medium text-gray-700">Текущий пароль</label>
+            <input id="dashboardpage-field-1"
               ref={currentPasswordRef}
               type="password"
               required
@@ -379,8 +379,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Новый пароль (мин. 8 символов)</label>
-            <input
+            <label htmlFor="dashboardpage-field-2" className="block text-sm font-medium text-gray-700">Новый пароль (мин. 8 символов)</label>
+            <input id="dashboardpage-field-2"
               type="password"
               required
               value={newPassword}
@@ -389,8 +389,8 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Подтверждение нового пароля</label>
-            <input
+            <label htmlFor="dashboardpage-field-3" className="block text-sm font-medium text-gray-700">Подтверждение нового пароля</label>
+            <input id="dashboardpage-field-3"
               type="password"
               required
               value={confirmPassword}
@@ -521,7 +521,7 @@ export const DashboardPage: React.FC = () => {
                   <form onSubmit={handleConfirmTotp} className="space-y-3 bg-gray-50 p-3 rounded-lg border">
                     <div className="text-xs text-gray-700">Отсканируйте QR-код приложением-аутентификатором:</div>
                     <div className="flex justify-center" data-testid="totp-qr-code">
-                      <QRCodeSVG value={totpSetupData.otpauth_url} size={192} level="M" marginSize={4} title="QR-код для подключения ALXPRGS SSO" />
+                      <div className="qr-surface"><QRCodeSVG role="img" aria-label="QR-код для подключения ALXPRGS SSO" value={totpSetupData.otpauth_url} size={192} level="M" marginSize={4} title="QR-код для подключения ALXPRGS SSO" /></div>
                     </div>
                     <div className="text-xs text-gray-600">Или введите секретный ключ вручную:</div>
                     <div className="flex items-center gap-2">
@@ -783,6 +783,7 @@ export const DashboardPage: React.FC = () => {
                         type="text"
                         required
                         placeholder="Код из 6 цифр"
+                        aria-label="Код подтверждения email"
                         inputMode="numeric"
                         pattern="[0-9]{6}"
                         maxLength={6}
@@ -807,6 +808,7 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
+      <section className="mt-6 bg-white border border-gray-200 rounded-xl p-6" aria-labelledby="privacy-account-title"><h2 id="privacy-account-title" className="text-xl font-bold">Управление данными</h2><p>Удаление через 14 дней с возможностью отмены до назначенного срока.</p><a href="/account-deletion" className="underline text-red-700">Удаление аккаунта</a></section>
     </div>
   );
 };

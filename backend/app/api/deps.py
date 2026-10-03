@@ -68,6 +68,7 @@ async def get_current_session(
 
 
 async def get_current_user(
+    request: Request,
     session: Session = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -81,6 +82,19 @@ async def get_current_user(
     # SSO-08: Заблокированный пользователь не может использовать сессию
     if not user.is_active:
         raise AuthenticationException("Учётная запись заблокирована")
+
+    from app.services.privacy_service import require_access
+
+    path = request.url.path
+    privacy_management = path in {
+        "/api/v1/auth/me",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/account-deletion",
+    } or path.startswith("/api/v1/auth/account-deletion/")
+    if session.purpose == "deletion_management" and not privacy_management:
+        raise AuthorizationException("Доступ ограничен управлением удалением аккаунта")
+    if not privacy_management and path != "/api/v1/auth/legal-acceptance":
+        await require_access(db, user)
 
     return user
 
@@ -97,7 +111,7 @@ async def get_optional_current_user(
         return None
     try:
         session = await get_current_session(request, db, settings)
-        return await get_current_user(session, db)
+        return await get_current_user(request, session, db)
     except Exception:
         return None
 

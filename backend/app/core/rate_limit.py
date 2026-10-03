@@ -3,13 +3,10 @@ from __future__ import annotations
 import ipaddress
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Sequence
 from fastapi import HTTPException, Request, status
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
-from app.models.audit import AuditEvent
 
 # Внутрипроцессный фильтр скользящего окна (защита от исчерпания CPU быстрым флудом)
 _IN_MEMORY_REQUESTS: Dict[str, List[float]] = defaultdict(list)
@@ -113,32 +110,11 @@ async def check_registration_rate_limit(db: AsyncSession, ip: str) -> None:
     """
     check_in_memory_rate_limit(ip)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=DB_WINDOW_SECONDS)
-    stmt = select(func.count(AuditEvent.id)).where(
-        AuditEvent.event_type.in_(["registration_attempt", "user_registered"]),
-        AuditEvent.ip_address == ip,
-        AuditEvent.created_at >= cutoff,
-    )
-    try:
-        result = await db.execute(stmt)
-        count = result.scalar_one_or_none() or 0
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "service_unavailable",
-                "detail": "Сервис временно недоступен: сбой проверки лимитов безопасности.",
-            },
-        ) from exc
+    from app.services.privacy_service import consume_rate_limit
 
-    if count >= DB_MAX_ATTEMPTS_PER_WINDOW:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "error": "rate_limit_exceeded",
-                "detail": "Превышен лимит попыток регистрации. Повторите попытку через минуту.",
-            },
-        )
+    await consume_rate_limit(
+        db, get_settings(), "registration", ip, DB_MAX_ATTEMPTS_PER_WINDOW, DB_WINDOW_SECONDS
+    )
 
 
 async def check_email_request_rate_limit(db: AsyncSession, ip: str) -> None:
@@ -148,29 +124,8 @@ async def check_email_request_rate_limit(db: AsyncSession, ip: str) -> None:
     """
     check_in_memory_rate_limit(f"email_req_{ip}")
 
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=DB_EMAIL_WINDOW_SECONDS)
-    stmt = select(func.count(AuditEvent.id)).where(
-        AuditEvent.event_type == "email_verification_requested",
-        AuditEvent.ip_address == ip,
-        AuditEvent.created_at >= cutoff,
-    )
-    try:
-        result = await db.execute(stmt)
-        count = result.scalar_one_or_none() or 0
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "service_unavailable",
-                "detail": "Сервис временно недоступен: сбой проверки лимитов безопасности.",
-            },
-        ) from exc
+    from app.services.privacy_service import consume_rate_limit
 
-    if count >= DB_EMAIL_MAX_ATTEMPTS:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "error": "rate_limit_exceeded",
-                "detail": "Слишком много запросов подтверждения email. Пожалуйста, повторите попытку через минуту.",
-            },
-        )
+    await consume_rate_limit(
+        db, get_settings(), "email", ip, DB_EMAIL_MAX_ATTEMPTS, DB_EMAIL_WINDOW_SECONDS
+    )

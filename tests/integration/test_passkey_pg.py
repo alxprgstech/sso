@@ -24,6 +24,8 @@ from app.models.mfa import WebAuthnChallenge, WebAuthnCredential
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.privacy import accept_current_documents
+
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
@@ -69,6 +71,7 @@ async def test_passkey_default_off_isolation_pg(
             "/api/v1/auth/login",
             json={"username": "passkey_default_user", "password": "PasskeyPassword2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         assert login_res.status_code == 200, (
             f"Login failed: {login_res.status_code} {login_res.text}"
         )
@@ -139,6 +142,7 @@ async def test_passkey_options_and_challenge_persistence_pg(
             "/api/v1/auth/login",
             json={"username": "passkey_flow_user", "password": "FlowPasswordPasskey2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         assert login_res.status_code == 200, (
             f"Login failed: {login_res.status_code} {login_res.text}"
         )
@@ -229,6 +233,7 @@ async def test_passkey_multiple_credentials_and_deletion_pg(
             "/api/v1/auth/login",
             json={"username": "multi_passkey_user", "password": "MultiPasskey2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         assert login_res.status_code == 200, (
             f"Login failed: {login_res.status_code} {login_res.text}"
         )
@@ -337,6 +342,7 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(
             "/api/v1/auth/login",
             json={"username": "passkey_neg_user", "password": "NegPasskeyPassword2026!"},
         )
+        await accept_current_documents(pg_client, login_res)
         assert login_res.status_code == 200, (
             f"Login failed: {login_res.status_code} {login_res.text}"
         )

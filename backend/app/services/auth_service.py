@@ -20,6 +20,7 @@ from app.models.session import Session
 from app.models.registration import PendingRegistration
 from app.models.user import User
 from app.services.audit_service import AuditService
+from app.core.privacy import short_user_agent
 
 settings = get_settings()
 
@@ -41,14 +42,24 @@ class AuthService:
         token_hash = hash_token(raw_token)
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=settings.SESSION_ABSOLUTE_TIMEOUT_SECONDS)
+        user = await db.scalar(
+            select(User)
+            .where(User.id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if not user or not user.is_active:
+            raise AuthenticationException("Аккаунт недоступен")
+        purpose = "deletion_management" if user.deletion_scheduled_for else "full"
 
         session = Session(
             user_id=user_id,
             session_token_hash=token_hash,
             ip_address=ip_address,
-            user_agent=user_agent,
+            user_agent=short_user_agent(user_agent) if user_agent else None,
             expires_at=expires_at,
             last_activity_at=now,
+            purpose=purpose,
         )
         db.add(session)
         await db.commit()
@@ -262,6 +273,7 @@ class AuthService:
         user_agent: str | None = None,
         settings: Settings | None = None,
         request_details: dict[str, str] | None = None,
+        legal_versions: dict[str, str] | None = None,
     ) -> PendingRegistration:
         """Begin registration; the user is created only after mailbox verification."""
         from app.services.registration_service import RegistrationService
@@ -275,4 +287,5 @@ class AuthService:
             user_agent=user_agent,
             details=request_details or {},
             settings=settings or get_settings(),
+            legal_versions=legal_versions or {},
         )

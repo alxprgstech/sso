@@ -1473,150 +1473,15 @@ def run_recover_stage(
             print(f"[RECOVER-WARN] Не удалось выполнить docker pause: {pause_res.stderr}")
             steps_result["db_unavailability"] = "skipped"
 
-        # 3. Backup & Restore в новую изолированную тестовую БД
-        print("\n--- 3. Backup & Restore в изолированную БД (alxprgs_sso_restore_test) ---")
-        backups_dir = ROOT_DIR / "backups"
-        backups_dir.mkdir(parents=True, exist_ok=True)
-
-        backup_script = ROOT_DIR / "scripts" / "backup_db.py"
-        restore_script = ROOT_DIR / "scripts" / "restore_db.py"
-
-        # Создаем backup
-        b_res = subprocess.run(
-            [
-                sys.executable,
-                str(backup_script),
-                "--docker",
-                "--container",
-                container_name,
-                "--db",
-                "alxprgs_sso_test",
-                "--port",
-                "5432",
-                "--user",
-                "sso_test_user",
-                "--output-dir",
-                str(backups_dir),
-            ],
-            capture_output=True,
-            text=True,
+        # Shared isolated recovery scenario verifies test ownership before every DROP,
+        # applies the current erasure journal, and checks restored encrypted TOTP.
+        recovery_env = base_env.copy()
+        recovery_env["TEST_DATABASE_URL"] = test_db_url
+        recovery = subprocess.run(
+            [sys.executable, "-m", "pytest", "tests/test_ops_backup_restore_totp.py", "-q"],
+            cwd=ROOT_DIR, env=recovery_env, capture_output=True,
         )
-        assert b_res.returncode == 0, f"Backup failed: {b_res.stdout}\n{b_res.stderr}"
-
-        # Находим созданный файл
-        sql_files = sorted(backups_dir.glob("sso_backup_alxprgs_sso_test_*.sql"))
-        assert len(sql_files) > 0, "No backup file found"
-        latest_backup = sql_files[-1]
-        print(
-            f"[RECOVER-INFO] Создан бэкап: {latest_backup.name} ({latest_backup.stat().st_size} байт)"
-        )
-
-        # Создаем целевую БД alxprgs_sso_restore_test в контейнере
-        import psycopg
-
-        clean_url = test_db_url.replace("+psycopg", "").replace("/alxprgs_sso_test", "/postgres")
-        with psycopg.connect(clean_url, autocommit=True) as conn:
-            with conn.cursor() as cur:
-                cur.execute("DROP DATABASE IF EXISTS alxprgs_sso_restore_test WITH (FORCE)")
-                cur.execute("CREATE DATABASE alxprgs_sso_restore_test OWNER sso_test_user")
-
-        # Восстанавливаем бэкап
-        r_res = subprocess.run(
-            [
-                sys.executable,
-                str(restore_script),
-                str(latest_backup),
-                "--confirm",
-                "--docker",
-                "--container",
-                container_name,
-                "--db",
-                "alxprgs_sso_restore_test",
-                "--port",
-                "5432",
-                "--user",
-                "sso_test_user",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        assert r_res.returncode == 0, f"Restore failed: {r_res.stdout}\n{r_res.stderr}"
-
-        # Сравниваем существенные данные (число пользователей)
-        restore_db_url = clean_url.replace("/postgres", "/alxprgs_sso_restore_test")
-        with psycopg.connect(clean_url.replace("/postgres", "/alxprgs_sso_test")) as orig_conn:
-            with orig_conn.cursor() as cur:
-                cur.execute("SELECT count(*) FROM users")
-                orig_users = cur.fetchone()[0]
-
-        with psycopg.connect(restore_db_url) as rest_conn:
-            with rest_conn.cursor() as cur:
-                cur.execute("SELECT count(*) FROM users")
-                rest_users = cur.fetchone()[0]
-
-        assert orig_users == rest_users, (
-            f"Users count mismatch: orig={orig_users}, restored={rest_users}"
-        )
-        print(
-            f"[RECOVER-INFO] Сохранность данных подтверждена: пользователей в исходной={orig_users}, в восстановленной={rest_users}"
-        )
-
-        # Проверяем реальный вход через сервер, подключенный к восстановленной БД
-        restore_env = base_env.copy()
-        restore_env["DATABASE_URL"] = test_db_url.replace(
-            "alxprgs_sso_test", "alxprgs_sso_restore_test"
-        )
-        restore_env["DATABASE_URL_SYNC"] = restore_env["DATABASE_URL"]
-        restore_env["PORT"] = "8002"
-
-        restore_pid = os.path.join(temp_dir, "g7_rec_rest_be.pid")
-        restore_log = os.path.join(temp_dir, "g7_rec_rest_be.log")
-
-        subprocess.run(
-            [
-                sys.executable,
-                str(MANAGE_SCRIPT),
-                "start",
-                "--port",
-                "8002",
-                "--pidfile",
-                restore_pid,
-                "--logfile",
-                restore_log,
-                "--profile",
-                "default-off",
-            ],
-            env=restore_env,
-            check=True,
-        )
-        try:
-            rest_client = SimpleHttpClient("http://127.0.0.1:8002")
-            st, _, _ = rest_client.request(
-                "POST",
-                "/api/v1/auth/login",
-                json_data={"username": "compose_admin", "password": "ComposeAdminPass2026!"},
-            )
-            assert st == 200, "Login against restored database failed!"
-            print("[RECOVER-OK] Реальный вход пользователя против восстановленной БД успешен!")
-        finally:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(MANAGE_SCRIPT),
-                    "stop",
-                    "--pidfile",
-                    restore_pid,
-                    "--port",
-                    "8002",
-                ],
-                capture_output=True,
-            )
-
-        # Очистка восстановленной тестовой БД
-        with psycopg.connect(clean_url, autocommit=True) as conn:
-            with conn.cursor() as cur:
-                cur.execute("DROP DATABASE IF EXISTS alxprgs_sso_restore_test WITH (FORCE)")
-        print("[RECOVER-OK] Тестовая БД восстановления удалена, исходные данные не затронуты.")
+        assert recovery.returncode == 0, "Isolated backup/restore failed; inspect local test artifacts"
         steps_result["backup_restore"] = "passed"
 
     finally:

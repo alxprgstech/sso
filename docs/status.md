@@ -276,3 +276,46 @@ git push origin v0.2.0
 - 2026-10-02T21:53:01+03:00, Codex: по поручению владельца выполняется сохранение всей локальной интеграции в один commit в main. Перед commit проверяются секреты, whitespace и состав index; повторный полный runtime-набор не требуется, код после предыдущих проверок не меняется. Live gates остаются blocked, telemetry выключена. Push/release/deploy не выполняются; для будущего release потребуется новая чистая сборка на выбранном SHA.
 
 - 2026-10-02T21:58:02+03:00, Codex: проверки подготовки прошли — secret scan 126/0 new с synthetic control, пять инвариантов, версии, staged whitespace и состав 84 файлов. Локальный commit готовится из проверенного index; секреты и приватные артефакты исключены. Точка дальнейшего продолжения и live gates не изменились.
+
+## PRIVACY — 2026-10-03T04:43:12.5075237+03:00
+
+PRIVACY-01..06 in_progress в ветке new: реализация утверждённого плана. 14 дней до удаления, отмена и 7 дней cooldown; audit 90, backup 30. ADR-0011. Новые проверки ещё не запускались; прежние live-блокеры сохраняются.
+
+## PRIVACY — промежуточный срез 2026-10-03T05:18:19.5501648+03:00
+
+PRIVACY-01..06 in_progress, ветка `new`. Реализация API/UI/worker и draft документов подготовлена. Проверено: fresh PostgreSQL migration, mypy, frontend typecheck/lint, 20 component и 4 PG privacy-теста. Restore, расширенные гонки/MFA, полная регрессия и браузерная приёмка продолжаются. Старые live-блокеры не изменены.
+
+
+## PRIVACY — 2026-10-03T05:52:59.4148309+03:00
+
+PRIVACY-01..06 in_progress, `new`. API/UI/worker/migration/restore и документы реализованы. Новые browser сценарии прошли в default-off и enabled (2+2, настоящий виртуальный Passkey с UV); 25 component; backup/restore PG passed. Расширенная полная регрессия идёт. Внешняя юридическая идентификация оператора, SaaS/staging, Docker/remote CI остаются отдельными непроверенными условиями.
+
+## PRIVACY — итог 2026-10-03T06:18:32.6464381+03:00
+
+PRIVACY-01..06 done в рамках локальной задачи, ветка `new`. Policies/consents/cookies/accessibility и delayed deletion 14/7 реализованы и проверены. Full pytest 328 +16 subtests; latest targeted 51; frontend 11/25; privacy browser 3+3, ordinary 6+5, SDK browser9; migration/PG restore/scans/types/build/docs passed. Результаты: [acceptance.md](acceptance.md), решения: ADR-0011 и [privacy.md](privacy.md).
+
+Точка продолжения: локальные изменения не закоммичены и не опубликованы; operator/legal/external backup retention и прежние Docker/CI/SES/Sentry live gates остаются непроверенными. Перед production подтвердить их и применить 0004_privacy вместе с новым registration contract. Все собственные тестовые сервисы/cluster остановлены, контроль портов и stale owned processes passed. Общая цель GOAL не объявляется завершённой.
+
+- 2026-10-03T06:22:42.6041653+03:00: финальные документы, ссылки, whitespace и повторное сканирование проверены; новых сигналов0. Точка продолжения выше актуальна.
+
+
+- 2026-10-03T16:10:54.9182182+03:00, Codex: UI-01/02 in_progress, UI-03 planned. Реализация новых UI-правок в new: system/light/dark для web/demo, cookies fixed с резервом, действия согласия и last-admin alert. Сбой пароля в Brave больше не воспроизводится у пользователя; проверка реальным кликом предстоит. Предыдущие privacy проверки сохраняются, новые ещё не выполнены.
+
+
+## WEB-UI — итог 2026-10-03T17:03:08.9401640+03:00
+
+WEB-UI-01..03 done локально, new. System/light/dark во всех web-состояниях и двух demo, ранний self-hosted script/palette, память при отказе storage и вкладки. Fixed cookies с измеренной высотой и отдельной scroll area; единые действия согласия, strong alert последнего администратора, autofill и мобильные переносы nav/admin. Cookies policy 2026-10-03.1 объясняет только preference, terms/consent не меняются.
+
+Проверено: 18 UI unit browser на production build под enforced CSP без violations; 3 default-off +3 enabled privacy E2E на настоящей PostgreSQL/WebAuthn UV; настоящий POST 403 последнего администратора; 17 focused Python и ранее 6 demo unit/security, оба HTTP demo; 11 frontend unit/25 component, types/lint/build/Ruff, 126 исторических сигналов/0 новых с отклонённым искусственным контролем, UTF-8/local links/YAML/whitespace и пять ограниченных инвариантов. Brave 154.1.96.59 также подтвердил actual mouse/type desktop/mobile; единичный сбой не воспроизведён.
+
+Точка продолжения: изменения локальны, без commit/push/deploy; test backend/Vite/CSP server/demo/PG остановлены, шесть loopback ports свободны. Пользовательский localhost:3000 доступен и отдаёт прежнюю сборку; для новых изменений нужна пересборка frontend в его окружении, Docker CLI здесь недоступен. Remote CI/контейнерная проверка нового пакета и прежние production/legal/SES/Sentry gates не выполнены. Приёмка общего GOAL остаётся отдельной.
+
+
+## Локальный коммит — 2026-10-03T19:19:46.0484648+03:00
+
+COMMIT-NEW-01 in_progress, Codex, ветка `new`. Владелец поручил сохранить подготовленные privacy/UI изменения локальным коммитом. Проверки реализации и внешние ограничения выше актуальны; выполняются повторный контроль секретов, версии и состава индекса. Следующий шаг — коммит и проверка чистого рабочего дерева.
+
+
+## Локальный коммит — итог 2026-10-03T19:26:58.756967+03:00
+
+COMMIT-NEW-01 done, Codex. Пакет PRIVACY-01..06 и WEB-UI-01..03 сохранён локально в ветке `new`; после записи проверено чистое рабочее дерево. Итоговый учёт включён в тот же коммит. Повторные проверки секретов, версии, ограниченных инвариантов и индекса прошли. Актуальная точка продолжения: пересобрать frontend в пользовательском окружении; Docker/remote CI и юридические/provider/SES/Sentry условия общей приёмки остаются непроверенными. Тестовые сервисы остановлены; публикация и production не выполнялись.

@@ -71,6 +71,7 @@ class TOTPService:
             existing.encrypted_secret = encrypted
             existing.is_confirmed = False
             existing.confirmed_at = None
+            existing.last_verified_step = None
         else:
             cred = TOTPCredential(
                 user_id=user.id,
@@ -112,7 +113,7 @@ class TOTPService:
         return True
 
     @staticmethod
-    async def verify_totp(db: AsyncSession, user: User, code: str) -> bool:
+    async def verify_totp(db: AsyncSession, user: User, code: str, *, commit: bool = True) -> bool:
         """
         Проверка TOTP кода при входе.
         """
@@ -120,13 +121,32 @@ class TOTPService:
             TOTPCredential.user_id == user.id,
             TOTPCredential.is_confirmed.is_(True),
         )
-        cred = (await db.execute(stmt)).scalar_one_or_none()
+        cred = (await db.execute(stmt.with_for_update())).scalar_one_or_none()
         if not cred:
             return False
 
         raw_secret = decrypt_totp_secret(cred.encrypted_secret)
         totp = pyotp.TOTP(raw_secret)
-        return bool(totp.verify(code, valid_window=1))
+        current_step = int(datetime.now(timezone.utc).timestamp()) // totp.interval
+        matched = next(
+            (
+                step
+                for step in (current_step - 1, current_step, current_step + 1)
+                if totp.verify(
+                    code, for_time=datetime.fromtimestamp(step * totp.interval, timezone.utc)
+                )
+            ),
+            None,
+        )
+        if matched is None or (
+            cred.last_verified_step is not None and matched <= cred.last_verified_step
+        ):
+            return False
+        cred.last_verified_step = matched
+        await db.flush()
+        if commit:
+            await db.commit()
+        return True
 
     @staticmethod
     async def remove_totp(db: AsyncSession, user: User) -> None:
@@ -348,6 +368,9 @@ class WebAuthnService:
         user: User | None = None,
         rp_id: str | None = None,
         settings: Settings | None = None,
+        *,
+        purpose: str = "authentication",
+        commit: bool = True,
     ) -> dict[str, Any]:
         """
         Генерирует challenge для входа по Passkey.
@@ -382,12 +405,13 @@ class WebAuthnService:
         challenge_record = WebAuthnChallenge(
             user_id=user.id if user else None,
             challenge=challenge_str,
-            purpose="authentication",
+            purpose=purpose,
             expires_at=now + timedelta(minutes=5),
         )
         db.add(challenge_record)
-        await db.commit()
-
+        await db.flush()
+        if commit:
+            await db.commit()
         return json.loads(webauthn.options_to_json(options))
 
     @staticmethod
@@ -398,6 +422,10 @@ class WebAuthnService:
         rp_id: str | None = None,
         origin: str | None = None,
         settings: Settings | None = None,
+        *,
+        purpose: str = "authentication",
+        expected_challenge: str | None = None,
+        commit: bool = True,
     ) -> bool:
         """
         Проверка assertion Passkey при входе с поддержкой множественных ключей,
@@ -416,7 +444,11 @@ class WebAuthnService:
             raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
 
         # Находим все ключи пользователя и точно сопоставляем использованный ключ
-        cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
+        cred_stmt = (
+            select(WebAuthnCredential)
+            .where(WebAuthnCredential.user_id == user.id)
+            .with_for_update()
+        )
         creds = (await db.execute(cred_stmt)).scalars().all()
         if not creds:
             raise AuthenticationException(
@@ -443,30 +475,34 @@ class WebAuthnService:
                 client_data_bytes = webauthn.helpers.base64url_to_bytes(client_data_raw)
                 client_data_dict = json.loads(client_data_bytes.decode("utf-8"))
                 signed_challenge = client_data_dict.get("challenge")
+                if expected_challenge is not None and signed_challenge != expected_challenge:
+                    raise AuthenticationException("Недействительный challenge")
                 if signed_challenge:
                     stmt = select(WebAuthnChallenge).where(
                         WebAuthnChallenge.challenge == signed_challenge,
-                        WebAuthnChallenge.purpose == "authentication",
+                        WebAuthnChallenge.purpose == purpose,
                         WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
                     )
-                    challenge_record = (await db.execute(stmt)).scalars().first()
+                    challenge_record = (await db.execute(stmt.with_for_update())).scalars().first()
         except Exception:
             pass
 
-        if not challenge_record:
+        if not challenge_record and purpose == "authentication" and expected_challenge is None:
             # Fallback к последнему активному challenge пользователя
             stmt = (
                 select(WebAuthnChallenge)
                 .where(
                     WebAuthnChallenge.user_id == user.id,
-                    WebAuthnChallenge.purpose == "authentication",
+                    WebAuthnChallenge.purpose == purpose,
                     WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
                 )
                 .order_by(WebAuthnChallenge.created_at.desc())
             )
             challenge_record = (await db.execute(stmt)).scalars().first()
 
-        if not challenge_record:
+        if not challenge_record or (
+            challenge_record.user_id is not None and challenge_record.user_id != user.id
+        ):
             raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
 
         effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
@@ -482,21 +518,27 @@ class WebAuthnService:
                 credential_current_sign_count=target_cred.sign_count,
                 require_user_verification=True,
             )
-        except Exception as e:
-            raise AuthenticationException(f"Ошибка проверки аутентификации WebAuthn: {e}")
+        except Exception:
+            raise AuthenticationException("Ошибка проверки аутентификации WebAuthn") from None
 
         # Обновляем sign_count
         target_cred.sign_count = verification.new_sign_count
         # Удаляем использованный challenge (Replay Protection)
         await db.delete(challenge_record)
-        await db.commit()
+        from app.models.audit import AuditEvent
 
-        await AuditService.log_event(
-            db,
-            event_type="passkey_login_success",
-            user_id=user.id,
-            details={"credential_id": target_cred.credential_id},
+        db.add(
+            AuditEvent(
+                event_type="passkey_login_success"
+                if purpose == "authentication"
+                else "deletion_factor_verified",
+                user_id=user.id,
+                details={},
+            )
         )
+        await db.flush()
+        if commit:
+            await db.commit()
         return True
 
     @staticmethod

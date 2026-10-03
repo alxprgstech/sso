@@ -4,7 +4,6 @@
 требует явную переменную TEST_DATABASE_URL (без fallback на DATABASE_URL),
 маскирует учетные данные в DSN и проверяет маркер владения тестовой средой перед TRUNCATE/DROP.
 """
-
 from __future__ import annotations
 
 import os
@@ -167,6 +166,7 @@ async def safe_truncate_test_tables(session: AsyncSession) -> None:
         "TRUNCATE TABLE audit_events, authorization_codes, refresh_tokens, "
         "oidc_redirect_uris, oidc_clients, sessions, password_credentials, "
         "user_roles, users, pending_registrations, recovery_codes, email_verification_tokens, "
-        "webauthn_challenges, webauthn_credentials, totp_credentials CASCADE;"
+        "webauthn_challenges, webauthn_credentials, totp_credentials, "
+        "legal_acceptances, deletion_authorizations, privacy_rate_windows, deleted_subjects CASCADE;"
     )
     await session.execute(truncate_sql)

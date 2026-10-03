@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from app.legal import REQUIRED_DOCUMENTS
 from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath("backend"))
@@ -53,7 +54,7 @@ async def test_oidc_invalid_pkce_verifier_rejected():
     mock_res_code = MagicMock()
     mock_res_code.scalar_one_or_none.return_value = code_record
 
-    exec_mock.side_effect = [mock_res_client, mock_res_code]
+    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_code]
     db.execute = exec_mock
 
     with pytest.raises(OAuthErrorException) as exc_info:
@@ -97,7 +98,7 @@ async def test_oidc_expired_auth_code_rejected():
     mock_res_code = MagicMock()
     mock_res_code.scalar_one_or_none.return_value = code_record
 
-    exec_mock.side_effect = [mock_res_client, mock_res_code]
+    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_code]
     db.execute = exec_mock
 
     with pytest.raises(OAuthErrorException) as exc_info:
@@ -141,7 +142,7 @@ async def test_oidc_reused_auth_code_rejected():
     mock_res_code = MagicMock()
     mock_res_code.scalar_one_or_none.return_value = code_record
 
-    exec_mock.side_effect = [mock_res_client, mock_res_code]
+    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_code]
     db.execute = exec_mock
 
     with pytest.raises(OAuthErrorException) as exc_info:
@@ -186,7 +187,7 @@ async def test_oidc_refresh_token_replay_revokes_family():
 
     mock_res_update = MagicMock()
 
-    exec_mock.side_effect = [mock_res_client, mock_res_rt, mock_res_update]
+    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_rt, mock_res_update]
     db.execute = exec_mock
 
     with pytest.raises(OAuthErrorException) as exc_info:
@@ -314,7 +315,11 @@ def test_deferred_features_return_404_when_disabled():
         return overridden
 
     fake_db = AsyncMock()
-    fake_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=0))
+    fake_db.execute.side_effect = [
+        MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc))),
+        MagicMock(scalar_one=MagicMock(return_value=1)),
+        MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
+    ]
     fake_db.scalar.return_value = None
 
     async def _get_fake_db():
@@ -393,6 +398,9 @@ async def test_atomic_code_redemption_race_condition():
                 )
                 mock_result.scalar_one_or_none.return_value = active_record
             return mock_result
+        if "legal_acceptances" in query_str:
+            mock_result.all.return_value = list(REQUIRED_DOCUMENTS.items())
+            return mock_result
         if "users" in query_str:
             user = User(username="race_user", email="race@alxprgs.tech", is_active=True)
             user.roles = []
@@ -402,6 +410,13 @@ async def test_atomic_code_redemption_race_condition():
         return mock_result
 
     db.execute.side_effect = mock_execute
+
+    async def fresh_user(query):
+        if "authorization_codes.user_id" in str(query):
+            return client_uuid
+        return (await mock_execute(query)).scalar_one_or_none()
+
+    db.scalar.side_effect = fresh_user
 
     # Attempt 1: succeeds
     res1 = await OIDCService.exchange_code(

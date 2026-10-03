@@ -142,6 +142,7 @@ async def register(
         user_agent=ua,
         settings=settings,
         request_details=request_details(request, settings),
+        legal_versions=payload.legal_versions,
     )
 
     return RegisterResponse(
@@ -313,10 +314,13 @@ async def get_me(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_current_session),
     settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
 ) -> UserProfileResponse:
     csrf = generate_csrf_token(session.id, settings)
     response.headers["X-CSRF-Token"] = csrf
     response.headers["Access-Control-Expose-Headers"] = "X-CSRF-Token"
+    from app.services.privacy_service import has_current_acceptance
+
     return UserProfileResponse(
         id=user.id,
         username=user.username,
@@ -328,6 +332,10 @@ async def get_me(
         has_totp=bool(user.totp_credential and user.totp_credential.is_confirmed),
         has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
         created_at=user.created_at,
+        legal_acceptance_required=not await has_current_acceptance(db, user.id),
+        deletion_pending=bool(user.deletion_scheduled_for),
+        deletion_scheduled_for=user.deletion_scheduled_for,
+        session_purpose=session.purpose,
     )
 
 

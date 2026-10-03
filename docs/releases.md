@@ -123,3 +123,9 @@ python scripts/bump_version.py set 0.2.0
 `release_bundle.py build --private-maps <PRIVATE_DIR>` создаёт общую VERSION/full-SHA identity, hidden maps/Debug IDs, private JS/maps manifest и deploy archive без maps. Verifier сравнивает identity внутри backend wheel/frontend archive, а также точное совпадение JS с private bundle. Не пересобирайте frontend после upload. Private промежуточный artifact хранится один день и не входит в GitHub Release.
 
 `prepare-sentry-release` зависит от build и блокирует draft при включённом неуспешном upload. Trusted workflow checkout и fixed CLI installation выполняются без token; единственный upload step получает protected `SENTRY_AUTH_TOKEN`. Требуются `SENTRY_ORG`, оба `SENTRY_PROJECT_*`, `SENTRY_URL=https://de.sentry.io/`, opt-in `SENTRY_RELEASE_UPLOAD_ENABLED`. Dry-run/upload-disabled всегда offline, даже если credentials присутствуют. Dirty/untagged local bundles не допускаются к upload. Runtime release override не используется. Build не создаёт deployment record; CD остаётся неактивным. Полный порядок: [observability.md](observability.md).
+
+## Миграция следующего релиза: 0004_privacy
+
+Новый контракт регистрации требует `terms_accepted=true`, `data_processing_consent=true` и актуальные `legal_versions` из публичного API. Обновите сторонние формы и API-клиенты вместе с frontend. Старые пользователи подтверждают документы после входа; новые SSO codes/tokens до этого не выдаются.
+
+До запуска нового приложения выполните миграцию. Очистка старой геолокации/полного User-Agent необратима при downgrade; согласия и состояния удаления при downgrade теряются. Для отката восстанавливайте совместимую копию только со свежим журналом удалений и закрытым доступом (operations.md). Нельзя открывать старый backend поверх новой схемы как способ обхода consent/deletion gate. Версия и релиз этой задачей не выпускаются.

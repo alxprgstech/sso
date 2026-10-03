@@ -31,6 +31,9 @@ export interface RegisterRequest {
   email: string;
   password: string;
   confirm_password: string;
+  terms_accepted: true;
+  data_processing_consent: true;
+  legal_versions: Record<string, string>;
 }
 
 export interface RegisterResponse {
@@ -58,6 +61,22 @@ export interface UserProfile {
   has_totp: boolean;
   has_passkey: boolean;
   created_at: string;
+  legal_acceptance_required?: boolean;
+  deletion_pending?: boolean;
+  deletion_scheduled_for?: string | null;
+  session_purpose?: "full" | "deletion_management";
+}
+
+export interface LegalDocument {
+  id: string; path: string; title: string; version: string; status: "draft"; paragraphs: string[];
+}
+export interface LegalDocuments { documents: LegalDocument[]; required_versions: Record<string, string>; }
+export interface DeletionStatus {
+  pending: boolean; requested_at: string | null; scheduled_for: string | null; request_allowed_at: string | null;
+}
+export interface DeletionAuthorization {
+  authorization: string; factor_required: boolean; methods?: string[];
+  passkey_options?: import("../utils/webauthn").EncodedRequestOptions | null; expires_at: string;
 }
 
 export interface SessionInfo {

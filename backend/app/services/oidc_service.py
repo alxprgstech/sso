@@ -85,6 +85,18 @@ class OIDCService:
                 "invalid_request", "Поддерживается только метод PKCE S256", 400
             )
 
+        from app.services.privacy_service import require_access
+
+        current = await db.scalar(
+            select(User)
+            .where(User.id == user.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if not current or not current.is_active:
+            raise OAuthErrorException("invalid_grant", "Аккаунт недоступен", 400)
+        await require_access(db, current)
+
         raw_code = generate_random_token(32)
         code_hash = hash_token(raw_code)
         now = datetime.now(timezone.utc)
@@ -127,6 +139,14 @@ class OIDCService:
 
         code_hash = hash_token(code)
         now = datetime.now(timezone.utc)
+        # Account row precedes token rows, matching erasure/revocation lock order.
+        candidate = await db.scalar(
+            select(AuthorizationCode.user_id).where(
+                AuthorizationCode.code_hash == code_hash, AuthorizationCode.client_id == client.id
+            )
+        )
+        if candidate:
+            await db.execute(select(User.id).where(User.id == candidate).with_for_update())
 
         # Выбираем код авторизации
         stmt = (
@@ -180,9 +200,9 @@ class OIDCService:
 
         # Получаем пользователя
         user_stmt = select(User).where(User.id == auth_code_obj.user_id)
-        user = (await db.execute(user_stmt)).scalar_one()
+        user = (await db.execute(user_stmt)).scalar_one_or_none()
 
-        if not user.is_active:
+        if not user or not user.is_active:
             raise OAuthErrorException(
                 "invalid_grant", "Учётная запись пользователя заблокирована", 400
             )
@@ -216,6 +236,13 @@ class OIDCService:
 
         token_hash = hash_token(raw_refresh_token)
         now = datetime.now(timezone.utc)
+        candidate = await db.scalar(
+            select(RefreshToken.user_id).where(
+                RefreshToken.token_hash == token_hash, RefreshToken.client_id == client.id
+            )
+        )
+        if candidate:
+            await db.execute(select(User.id).where(User.id == candidate).with_for_update())
 
         stmt = (
             select(RefreshToken)
@@ -294,9 +321,9 @@ class OIDCService:
 
         # Получаем пользователя
         user_stmt = select(User).where(User.id == rt_obj.user_id)
-        user = (await db.execute(user_stmt)).scalar_one()
+        user = (await db.execute(user_stmt)).scalar_one_or_none()
 
-        if not user.is_active:
+        if not user or not user.is_active:
             raise OAuthErrorException(
                 "invalid_grant", "Учётная запись пользователя заблокирована", 400
             )
@@ -324,6 +351,23 @@ class OIDCService:
         user_agent: str | None = None,
     ) -> TokenResponse:
         granted_scopes = set(scope_to_list(scope))
+        from app.services.privacy_service import has_current_acceptance
+
+        current = await db.scalar(
+            select(User)
+            .where(User.id == user.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if (
+            not current
+            or not current.is_active
+            or current.deletion_scheduled_for
+            or not await has_current_acceptance(db, user.id)
+        ):
+            raise OAuthErrorException(
+                "invalid_grant", "Необходимо завершить взаимодействие с аккаунтом в SSO", 400
+            )
         roles = [r.name for r in user.roles]
         now = datetime.now(timezone.utc)
 
@@ -445,7 +489,14 @@ class OIDCService:
         stmt = select(User).where(User.id == uuid.UUID(user_id_str))
         user = (await db.execute(stmt)).scalar_one_or_none()
 
-        if not user or not user.is_active:
+        from app.services.privacy_service import has_current_acceptance
+
+        if (
+            not user
+            or not user.is_active
+            or user.deletion_scheduled_for
+            or not await has_current_acceptance(db, user.id)
+        ):
             raise OAuthErrorException(
                 "invalid_token", "Пользователь заблокирован или не найден", 401
             )

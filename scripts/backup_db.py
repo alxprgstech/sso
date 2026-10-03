@@ -12,8 +12,13 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from scripts.privacy_journal import EXPORT_SQL, purge_backups
+except ModuleNotFoundError:
+    from privacy_journal import EXPORT_SQL, purge_backups
 
 
 def calculate_sha256(file_path: Path) -> str:
@@ -49,7 +54,8 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    purge_backups(out_dir)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_file = out_dir / f"sso_backup_{args.db}_{timestamp}.sql"
 
     print(f"[*] Starting backup for database '{args.db}'...")
@@ -105,6 +111,53 @@ def main():
         if not backup_file.exists() or backup_file.stat().st_size == 0:
             print("[x] Error: Backup file is empty or was not created.")
             sys.exit(1)
+
+        # This snapshot accompanies the dump. Restore still requires a NEW journal
+        # exported from the current authoritative database, including later erasures.
+        if args.docker:
+            journal_cmd = [
+                "docker",
+                "exec",
+                "-i",
+                args.container,
+                "psql",
+                "-X",
+                "-At",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-U",
+                args.user,
+                "-d",
+                args.db,
+                "-c",
+                EXPORT_SQL,
+            ]
+            journal_env = os.environ.copy()
+        else:
+            psql = shutil.which("psql")
+            if not psql:
+                raise RuntimeError("psql is required for the erasure journal")
+            journal_cmd = [
+                psql,
+                "-X",
+                "-w",
+                "-At",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-h",
+                args.host,
+                "-p",
+                str(args.port),
+                "-U",
+                args.user,
+                "-d",
+                args.db,
+                "-c",
+                EXPORT_SQL,
+            ]
+            journal_env = env
+        journal = subprocess.run(journal_cmd, env=journal_env, check=True, capture_output=True)
+        backup_file.with_suffix(".journal.json").write_bytes(journal.stdout)
 
         size_kb = backup_file.stat().st_size / 1024
         sha256 = calculate_sha256(backup_file)

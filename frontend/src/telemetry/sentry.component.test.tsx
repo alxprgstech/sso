@@ -1,12 +1,14 @@
 import React from "react";
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { savePrivacyChoice } from "./consent";
 import { render, screen, cleanup } from "@testing-library/react";
 import { ErrorBoundary, getClient, init, captureException, flush } from "@sentry/react";
 import { parseConfig, propagationTargets, bootstrapTelemetry, isExpectedClientFailure } from "./sentry";
 import { ApiError, api } from "../api/client";
 import { sanitizeEvent } from "./privacy";
 
-afterEach(async () => { cleanup(); await getClient()?.close(0); vi.restoreAllMocks(); });
+beforeEach(() => { savePrivacyChoice(true, false); });
+afterEach(async () => { cleanup(); await getClient()?.close(0); savePrivacyChoice(false, false); vi.restoreAllMocks(); });
 describe("telemetry bootstrap and real SDK ErrorBoundary", () => {
   it("fails open within deadline when config fetch never resolves", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));

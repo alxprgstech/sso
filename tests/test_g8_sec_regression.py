@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.privacy import record_test_consent
+
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.config import get_settings
@@ -48,6 +50,7 @@ async def test_confidential_client_requires_secret_on_code_exchange(pg_session: 
     user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
     pg_session.add(user)
     await pg_session.flush()
+    await record_test_consent(pg_session, user)
 
     # 2. Создаем confidential клиента с известным секретом
     raw_secret = "very_secret_confidential_key_123"
@@ -159,6 +162,7 @@ async def test_confidential_client_requires_secret_on_refresh_and_revoke(pg_sess
     user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
     pg_session.add(user)
     await pg_session.flush()
+    await record_test_consent(pg_session, user)
 
     raw_secret = "rf_secret_value_123"
     client_obj = OIDCClient(
@@ -230,6 +234,7 @@ async def test_public_client_works_without_secret_with_pkce(pg_session: AsyncSes
     user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
     pg_session.add(user)
     await pg_session.flush()
+    await record_test_consent(pg_session, user)
 
     pub_client = OIDCClient(
         client_id=f"pub-client-{uuid.uuid4().hex[:6]}",
@@ -292,6 +297,7 @@ async def test_authorize_rejects_expired_and_idle_session(pg_session: AsyncSessi
     user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
     pg_session.add(user)
     await pg_session.flush()
+    await record_test_consent(pg_session, user)
 
     client_obj = OIDCClient(
         client_id=f"auth-client-{uuid.uuid4().hex[:6]}",

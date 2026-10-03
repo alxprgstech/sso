@@ -4,11 +4,11 @@ ALXPRGS SSO - Автоматизированный запуск E2E браузе
 1. Запуск frontend preview (порт 5173).
 2. Запуск default-off профиля бэкенда (порт 8000).
 3. Preflight проверку capabilities бэкенда и frontend proxy.
-4. Прогон e2e/sso.spec.ts.
+4. Прогон SSO, privacy и appearance UI regression.
 5. Остановку default-off бэкенда и подтверждение освобождения порта.
 6. Запуск enabled профиля бэкенда (порт 8000).
 7. Preflight проверку capabilities бэкенда и frontend proxy.
-8. Прогон e2e/passkey.spec.ts.
+8. Прогон enabled Passkey и privacy.
 9. Надежную остановку всех процессов в finally блоке.
 """
 
@@ -83,6 +83,7 @@ def run_e2e(suite: str) -> int:
             "FEATURE_RECOVERY_CODES_ENABLED": "false",
             "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
             "REQUIRE_VERIFIED_EMAIL": "false",
+            "PRIVACY_ENABLED_PROFILE": "0",
         }
     )
 
@@ -94,6 +95,7 @@ def run_e2e(suite: str) -> int:
             "FEATURE_RECOVERY_CODES_ENABLED": "true",
             "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
             "REQUIRE_VERIFIED_EMAIL": "false",
+            "PRIVACY_ENABLED_PROFILE": "1",
         }
     )
 
@@ -193,6 +195,8 @@ def run_e2e(suite: str) -> int:
                     "e2e/sso.spec.ts",
                     "e2e/multi_client_sso.spec.ts",
                     "e2e/telemetry.spec.ts",
+                    "e2e/privacy.spec.ts",
+                    "e2e/appearance.spec.ts",
                 ],
                 cwd=FRONTEND_DIR,
                 env=default_off_env,
@@ -271,7 +275,14 @@ def run_e2e(suite: str) -> int:
 
             # Playwright
             pw_res = subprocess.run(
-                [npx_cmd, "playwright", "test", "e2e/passkey.spec.ts", "e2e/telemetry.spec.ts"],
+                [
+                    npx_cmd,
+                    "playwright",
+                    "test",
+                    "e2e/passkey.spec.ts",
+                    "e2e/telemetry.spec.ts",
+                    "e2e/privacy.spec.ts",
+                ],
                 cwd=FRONTEND_DIR,
                 env=enabled_env,
             )

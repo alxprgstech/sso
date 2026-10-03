@@ -2701,3 +2701,78 @@
 - План проверки перед commit: secret scanner с отрицательным self-test, version/invariants, whitespace и состав Git index. .env, приватные maps, test fixtures, caches и artifacts остаются вне Git. Push, release, deploy и включение telemetry не поручены.
 
 - 2026-10-02T21:58:02+03:00, Codex: подготовка завершена. Secret scan: 126 candidates / 0 new; synthetic control rejected. Пять ограниченных инвариантов и согласованность VERSION 0.2.0 прошли. В index 84 файла; запрещённых runtime/private/generated paths и реальных runtime DSN нет; git diff --cached --check passed. Код после ранее зафиксированных runtime-проверок не менялся. Набор готов к локальному commit; следующий шаг — проверить сохранение и чистоту рабочего дерева. Внешняя приёмка остаётся blocked.
+
+### 2026-10-03T04:43:12.5075237+03:00 — Codex — PRIVACY-01..06: начало
+
+- Пользователь поручил реализацию согласованного плана. Исходное дерево чистое, HEAD 9e31fe9. Ветка new создана; первая попытка Git получила Permission denied для .git, разрешённый повтор успешен.
+- План и ADR-0011 зафиксированы до кода. Существующие внешние блокеры не закрываются. Следующий шаг: модели, миграция и серверные контракты; затем UI и проверки. Проверки нового поведения ещё не выполнялись.
+
+
+### 2026-10-03T04:55:07.5772466+03:00 — Codex — PRIVACY-01/03: серверный этап
+
+- Добавлены единые тексты legal.py, privacy models и миграция 0004; API документов/согласий/удаления, отдельные factor permissions, ограниченные сессии, OIDC gates, атомарный admin lock и minute maintenance. Согласия заявки переносятся только после email. Rate windows отделяются от аудита; geo исключается.
+- Это промежуточная реализация: проверки ещё не выполнены, UI и backup/restore впереди. Python 3.13 запрещён sandbox execution; разрешённый запуск успешен, bundled Python 3.12 доступен для файловых операций. Следующий шаг — static checks и исправления, затем UI.
+
+## 2026-10-03T05:18:19.5501648+03:00 — Codex, PRIVACY-01..06, промежуточная проверка
+
+В ветке `new` реализованы единые проектные документы/согласия, API удаления с повторной аутентификацией, ограниченные сессии, worker, минимизация и интерфейс cookies/доступности. Добавлены `0004_privacy`, `privacy_service`, публичные страницы и сценарии удаления. Для restore подготовлен свежий журнал UUID/UTC, применяемый с SQL dump в одной транзакции; retention 30 дней. Миграция на отдельном новом PostgreSQL-кластере прошла; mypy 47 файлов, frontend TypeScript/ESLint, 20 компонентных тестов и первые 4 PostgreSQL privacy-теста прошли. Ошибка теста после rollback исправлена сохранением ID перед истечением ORM-состояния; защита приложения не ослаблялась. Следующий шаг: дополнительные границы/гонки/MFA/restore и браузерные проверки, адаптация прежних сценариев к обязательному согласию. Общая приёмка ещё не завершена.
+
+
+## 2026-10-03T05:52:59.4148309+03:00 — PRIVACY-01..06, Codex
+
+Реализованы единые документы/API и перенос согласий, server gate, ограниченные сессии и одноразовые permissions, worker/retention, browser opt-in, клавиатура и restore с актуальным журналом. Добавлены GOAL PRIV-01..09, docs/privacy.md и эксплуатационные контракты. Проверено: 54 выбранных Python теста, настоящий backup/restore на собственных маркированных PostgreSQL БД, frontend 25 component, typecheck/lint/build; новые browser сценарии 2 default-off и 2 enabled, включая криптографическую WebAuthn проверку с UV. Первый enabled запуск выявил неверный тестовый RP IP: стенд исправлен на точный localhost origin/RP; защита не менялась. Полная регрессия с новым basetemp идёт, прежняя попытка имела ошибки доступа к старому pytest temp и четыре mock-контракта после изменения lock order. Следующие шаги: результаты полной регрессии, дополнительные гонки/retention, SDK browser, документация и final scans. Продакшен, рассылки, публикация не выполнялись.
+
+## 2026-10-03T06:09:47.5295522+03:00 — PRIVACY-02..06, Codex
+
+Новые privacy браузерные тесты 3 default-off + 3 enabled passed (документы/cookies, весь deletion lifecycle и admin dialog Tab/Shift+Tab/Escape/focus). Ordinary E2E: 5 default checks и отдельно настоящий двухклиентский SSO 1 passed; enabled 5 passed. SDK browser 9 passed; frontend 11 unit/25 component/typecheck/lint/build passed. Secret scan 126 candidates/0 new, synthetic control rejected. В SSO исправлен относительный return_to, сохраняющий исходные параметры и работающий за proxy; open redirect/state/PKCE checks retained. Расширен atomic guard последнего администратора, устранены дубликаты при нескольких ролях. Полная Python попытка: 326 passed/16 subtests и один test-harness failure fixed; межпроцессный subset затем 4 passed. Следующий шаг: окончательная полная регрессия с новым guard, downgrade/upgrade и legacy cleanup, фиксация acceptance/точки продолжения и остановка собственного стенда.
+
+## 2026-10-03T06:18:32.6464381+03:00 — завершение PRIVACY-01..06, Codex
+
+Локальные критерии выполнены: окончательная полная регрессия 328 passed +16 subtests; после последних changes целевая 51 passed, включая obsolete consent resend без письма/OIDC/userinfo. Migration downgrade/upgrade/legacy privacy cleanup passed; frontend/API types/lint/Ruff/mypy/build, secret control/126 historical/0 new и docs 24 local links/UTF-8 passed. Обновлены GOAL, ADR, plan/status/acceptance, API/data-model/security/operations/operator/test procedure/observability/releases/README/CHANGELOG. Политики draft без вымышленных operator реквизитов.
+
+Own PostgreSQL cluster остановлен pg_ctl fast; main loopback test ports свободны. Stop-Process для старых owned fixture процессов вернул NullReference; применён Windows taskkill только к заново проверенным собственным PID/деревьям, remaining0. Точка продолжения сохранена: working tree `new`, без commit/push/deploy, future production юридические/provider/retention и прежние external gates отдельно. Внешние 5 email tests не запускались; unit warnings и chunk warning перечислены в acceptance. Начало пакета 04:43:12.5075237+03:00, фактическое завершение 2026-10-03T06:18:32.6464381+03:00.
+
+- 2026-10-03T06:22:42.6041653+03:00, Codex, PRIVACY-06: финальная проверка документации завершена, UTF-8/ссылки/whitespace passed. Повторное сканирование после отчёта: 126 исторических сигналов, новых0; контрольный искусственный образец отклонён. Ложное срабатывание на строку с именами команд и результатами в отчёте устранено русской формулировкой; baseline и правила сканера не менялись. Пакет и точка продолжения готовы, стенд остановлен.
+
+
+### 2026-10-03T16:10:54.9182182+03:00 — Codex — UI-01..03: начало
+
+Пользователь просит исправить положение cookies, действия подтверждения документов, выделение запрета последнего администратора и добавить тёмную тему. Выбор: системная тема с ручным переключением; cookies fixed снизу с резервом места; password проверять на входе/регистрации. Brave без расширений уже не воспроизводит сбой. Ветка new, предыдущие изменения сохранены. До реализации записаны план и ADR-0012. Следующий шаг: общий shell/palette/theme, фиксированный баннер, затем настоящие клики и UI-регрессии. Новые проверки ещё не проведены.
+
+
+### 2026-10-03T16:24:55.8771290+03:00 — Codex — UI-01/02: интерфейс реализован, проверки
+
+Добавлены AppShell, ThemeControl и общий palette/theme/demo assets; fixed cookies с ResizeObserver-резервом и focus return; единые действия согласия, error alert удаления; browser autofill names и текущий/new-password. Тема применяется до React, demo сохраняют CSRF и escaping. На прежнем localhost:3000 реальные клики/ввод во всех трёх password inputs прошли при 1908×901 и 390×844, без отправки форм. Новые typecheck/lint/build и 25 component passed; шесть demo unit/security regressions passed. Первый UI browser прогон выявил слишком широкий mock route, перехватывающий исходный API module; маршрут исправлен на /api/v1. Следующий прогон 13/15: две проверки равенства кнопок выявили анимацию цветов только button при смене темы; transition ограничен opacity, проверки повторяются. Это промежуточный результат, UI-03 не завершён.
+
+
+### 2026-10-03T16:47:11.5365650+03:00 — Codex — WEB-UI-01..03: реальная регрессия и визуальная проверка
+
+Уточнение ID: временные ID задач UI-01..03 совпали с существующими требованиями GOAL. Эти задачи переименованы в WEB-UI-01..03; предыдущие записи UI относятся к тому же пакету, история сохранена.
+
+Privacy E2E default-off 3/3 и enabled 3/3 с настоящим WebAuthn UV прошли на собственном PostgreSQL 16.15. После визуальной проверки fixed panel содержимое помещено в отдельную ограниченную scroll area, reserve проверяется геометрически. Повтор enabled 3/3 passed. Два demo на настоящих HTTP серверах подтвердили system/выбор/reload/native select; 6 Python unit/demo CSRF/escaping tests прошли. Built frontend с enforced CSP self: 18 browser cases passed до дополнительного mobile-admin check; проверка выявила существующее переполнение tabs/header, добавлены переносы. Итоговый повтор идёт. Политика cookies дополнена функциональным theme storage, версия только cookies 2026-10-03.1; обязательные terms/consent не изменились.
+
+CI и локальный runner теперь включают appearance и privacy, enabled передаёт PYTHON_BIN/profile. Исправлены две ошибки стенда: Uvicorn Windows запуск выбран с SelectorEventLoop как в штатном manage_test_server; frontend npm команды повторены из frontend после ошибочного cwd. В CSP monitor ранний доступ к documentElement заменён ожиданием DOMContentLoaded. Защита приложения и assertions не ослаблялись. Далее — окончательные static/unit/scans/docs и остановка собственного стенда.
+
+
+### 2026-10-03T17:03:08.9401640+03:00 — Codex — WEB-UI-01..03: завершение
+
+Новые UI-критерии выполнены: 18/18 browser-hosted unit cases на финальном build под enforced CSP, violations 0; реальная privacy регрессия 3 default-off и 3 enabled с UV, включая повтор после scroll area; реальный last-admin POST 403 и заметный alert. Brave 154.1.96.59 найден локально и headless изолированно проверил click/type на localhost:3000 login/register и новом login при desktop/mobile. Первая попытка нового register ожидала скрытый input при closed registration; исправлена область read-only probe, capabilities реального сервера не подменялись. Сбой пользователя не воспроизведён.
+
+17 focused Python, 11 frontend unit/25 component, types/lint/build, Ruff, оба HTTP demo и локальные документы прошли. Положительный и отрицательный контроль просмотра исходников: 126 исторических /0 новых, искусственный образец отвергнут. Искусственный QR в browser UI unit fixture помечен одной pragma; baseline не менялся. Проверка 13 документов и YAML successful, git whitespace clean, defaults/CD/locks инварианты сохранены. Скриншоты сохранены в ignored artifacts/ui. Предупреждения: прежний bundle >500 kB и deprecations/canary stack перечислены в acceptance.
+
+Все собственные процессы завершены через их exec sessions, свой PostgreSQL pg_ctl fast stopped; шесть тестовых портов свободны, пользовательский localhost:3000 HTTP200. Финальные plan/status/GOAL/ADR/operator/API/privacy/operations/test procedure/README/CHANGELOG/acceptance обновлены. Контрольная точка new без commit/push/deploy. Docker CLI отсутствует, текущая сборка на 3000 не обновлялась; remote CI и прежние external gates не объявляются пройденными. Начало 16:10:54.9182182+03:00, завершение 2026-10-03T17:03:08.9401640+03:00.
+
+
+### 2026-10-03T19:19:46.0484648+03:00 — Codex — COMMIT-NEW-01: начало
+
+Владелец поручил локальный коммит всех подготовленных изменений PRIVACY-01..06 и WEB-UI-01..03. Проверены ветка `new` и состав working tree; индекс пуст, изменения соответствуют завершённому пакету. Перед записью Git повторяются просмотр состава, контроль секретов, версии и ограниченные инварианты. Внесена задача в plan/status; следующие шаги — проверки, индекс, коммит и чистое дерево. Нового запуска среды, публикации и развёртывания не требуется.
+
+
+### 2026-10-03T19:25:22.341886+03:00 — Codex — COMMIT-NEW-01: проверки перед коммитом
+
+Повторные проверки прошли: check_secret_scan.py --self-test — 126 исторических сигналов, новых 0, искусственный контроль отклонён; scan_secrets_and_deps.py — все пять ограниченных инвариантов; bump_version.py check — компоненты согласованы с VERSION 0.2.0; git diff --check — без ошибок. Просмотрены 30 новых исходных/документальных файлов, временные данные и артефакты исключены. Код после завершённых проверок реализации не изменялся, полный набор повторно не запускался. Следующий шаг — проверить индекс и создать локальный коммит.
+
+
+### 2026-10-03T19:26:58.756967+03:00 — Codex — COMMIT-NEW-01: завершение
+
+Создан локальный коммит пакета PRIVACY и WEB-UI: 117 исходных/документальных файлов. После записи проверены ветка `new` и чистое рабочее дерево. Plan/status обновлены; эта заключительная запись включается в тот же коммит. Начало 2026-10-03T19:19:46.0484648+03:00, завершение 2026-10-03T19:26:58.756967+03:00. Проверки перед коммитом перечислены выше; полного повторного запуска среды не было. Точка продолжения: пересборка пользовательского frontend и прежние внешние условия приёмки; публикация не выполнялась.

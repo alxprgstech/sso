@@ -1,3 +1,4 @@
+import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { test, expect, type Page } from "@playwright/test";
 import { createMailbox, waitForVerification } from "./helpers/testmail";
 
@@ -9,6 +10,7 @@ async function login(page: Page, username: string, password: string) {
   await page.getByPlaceholder("user@alxprgs.tech").fill(username);
   await page.locator('input[type="password"]').fill(password);
   await page.locator('button[type="submit"]').click();
+  await acceptDocumentsAfterLogin(page);
   await expect(page.getByText("Личный кабинет")).toBeVisible();
 }
 
@@ -37,6 +39,8 @@ for (const mode of ["code", "link"] as const) {
       const passwords = page.locator('input[type="password"]');
       await passwords.nth(0).fill(userPassword);
       await passwords.nth(1).fill(userPassword);
+      await page.getByRole("checkbox").nth(0).check();
+      await page.getByRole("checkbox").nth(1).check();
       await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
       await expect(page.getByLabel("Код из письма")).toBeVisible();
       const verification = await waitForVerification(mailbox, username);

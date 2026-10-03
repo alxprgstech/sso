@@ -71,7 +71,10 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
   test.afterAll(async () => {
     if (page) await page.close();
     for (const child of clientProcesses) {
-      if (child.exitCode === null) child.kill();
+      if (child.exitCode === null) {
+        if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
+        else child.kill();
+      }
     }
   });
 
@@ -86,6 +89,12 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     await page.fill('input[placeholder="user@alxprgs.tech"]', process.env.E2E_USERNAME!);
     await page.fill('input[type="password"]', process.env.E2E_PASSWORD!);
     await page.click('button[type="submit"]');
+    await expect(page.getByRole("heading", {name:"Подтвердите документы"}).or(page.locator("#username"))).toBeVisible();
+    if (await page.getByRole("heading", {name:"Подтвердите документы"}).isVisible()) {
+      await page.getByRole("checkbox").nth(0).check();
+      await page.getByRole("checkbox").nth(1).check();
+      await page.getByRole("button", {name:"Подтвердить и продолжить"}).click();
+    }
     await expect(page).toHaveURL(`${clientOrigins[0]}/dashboard`);
     await expect(page.locator("#username")).toHaveText(process.env.E2E_USERNAME!);
     expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(200);
@@ -138,10 +147,11 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     await page.goto(`${clientOrigins[0]}/login`);
     await expect(page).toHaveURL(`${clientOrigins[0]}/dashboard`);
     await page.click("#btn-sso-logout");
-    await expect(page).toHaveURL(/localhost:5173/);
+    await expect.poll(() => new URL(page.url()).origin).toBe(new URL(process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173").origin);
     expect((await page.request.get(`${clientOrigins[1]}/api/me`)).status()).toBe(200);
     await page.goto(`${clientOrigins[0]}/login`);
-    await expect(page).toHaveURL(/localhost:5173\/login\?return_to=/);
+    await expect.poll(() => new URL(page.url()).pathname).toBe("/login");
+    expect(new URL(page.url()).searchParams.get("return_to")).toBeTruthy();
 
     // The flow belongs to this browser, and a failed state consumes it.
     const wrongState = await page.goto(`${clientOrigins[0]}/callback?code=synthetic&state=wrong`);
@@ -149,7 +159,7 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     await page.goto(`${clientOrigins[0]}/login`);
     const returnTo = new URL(page.url()).searchParams.get("return_to");
     expect(returnTo).toBeTruthy();
-    const state = new URL(returnTo!).searchParams.get("state");
+    const state = new URL(returnTo!, process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173").searchParams.get("state");
     expect(state).toBeTruthy();
     const failedExchange = await page.goto(`${clientOrigins[0]}/callback?code=synthetic&state=${encodeURIComponent(state!)}`);
     expect(failedExchange?.status()).toBe(400);

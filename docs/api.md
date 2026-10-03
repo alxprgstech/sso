@@ -243,3 +243,23 @@
 `GET /api/v1/auth/telemetry-config` не требует cookies/авторизации и не обращается к БД. Ответ `200`, `Cache-Control: no-store`. Поля: `enabled: boolean`, `dsn: string` (только public frontend DSN; пусто при отключении), `environment: local|test|staging|production`, `traces_sample_rate: number`, `replay_enabled: boolean`, `replays_session_sample_rate: number`, `replays_on_error_sample_rate: number`, `trace_propagation_targets: string[]` (точные configured-origin `/api/` и `/oauth/` prefixes). Все rates в [0,1]. Backend DSN, credentials и пользовательские данные отсутствуют.
 
 Defaults: enabled/replay false, DSN пустой, rates 0, targets пустые. Replay принудительно выключен вне staging. Browser дополнительно строит anchored propagation matchers текущего same-origin; runtime config не может разрешить сторонний origin. Конфигурация применяется при следующем reload; bootstrap ограничен 300 ms и продолжает render при отказе telemetry. Privacy policy — [observability.md](observability.md). OIDC wire contracts не изменены.
+
+## Политики и управление удалением — дополнение 03.10.2026
+
+| Метод и путь | Контракт |
+| --- | --- |
+| GET `/api/v1/legal/documents` | Public, no-cache; `documents` (id/path/title/version/status/paragraphs), `required_versions` terms/data-consent. |
+| POST `/api/v1/auth/register` | Дополнительно обязательны `terms_accepted:true`, `data_processing_consent:true`, `legal_versions` с точными актуальными версиями; отсутствие/подмена boolean 422, старые версии 409 до заявки/письма. |
+| POST `/api/v1/auth/legal-acceptance` | Cookie + CSRF; те же три поля, повторная запись идемпотентна, pending deletion 403. |
+| GET `/api/v1/auth/account-deletion` | Cookie; `pending`, `requested_at`, `scheduled_for`, `request_allowed_at`; timestamps UTC/null. |
+| POST `/api/v1/auth/account-deletion/reauthenticate` | Cookie + CSRF; `action:request/cancel`, `current_password`; proof TTL 5m, `factor_required`, `methods`, optional `passkey_options`, `expires_at`. |
+| POST `/api/v1/auth/account-deletion/confirm-factor` | Cookie + CSRF; action/authorization/method (`totp`, `recovery_code`, `passkey`), code либо credential; проверяет configured MFA, возвращает новый proof. |
+| POST `/api/v1/auth/account-deletion` | Cookie + CSRF + `{authorization}`; 202 со статусом и новой limited cookie/X-CSRF-Token, срок 14 дней; повтор не сдвигает срок. |
+| DELETE `/api/v1/auth/account-deletion` | Cookie + CSRF + отдельное cancel-разрешение; до срока 200, отзывает все sessions, clears cookie, cooldown 7 дней. |
+
+`GET /me` дополнительно возвращает `legal_acceptance_required`, `deletion_pending`, `deletion_scheduled_for`, `session_purpose`. До согласий разрешены me/legal-acceptance/logout/deletion management; остальные cookie API 403. Pending разрешает только me/deletion management/logout и public documents. OIDC authorize направляет на `/accept-terms?return_to=...` или `/account-deletion`; code/token issuance и userinfo проверяют DB state. Структурированные privacy ошибки: legal_versions_changed/legal_acceptance_required/account_deletion_pending (409/403), invalid_deletion_authorization (401), deletion_already_pending/deletion_not_cancellable (409), deletion_cooldown/rate_limit_exceeded (429), service_unavailable (503). Неверный пароль/factor 401, CSRF 403, last admin 403. Нет endpoint физического немедленного удаления.
+
+
+## Статические файлы темы web/demo
+
+Frontend отдаёт `/theme/theme.js` и `/theme/palette.css` из build. Каждый demo предоставляет только явно разрешённые GET `/theme/theme.js`, `/theme/palette.css`, `/theme/demo.css` (JS/CSS, nosniff, cache max-age 300); остальные `/theme/{asset}` — 404. Настройка не имеет API и не отправляется серверу. Wire contracts auth/CSRF/OIDC/last-admin остаются прежними. Политика cookies имеет собственную версию 2026-10-03.1; обязательные версии terms/data-consent остаются 2026-10-03.

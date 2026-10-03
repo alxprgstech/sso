@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from fastapi import Request
 
 from app.config import Settings
-from app.core.rate_limit import get_client_ip, is_trusted_proxy
+from app.core.rate_limit import get_client_ip
 from app.core.security import generate_random_token, hash_token
 from app.services.ses_email import SESEmailDeliveryError, send_ses_email
 
@@ -52,7 +52,6 @@ def code_matches(settings: Settings, challenge_id: uuid.UUID, code: str, digest:
 
 
 def request_details(request: Request, settings: Settings) -> dict[str, str]:
-    peer = request.client.host if request.client else ""
     agent = (request.headers.get("User-Agent") or "")[:512]
     lower_agent = agent.lower()
     os_name = next(
@@ -96,15 +95,7 @@ def request_details(request: Request, settings: Settings) -> dict[str, str]:
         "os": os_name,
         "browser": browser,
         "device": device,
-        "city": "Неизвестно",
-        "country": "Неизвестно",
     }
-    if is_trusted_proxy(peer, settings.TRUSTED_PROXIES):
-        # The ingress must remove client-supplied X-ALX-Geo-* headers before forwarding.
-        for field in ("city", "country"):
-            value = request.headers.get(f"X-ALX-Geo-{field.title()}", "")
-            if value and len(value) <= 80 and value.isprintable():
-                details[field] = value
     try:
         ipaddress.ip_address(details["ip"])
     except ValueError:
@@ -116,8 +107,6 @@ def _detail_lines(details: dict[str, str]) -> list[tuple[str, str]]:
     return [
         ("Время", details.get("time", "Неизвестно")),
         ("IP", details.get("ip", "Неизвестно")),
-        ("Примерный город", details.get("city", "Неизвестно")),
-        ("Страна", details.get("country", "Неизвестно")),
         ("Система", details.get("os", "Неизвестно")),
         ("Браузер", details.get("browser", "Неизвестно")),
         ("Устройство", details.get("device", "Неизвестно")),

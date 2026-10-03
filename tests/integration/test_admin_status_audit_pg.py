@@ -11,6 +11,8 @@ from app.models.user import Role, User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.privacy import accept_current_documents
+
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
@@ -71,6 +73,7 @@ async def test_status_counts_and_audit_export_pg(
         "/api/v1/auth/login",
         json={"username": "status_admin", "password": password},
     )
+    await accept_current_documents(pg_client, login)
     assert login.status_code == 200
     csrf = login.json()["csrf_token"]
 

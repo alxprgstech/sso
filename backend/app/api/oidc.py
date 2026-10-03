@@ -138,7 +138,7 @@ async def authorize(
 
     # Если пользователь не аутентифицирован или сессия недействительна, перенаправляем на страницу входа
     if not user:
-        return_url = str(request.url)
+        return_url = request.url.path + ("?" + request.url.query if request.url.query else "")
         login_url = f"{settings.FRONTEND_URL}/login?return_to={urllib.parse.quote(return_url)}"
         redirect_res = RedirectResponse(url=login_url, status_code=status.HTTP_302_FOUND)
         if raw_token or session_invalid:
@@ -146,6 +146,19 @@ async def authorize(
         return redirect_res
 
     # 3. Пользователь авторизован в SSO -> моментальный выпуск single-use authorization code
+    from app.services.privacy_service import has_current_acceptance
+
+    if user.deletion_scheduled_for or (
+        session_obj and session_obj.purpose == "deletion_management"
+    ):
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/account-deletion", status_code=302)
+    if not await has_current_acceptance(db, user.id):
+        return_url = urllib.parse.quote(
+            request.url.path + ("?" + request.url.query if request.url.query else ""), safe=""
+        )
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/accept-terms?return_to={return_url}", status_code=302
+        )
     code = await OIDCService.create_authorization_code(
         db=db,
         client=client,

@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit import AuditEvent
+from app.core.privacy import short_user_agent
 
 
 class AuditService:
@@ -15,6 +16,8 @@ class AuditService:
         ip_address: str | None = None,
         user_agent: str | None = None,
         details: dict[str, Any] | None = None,
+        *,
+        commit: bool = True,
     ) -> AuditEvent:
         """
         Записывает событие аудита безопасности.
@@ -36,6 +39,16 @@ class AuditService:
                     ]
                 ):
                     safe_details[k] = "[REDACTED]"
+                elif k.lower() in {
+                    "identifier",
+                    "username",
+                    "email",
+                    "name",
+                    "credential_id",
+                    "city",
+                    "country",
+                }:
+                    continue
                 else:
                     safe_details[k] = v
 
@@ -43,9 +56,11 @@ class AuditService:
             event_type=event_type,
             user_id=user_id,
             ip_address=ip_address,
-            user_agent=user_agent,
+            user_agent=short_user_agent(user_agent) if user_agent else None,
             details=safe_details,
         )
         db.add(event)
-        await db.commit()
+        await db.flush()
+        if commit:
+            await db.commit()
         return event
