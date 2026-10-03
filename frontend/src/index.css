@@ -24,7 +24,6 @@
 .cookie-banner label { display: block; margin: .5rem 0; }
 .cookie-banner fieldset { padding: .75rem; margin: .75rem 0; }
 .privacy-notice { padding: 1rem; }
-.deletion-link { text-align: center; padding: 1rem; color: var(--danger-text); text-decoration: underline; }
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

@@ -68,7 +68,6 @@ const MainContent: React.FC = () => {
           <DashboardPage />
         )}
       </div>
-      <a href="/account-deletion" className="deletion-link">Удаление аккаунта</a>
     </div>
   );
 };

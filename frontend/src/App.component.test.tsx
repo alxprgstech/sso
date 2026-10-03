@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
 import type { Capabilities, UserProfile } from "./types/api";
 
@@ -148,6 +148,18 @@ describe("server capabilities and account flows", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Ссылка недействительна");
     expect(window.location.search).toBe("");
     expect(screen.queryByText("synthetic-expired-token")).toBeNull();
+  });
+
+  it.each([
+    ["normal account", { ...admin, is_superuser: false, roles: ["user"] }],
+    ["administrator", admin],
+  ])("shows a single account deletion link in data management for %s", async (_role, user) => {
+    apiMock.getMe.mockResolvedValue(user);
+    render(<App />);
+    const dataManagement = await screen.findByRole("region", { name: "Управление данными" });
+    const link = within(dataManagement).getByRole("link", { name: "Удаление аккаунта" });
+    expect(link.getAttribute("href")).toBe("/account-deletion");
+    expect(screen.getAllByRole("link", { name: "Удаление аккаунта" })).toEqual([link]);
   });
 
   it("does not expose TOTP setup or QR when the server flag is disabled", async () => {

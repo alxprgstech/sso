@@ -180,6 +180,20 @@ for (const theme of ["light", "dark"] as const) {
       }
     });
 
+    test(`single dashboard deletion link and navigation: ${theme} ${viewport.width}`, async ({ page }) => {
+      await page.setViewportSize(viewport); await mockUI(page, profile);
+      await page.goto("/");
+      await page.getByRole("combobox", { name: "Тема оформления" }).selectOption(theme);
+      const dataManagement = page.getByRole("region", { name: "Управление данными" });
+      const deletion = dataManagement.getByRole("link", { name: "Удаление аккаунта", exact: true });
+      await expect(page.getByRole("link", { name: "Удаление аккаунта", exact: true })).toHaveCount(1);
+      await expect(deletion).toHaveAttribute("href", "/account-deletion");
+      await deletion.click();
+      await expect(page).toHaveURL("/account-deletion");
+      await expect(page.getByRole("heading", { name: "Удаление аккаунта", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Текущий пароль")).toBeVisible();
+    });
+
     test(`consent actions and cookies layout: ${theme} ${viewport.width}`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport); await mockUI(page, { ...profile, legal_acceptance_required: true });
       await page.goto("/");

@@ -328,3 +328,18 @@ PR-FIX-02 обновление 2026-10-03T21:08:52.113959+03:00: полный и
 [CI37143596385](https://github.com/alxprgstech/sso/actions/runs/37143596385) для 8b3e958 **success**, восемь внутренних jobs: backend PostgreSQL333 +14 subtests, enabled21, Ruff142/mypy47, browser28+8, frontend build/components/real SDK browser, SDK clean install/build, container packaging, dependencies, version и inactive CD. Восемь существующих platform/lifecycle skips и пять external email deselected не менялись; local Windows full340 +16 subtests, последние focused35 и privacy/MFA23 прошли. Внешняя SES job skipped по PR policy.
 
 [CodeScene7799341](https://codescene.io/projects/85555/delta/results/7799341) **success: все три quality gates passed**. Новые файлы соответствуют строгому10.00; mfa_service6.81→7.11, backup9.49→10.00, runner7.93→9.22. Исходные failed причины устранены без suppression, изменения профиля качества или ослабления assertions/security. Фактические ранние failures и ограничения среды сохранены выше. Общая production/legal/provider приёмка остаётся отдельной; исправления не развёртывались и PR не merged.
+
+## UI-DELETE-01 — одна ссылка удаления, 2026-10-03T22:43:44.0203407+03:00
+
+Требования UI-01, UI-02, PRIV-04. Дубль возникал из независимых ссылок DashboardPage и общей оболочки App. Нижняя ссылка и её CSS удалены; в кабинете остаётся ссылка в «Управление данными». Страница согласий сохраняет собственный доступ к удалению. Начало 2026-10-03T22:37:47.2800071+03:00, завершение 2026-10-03T22:43:44.0203407+03:00; исполнитель Codex.
+
+| Проверка / команда из frontend | Фактический результат |
+| --- | --- |
+| `npm run test:components -- --reporter=dot -t "single account deletion link"` до исправления | 2 expected failures: обе роли обнаруживают второй рендер; ошибка воспроизведена |
+| `npm run test:components -- --reporter=dot` после исправления | 28 passed; регрессии обеих ролей проверяют единственный accessible link, его расположение и href |
+| `npm run typecheck`, `npm run typecheck:tests`, `npm run lint`, `npm run build` | passed; существующий warning о chunk >500 kB сохраняется |
+| `npm run test:e2e -- e2e/appearance.spec.ts --grep "single dashboard deletion link" --reporter=list`, `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5174` | 4 passed: light/dark, desktop 1908×901 и mobile 390×844; одна ссылка, переход `/account-deletion`, заголовок и поле пароля; CSP violations 0 |
+
+Node v24.20.0, npm 11.19.0, Vitest 5.0.2, Vite 8.3.1, Playwright 1.63.0. Браузерные cases — явно mocked API UI tests на production frontend build; они не являются новой приёмкой auth/PostgreSQL/фактического удаления. Первый typecheck отказал из-за неподдерживаемого `exact` в новых Testing Library queries; исправлен тест, повтор checks passed. Сценарий удаления и backend не менялись. Свой loopback preview остановлен, порт 5174 свободен. Изменения локальные, новый remote CI/production не выполнялись.
+
+Финальный контроль 2026-10-03T22:45:38.9554899+03:00: strict UTF-8 9 файлов, добавленная local link 1/1 и git diff --check passed; версия Playwright подтверждена CLI.
