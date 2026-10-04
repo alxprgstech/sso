@@ -1,3 +1,13 @@
+# Актуальный статус — CI и CodeScene PR5 успешны
+
+Обновление 2026-10-04T23:31:35.029980+03:00, Codex. PR5-CI-01 done; начало2026-10-04T15:04:59.289865+03:00, завершение2026-10-04T23:31:35.029980+03:00. На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена.
+
+Два [разрешённых исключения](testing/codescene-contracts.md) действуют только на byte-exact архив исходного аудита и обязательную пятиаргументную сигнатуру Alembic callback. Глобальные пороги и остальные правила сохранены, все3qualitygates прошли. Архив SHA256 и callback AST/signature неизменны;8callback/importregressions/Ruff/scans иlinksPASS. Все остальные рабочие замечания исправлены в реализации.
+
+[PR5](https://github.com/alxprgstech/sso/pull/5) открыт и не имеет конфликтов сmain на проверенномSHA. Остальныеветки включенывmain. ЗадачаисправленияCI завершена; следующийшаг—review/одобрениевладельцем. Финальныйdocs-onlyhead проверяетсяотдельно, результат—вчате/PRbody. 23CLOSED/4PARTIALLYVERIFIED сохраняются; E01 иCIчастьE02подтверждены. ReleaseчастьE02,E03–E07/liveHTTPS/email/operations/OIF/ownerreview иGOAL09 остаютсявнешними. Merge/deployment/release/liveemails не выполнялись; собственныйPGстендостановлен, данные сохранены.
+
+## История предыдущих контрольных точек
+
 # Продолжение PR5-CI-01 — разрешены два исключения CodeScene
 
 2026-10-04T22:02:23.736246+03:00, Codex: in_progress. Владелец разрешил два точечных исключения для неизменяемого архива аудита и обязательного callback Alembic. Два исключения подготовлены в version-controlled конфигурации: точный архивный путь и локальная директива callback. Archive SHA256 и callback AST неизменны,8регрессионных тестов/Ruff/secret scanPASS. На40ecf87 все9ActionsPASS; CodeScene подтвердил callback, но остался второй архивный rule Excess Number of Function Arguments. Исправляется только его точное имя в прежнем rule-set; новыйremoteанализ pending. Все9Actions на6df8008e2be2f3e6813c37dd5605250fb3dd5da7 PASS,2SES skipsCI03. Следующий шаг: узкая policy и повторный анализ.

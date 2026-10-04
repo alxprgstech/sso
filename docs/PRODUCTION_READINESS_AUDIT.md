@@ -12,11 +12,11 @@
 все **9 обязательных Actions jobs**, включая PostgreSQL default/enabled, Playwright,
 Windows, изолированную установку SDK и реальные Linux Compose/Trivy обоих images.
 Два SES skips разрешены CI-03 без AWS; доставка и release не заявляются проверенными.
-CodeScene остаётся failed только по двум [сохранённым контрактам](testing/codescene-contracts.md):
-immutable archived probe и пятиаргументная сигнатура Alembic. Остальные рабочие
-замечания исправлены; для этих двух требуется решение владельца о policy review.
+Последующее подтверждение 2026-10-04T23:31:35.029980+03:00: На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена.
+Владелец разрешил два [сохранённых контракта](testing/codescene-contracts.md);
+узкие исключения применены без изменения архива, сигнатуры, защиты или глобальных порогов.
 
-E01/F-18 теперь подтверждён настоящим CI; E02 blocked по этим двум policy замечаниям; исключения не применены.
+E01/F-18 и CI/quality частьE02 подтверждены; tag/release частьE02 остаётся отдельным поручением.
 Ниже C01–C08 и их числа относятся **только** к историческому локальному implementation
 `ae700d7a9803b9757980ef1862af31f6f360a97d`. Их evidence не переносится на новые commits.
 Новые результаты и неуспешный дополнительный local replay записаны отдельно в
@@ -202,7 +202,7 @@ Bundle собран из clean tree exact code SHA, source_tree_dirty=false. В�
 | ID / статус | Недостающий input и наблюдаемая причина | Следующее действие / критерий |
 | --- | --- | --- |
 | E01 VERIFIED IN CI: F-18/Linux images | Actual Compose/runtime/Trivy PASS на `f9e06d71c7806d71d9226cfb591585cbf5f3ef83` ([CI](https://github.com/alxprgstech/sso/actions/runs/37225223182)); локальный Docker отсутствует | На изолированном Docker/Linux checkout code SHA выполнить mandatory `telemetry-container-check` из `.github/workflows/ci.yml`, в том числе `python scripts/check_container_runtime.py` и закреплённый Trivy0.75.0 HIGH/CRITICAL. Сохранить digests/build identity/non-root/rootfs/caps/resources/private-network/outage/CSP results и отсутствие dev packages; проверить release Dockerfile. Использовать только owned campaign/volumes, не reset существующей установки |
-| E02 IN_PROGRESS: GitHub CI/release | Публичный push разрешён, PR5 открыт; все9 Actions PASS на `f9e06d71c7806d71d9226cfb591585cbf5f3ef83`, CodeScene failed | Исправить рабочие замечания и сохранить actual exact-head Actions/CodeScene результаты. Для release дополнительно существующий tag и общий exact-tag dry-run с обязательным external email; локальный C08 не заменяет Actions execution |
+| E02 IN_PROGRESS: GitHub CI/release | Публичный push разрешён, PR5 открыт; все 9 Actions и CodeScene7806490 PASS на `94298ed4cfd05362b08b9b5d778013346554c06c` | CI/CodeScene exact-head результаты сохранены; рабочие замечания исправлены и два contract exception разрешены. Для release дополнительно существующий tag и общий exact-tag dry-run с обязательным external email; локальный C08 не заменяет Actions execution |
 | E03 BLOCKED EXTERNAL: F-01/F-19/public TLS | Reachable staging issuer/DNS/certificate/trusted hops не предоставлены; домен — допущение | Развернуть отдельный synthetic HTTPS staging по ops/ADR0016; задать точные public URLs и trusted peers, закрыть direct backend/DB. `curl --fail https://<issuer>/.well-known/openid-configuration`, JWKS и `openssl s_client -connect <host>:443 -servername <host> -verify_return_error`; через actual chain проверить issuer/redirect, Secure/HttpOnly/host-only/SameSite cookies/CSRF, exact CORS/CSP/Host, spoofing/разные IP quotas. Сертификат не отключать, cookie/token bodies не публиковать |
 | E04 BLOCKED EXTERNAL: F-08/provider/Gmail | Нет поручения на реальные письма и утверждённых provider/testmail/sender prerequisites | После разрешения на synthetic mailboxes, SES access/approved Gmail sender и private testmail/AWS variables: `python -m tests.helpers.testmail_cli preflight`, `python -m pytest tests/integration/test_testmail_email_pg.py -m email_external --run-email-tests -x --tb=short`, `python scripts/run_e2e_suite.py --suite email` с guarded DB. Проверить TLS hostname/CA/credentials transport, доставку/отказ/replay и настоящую Gmail action signature; сохранить только безопасные категории/результаты. См. [email testing](testing/email.md) |
 | E05 BLOCKED EXTERNAL: F-01/F-20/custody/ops | Реальных secret mounts/escrow/backup retention/alert destination/on-call/staging Sentry/ресурсного стенда нет | По [operations](operations.md), [security](security.md), [Sentry](observability.md) выполнить утверждённый synthetic staging RSA overlap/retirement+workers restart, session invalidation, offline TOTP migration+rollback и guarded backup/restore+fresh erasure journal. Зафиксировать private key ACL/mount ownership, backup recovery/retention/RPO/RTO/SLO и доставку redacted alert/on-call drill/privacy/usage; не выводить keys/tokens. Local PG/ACL/CSP/recording tests уже PASS, production drill не выполнен |
@@ -216,10 +216,11 @@ Bundle собран из clean tree exact code SHA, source_tree_dirty=false. В�
 - [x] Исходный audit/probes сохранены, каждый F-01…F-27 имеет fix/tests/result/status, исходные negatives не ослаблены.
 - [x] Все доступные local implementation/PG/crypto/browser/SDK/privacy/scans и clean exact-SHA bundle завершены; план/журнал/актуальный статус обновлены.
 - [x] E01: actual Linux images/runtime/CVE на указанном CI SHA.
-- [ ] E02: quality gate нового reviewed head и отдельно порученный release.
+- [x] E02 CI: Actions и quality gate reviewed head94298ed.
+- [ ] E02 release: отдельно порученный tagged release и обязательнаяliveemailприёмка.
 - [ ] E03/E04: утверждённый HTTPS issuer/proxy/cookies/CORS и разрешённая live provider/Gmail/email приёмка.
 - [ ] E05/E07: key/backup/erasure/alerts/privacy custody и приватное историческое owner review.
 - [ ] E06: независимые applicable OIF results без заявления сертификата заранее.
 - [ ] Отдельное решение владельца о production и выполнение всех критериев раздела8 GOAL. Пока verdict CONDITIONALLY READY; GOAL-09 не закрыт.
 
-Локальное исправление F-01…F-27 и повторный аудит закончены. Продолжение — оставшийся quality gate E02, затем выбранный synthetic HTTPS staging для E03…E06 и private E07. Existing data/production keys не изменялись; Разрешённые push/PR5 выполнены; tag/release/deploy/DNS/live email отсутствуют.
+Локальное исправление F-01…F-27 и повторный аудит закончены. Продолжение — отдельно порученный releaseE02 и выбранный synthetic HTTPS staging для E03…E06 и private E07. Existing data/production keys не изменялись; Разрешённые push/PR5 выполнены; tag/release/deploy/DNS/live email отсутствуют.

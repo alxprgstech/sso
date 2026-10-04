@@ -1,6 +1,6 @@
 # CodeScene: два сохранённых контракта
 
-Задача PR5-CI-01, статус in_progress: владелец разрешил два точечных исключения. На source SHA
+Задача PR5-CI-01, статус done: владелец разрешил два точечных исключения, remote gate прошёл. На source SHA
 `f9e06d71c7806d71d9226cfb591585cbf5f3ef83` остались только эти два замечания CodeScene;
 все 9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37225223182) прошли.
 Все остальные причины failed checks исправлены и перепроверены. Гейт остаётся обязательным:
@@ -26,3 +26,8 @@
 
 
 Уточнение 2026-10-04T23:24:44.165802+03:00: CodeScene7806460 подтвердил локальную callback directive и архивный ComplexMethod override. Второе фактическое архивное замечание — Excess Number of Function Arguments у test_authorize_honors_prompt. Неиспользуемое OverallCodeComplexity имя заменено только в том же exactpath rule-set; ранее название было ошибочно выведено из сводного числа2rules. Новыйremoteанализ pending.
+
+
+## Проверенный результат — 2026-10-04T23:31:35.029980+03:00
+
+На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена. Настройки подтверждены настоящим анализомPR; все3gates/profile сохранены. Архивнаяpolicy содержит только2фактическихrule names, callbackdirective одна. Последующийdocs-onlyhead не меняетpolicy/runtime/tests и проверяетсяотдельно.

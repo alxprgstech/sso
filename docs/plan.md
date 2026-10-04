@@ -1089,3 +1089,6 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T23:24:44.165802+03:00 — PR5-CI-01 in_progress: callback исключение подтверждено; уточнить второе rule name у того же разрешённого archive exactpath, новый exacthead CI/CodeScene обязательны.
+
+
+2026-10-04T23:31:35.029980+03:00 — PR5-CI-01 done: начало2026-10-04T15:04:59.289865+03:00; завершение2026-10-04T23:31:35.029980+03:00. На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена. Критерийвыполнен,2исключенияпрямоодобрены,архив/защита/обязательныеchecksсохранены. Следующийшаг: finaldocs-onlyheadverification иreview/одобрениевладельцем. ОбщийGOAL09/production/releaseне закрыты.
