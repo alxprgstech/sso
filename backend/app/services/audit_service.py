@@ -55,8 +55,9 @@ class AuditService:
                     safe_details[k] = scrub_detail(v)
         from app.core.diagnostics import request_id
 
-        if request_id.get():
-            safe_details["request_id"] = request_id.get()
+        current_request_id = request_id.get()
+        if current_request_id:
+            safe_details["request_id"] = current_request_id
 
         event = AuditEvent(
             event_type=event_type,

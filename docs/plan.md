@@ -1063,3 +1063,8 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 2026-10-04T19:28:35.7718180+03:00 — PR5-CI-01 in_progress: обязательные Actions восстановлены на c1a6f23; остаются CodeScene, full regression нового рефакторинга и exact-head remote verification.
 
 2026-10-04T19:54:47.5869966+03:00 — PR5-CI-01 in_progress: вторичнаядекомпозицияtested, всеActions1917f9bPASS, остаётсяCodeScene/exactheadвторойгруппы. Не менятьhistoricalarchiveилиframeworkcallbackрадиgate.
+
+2026-10-04T20:30:25.7170985+03:00 — PR5-CI-01 in_progress: устранить typechecker Any для internal imports и 5 обнаруженных типов (ADR0019), проверить unchanged schema и отказ отсутствующей даты consent; не ослаблять compiler/DB/policy.
+
+
+2026-10-04T21:01:12.890399+03:00 — PR5-CI-01 in_progress: третья quality-группа, канонические импортированные типы, unchanged PG migrations и enabled20 проверены; pending normalpush/exact-head Actions/CodeScene.

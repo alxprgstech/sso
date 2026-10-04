@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -61,6 +62,9 @@ __all__ = [
     "TOTPService",
     "RecoveryCodesService",
     "WebAuthnService",
+    "WebAuthnContext",
+    "PasskeyRegistration",
+    "PasskeyAuthentication",
     "EmailVerificationService",
     "sent_emails_sink",
     "encrypt_totp_secret",
@@ -123,19 +127,47 @@ def verify_registration_signature(
     return verification
 
 
+@dataclass(frozen=True, repr=False)
+class WebAuthnContext:
+    settings: Settings = field(default_factory=get_settings)
+    rp_id: str | None = None
+    origin: str | None = None
+    session_id: uuid.UUID | None = None
+
+    @property
+    def effective_rp_id(self) -> str:
+        return self.rp_id or self.settings.WEBAUTHN_RP_ID
+
+    @property
+    def expected_origins(self) -> list[str]:
+        return [self.origin] if self.origin else [self.settings.WEBAUTHN_ORIGIN]
+
+
+@dataclass(frozen=True, repr=False)
+class PasskeyRegistration:
+    credential: str | dict[str, Any]
+    name: str = "Passkey"
+
+
+@dataclass(frozen=True, repr=False)
+class PasskeyAuthentication:
+    trust: WebAuthnContext = field(default_factory=WebAuthnContext)
+    purpose: str = "authentication"
+    expected_challenge: str | None = None
+    commit: bool = True
+
+
 class WebAuthnService:
     @staticmethod
     async def get_registration_options(
-        db: AsyncSession,
-        user: User,
-        rp_id: str | None = None,
-        settings: Settings | None = None,
-        session_id: uuid.UUID | None = None,
+        db: AsyncSession, user: User, context: WebAuthnContext | None = None
     ) -> dict[str, Any]:
         """
         Генерирует challenge и опции для регистрации нового WebAuthn Passkey (W3C WebAuthn Level 3).
         """
-        active_settings = settings or get_settings()
+        context = context or WebAuthnContext()
+        active_settings = context.settings
+        session_id = context.session_id
 
         # Получаем уже существующие credentials пользователя
         existing_creds_stmt = select(WebAuthnCredential).where(
@@ -150,7 +182,7 @@ class WebAuthnService:
             for cred in existing_creds
         ]
 
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
+        effective_rp_id = context.effective_rp_id
 
         options = webauthn.generate_registration_options(
             rp_id=effective_rp_id,
@@ -188,26 +220,24 @@ class WebAuthnService:
     async def verify_registration(
         db: AsyncSession,
         user: User,
-        credential_json: str | dict[str, Any],
-        name: str = "Passkey",
-        rp_id: str | None = None,
-        origin: str | None = None,
-        settings: Settings | None = None,
-        session_id: uuid.UUID | None = None,
+        registration: PasskeyRegistration,
+        context: WebAuthnContext | None = None,
     ) -> bool:
         """
         Проверяет результат регистрации Passkey и сохраняет открытый ключ (SEC-FLAG-06, G4-PASSKEY, G6-WEBAUTHN).
         Параметры доверия (RP ID, origin, user verification) поступают строго из конфигурации сервера.
         """
-        active_settings = settings or get_settings()
+        context = context or WebAuthnContext()
+        session_id = context.session_id
+        credential_json, name = registration.credential, registration.name
         user = await lock_user(db, user.id)
 
         challenge_record = await locked_registration_challenge(
             db, user, credential_json, session_id
         )
 
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
-        expected_origins = [origin] if origin else [active_settings.WEBAUTHN_ORIGIN]
+        effective_rp_id = context.effective_rp_id
+        expected_origins = context.expected_origins
 
         policy = AssertionPolicy(effective_rp_id, expected_origins, "registration", None)
         verification = verify_registration_signature(credential_json, challenge_record, policy)
@@ -238,18 +268,14 @@ class WebAuthnService:
 
     @staticmethod
     async def get_authentication_options(
-        db: AsyncSession,
-        user: User | None = None,
-        rp_id: str | None = None,
-        settings: Settings | None = None,
-        *,
-        purpose: str = "authentication",
-        commit: bool = True,
+        db: AsyncSession, user: User | None = None, operation: PasskeyAuthentication | None = None
     ) -> dict[str, Any]:
         """
         Генерирует challenge для входа по Passkey.
         """
-        active_settings = settings or get_settings()
+        operation = operation or PasskeyAuthentication()
+        context = operation.trust
+        purpose, commit = operation.purpose, operation.commit
 
         allow_credentials = []
         if user:
@@ -262,7 +288,7 @@ class WebAuthnService:
                 for c in creds
             ]
 
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
+        effective_rp_id = context.effective_rp_id
 
         options = webauthn.generate_authentication_options(
             rp_id=effective_rp_id,
@@ -293,22 +319,19 @@ class WebAuthnService:
         db: AsyncSession,
         user: User,
         credential_json: str | dict[str, Any],
-        rp_id: str | None = None,
-        origin: str | None = None,
-        settings: Settings | None = None,
-        *,
-        purpose: str = "authentication",
-        expected_challenge: str | None = None,
-        commit: bool = True,
+        operation: PasskeyAuthentication | None = None,
     ) -> bool:
         """Verify the exact server trust policy, lock and consume the assertion once."""
-        active_settings = settings or get_settings()
+        operation = operation or PasskeyAuthentication()
+        context = operation.trust
+        purpose, commit = operation.purpose, operation.commit
+        expected_challenge = operation.expected_challenge
         user = await lock_user(db, user.id)
         if not user.is_active:
             raise AuthenticationException("Аккаунт недоступен")
         policy = AssertionPolicy(
-            rp_id or active_settings.WEBAUTHN_RP_ID,
-            [origin] if origin else [active_settings.WEBAUTHN_ORIGIN],
+            context.effective_rp_id,
+            context.expected_origins,
             purpose,
             expected_challenge,
         )

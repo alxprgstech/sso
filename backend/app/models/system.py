@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.database import TimestampedBase
 
 
-class SystemConfiguration(Base):
+class SystemConfiguration(TimestampedBase):
     """
     Таблица-одиночка глобального состояния системы и конфигурации (REG-02, SETUP-05).
     Ограничение id = 1 обеспечивает наличие строго одной записи конфигурации в PostgreSQL.

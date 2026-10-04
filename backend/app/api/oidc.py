@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 from datetime import datetime, timezone
+from typing import TypeGuard
 
 from authlib.oauth2.rfc6749.util import extract_basic_authorization, scope_to_list
 from fastapi import APIRouter, Depends, Form, Header, Query, Request, Response
@@ -32,6 +33,10 @@ router = APIRouter(
     tags=["OpenID Connect"],
     dependencies=[Depends(reject_duplicate_parameters), Depends(limit_security_endpoint)],
 )
+
+
+def _interaction_started_at(value: object) -> TypeGuard[int | float]:
+    return type(value) in (int, float)
 
 
 def redirect_parameters(uri: str, values: dict[str, str]) -> RedirectResponse:
@@ -149,7 +154,7 @@ async def authorize(
             began = claims.get("started_at")
             completed_interaction = (
                 claims.get("flow") == digest
-                and type(began) in (int, float)
+                and _interaction_started_at(began)
                 and session.auth_time.timestamp() >= began
             )
         except OAuthErrorException:

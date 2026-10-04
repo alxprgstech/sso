@@ -76,3 +76,12 @@ CodeScene refactoring текущего working tree: JWT real-signature96PASS;
 reauthentication/credential revision/temporary-password/production configuration
 62PASS на PostgreSQL33.99s; mypy58files/Ruff PASS. Это промежуточные результаты,
 не закрытие всех CodeScene замечаний и не проверка очередного remote head.
+
+
+## Подтверждённые Actions и quality refactoring — 2026-10-04T21:01:12.890399+03:00
+
+Все обязательные Actions PASS на `c1a6f23f3cb43b77a8dfb6f026bd86adbaa67c77` ([run37215595679](https://github.com/alxprgstech/sso/actions/runs/37215595679)), `1917f9b4045b97f31e1b651866712e4b96f1677a` ([run37217316095](https://github.com/alxprgstech/sso/actions/runs/37217316095)) и `c8fcdcb2bc7c707f0a01be8226cad12a0ef5228d` (exact-head check API). Это включает реальные Linux Compose, DB outage/recovery с прежними deadlines, runtime roles/read-only/non-root, оба Trivy audits, PostgreSQL default/enabled, Playwright и Windows. Только два разрешённых SES skips без credentials; доставка не заявляется проверенной.
+
+ADR0018 фиксирует разделение trust boundaries, реальных lifecycle phases и связанных доказательств. ADR0019 устраняет Any при внутренних импортах: `mypy.ini` задаёт только пути репозитория, без type ignores или глобальных настроек. Новые проверки обнаруживают несовместимую UUID→int assignment именно в импортированном User; проверяют rollback повреждённой регистрации и прежний пятиаргументный Alembic callback. Shared timestamp base не меняет metadata/registry/схему. WebAuthn context не принимает параметры доверия от HTTP-клиента; exact origins/RP ID/UV/purpose и atomic consumption сохранены.
+
+Третья группа локально:112passed89.31s;9passed379.50s import/callback;enabled20passed387.31s. Канонический mypy61files, Ruff check/format, runtime lock и secret self-test PASS. CodeScene последнего отправленного head ещё failed; новый head pending. Исторический audit probe и обязательная сигнатура Alembic не изменяются ради метрики. Полная production/live-приёмка не завершена.

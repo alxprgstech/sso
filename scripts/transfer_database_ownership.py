@@ -18,15 +18,30 @@ def require_offline_owner_and_roles(conn, expected_database: str, expected_owner
     ).fetchone()[0]:
         raise ValueError("Database must be offline with no other connections")
     conn.execute("SELECT pg_advisory_xact_lock(741239813)")
+    require_dedicated_roles(conn)
+
+
+def privileged_role_exists(roles) -> bool:
+    for role in roles:
+        if any(role[1:]):
+            return True
+    return False
+
+
+def require_dedicated_roles(conn) -> None:
     roles = conn.execute(
         "SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls FROM pg_roles WHERE rolname IN ('sso_runtime','sso_migrator')"
     ).fetchall()
-    if len(roles) != 2 or any(any(row[1:]) for row in roles):
+    if len(roles) != 2 or privileged_role_exists(roles):
         raise ValueError("Both dedicated least-privilege roles must already exist")
     if conn.execute(
         "SELECT count(*) FROM pg_auth_members WHERE member IN (SELECT oid FROM pg_roles WHERE rolname IN ('sso_runtime','sso_migrator'))"
     ).fetchone()[0]:
         raise ValueError("Dedicated roles must not inherit other roles")
+
+
+def has_migration_version(tables) -> bool:
+    return any(name == "alembic_version" for name, _ in tables)
 
 
 def application_tables(conn, expected_owner: str):
@@ -37,7 +52,7 @@ def application_tables(conn, expected_owner: str):
         "SELECT c.relname,pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname=ANY(%s) ORDER BY c.relname",
         (names,),
     ).fetchall()
-    if not tables or not any(name == "alembic_version" for name, _ in tables):
+    if not tables or not has_migration_version(tables):
         raise ValueError("Selected database has no migrated application schema")
     if any(owner != expected_owner for _, owner in tables):
         raise ValueError("Application objects have an unexpected owner; refusing partial handoff")

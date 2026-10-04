@@ -21,8 +21,10 @@ from app.models.user import User
 from app.schemas.mfa import PasskeyRegistrationVerifyRequest
 from app.services.mfa_service import (
     EmailVerificationService,
+    PasskeyAuthentication,
     RecoveryCodesService,
     TOTPService,
+    WebAuthnContext,
     WebAuthnService,
     sent_emails_sink,
 )
@@ -66,8 +68,10 @@ async def test_passkey_registration_route_uses_exact_configured_origin(monkeypat
         settings=settings,
         session=MagicMock(id=uuid.uuid4()),
     )
-    assert verify.await_args.kwargs["rp_id"] == "localhost"
-    assert verify.await_args.kwargs["origin"] == "http://localhost:3000"
+    context = verify.await_args.kwargs["context"]
+    assert context.effective_rp_id == "localhost"
+    assert context.expected_origins == ["http://localhost:3000"]
+    assert context.settings is settings
 
 
 def test_default_features_all_disabled_in_api():
@@ -258,14 +262,14 @@ async def test_webauthn_service_options():
         WEBAUTHN_RP_ID="auth.alxprgs.tech", WEBAUTHN_RP_NAME="ALXPRGS SSO"
     )
     reg_options_json = await WebAuthnService.get_registration_options(
-        mock_db, user, settings=configured
+        mock_db, user, context=WebAuthnContext(settings=configured)
     )
     assert "challenge" in reg_options_json
     assert reg_options_json["rp"]["id"] == "auth.alxprgs.tech"
 
     # 2. Генерация опций аутентификации
     auth_options_json = await WebAuthnService.get_authentication_options(
-        mock_db, user, settings=configured
+        mock_db, user, operation=PasskeyAuthentication(trust=WebAuthnContext(settings=configured))
     )
     assert "challenge" in auth_options_json
     assert auth_options_json["rpId"] == "auth.alxprgs.tech"

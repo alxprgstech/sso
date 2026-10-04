@@ -22,7 +22,11 @@ from app.main import app
 from app.models.mfa import WebAuthnChallenge, WebAuthnCredential
 from app.models.session import Session
 from app.models.user import User
-from app.services.mfa_service import WebAuthnService
+from app.services.mfa_service import (
+    PasskeyRegistration,
+    WebAuthnContext,
+    WebAuthnService,
+)
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -284,7 +288,10 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(pg_session, pg_client,
     user = await pg_session.scalar(select(User).where(User.username == "real_passkey"))
     session_id = await pg_session.scalar(select(Session.id).where(Session.user_id == user.id))
     assert await WebAuthnService.verify_registration(
-        pg_session, user, registration, settings=cfg, session_id=session_id
+        pg_session,
+        user,
+        PasskeyRegistration(registration),
+        context=WebAuthnContext(settings=cfg, session_id=session_id),
     )
     for kwargs in [
         {"origin": "https://evil.example"},

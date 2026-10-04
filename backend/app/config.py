@@ -261,11 +261,11 @@ class Settings(BaseSettings):
 
     def _validate_session_secret(self) -> None:
         session = self.SESSION_SECRET_KEY
-        if (
-            len(session) < 64
-            or len(set(session)) < 16
-            or re.search(r"default|dev-only|change-me|example|placeholder", session, re.I)
-        ):
+        if len(session) < 64 or len(set(session)) < 16:
+            raise ValueError(
+                "Production requires a non-default random SESSION_SECRET_KEY (64+ characters)"
+            )
+        if re.search(r"default|dev-only|change-me|example|placeholder", session, re.I):
             raise ValueError(
                 "Production requires a non-default random SESSION_SECRET_KEY (64+ characters)"
             )

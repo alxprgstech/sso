@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from app.services.reauthentication_service import payload_digest
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class MutationRequest:
     method: str
     path: str
     json_body: object = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class RequestAuthorization:
     password: str
     headers: dict[str, str]

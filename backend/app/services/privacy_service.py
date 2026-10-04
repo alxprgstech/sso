@@ -137,9 +137,13 @@ async def has_current_acceptance(db: AsyncSession, user_id: uuid.UUID) -> bool:
 
 
 async def record_acceptance(
-    db: AsyncSession, user_id: uuid.UUID, versions: dict[str, str], accepted_at: datetime
+    db: AsyncSession, user_id: uuid.UUID, versions: dict[str, str], accepted_at: datetime | None
 ) -> None:
     validate_versions(versions)
+    if accepted_at is None:
+        raise rejection(
+            "legal_acceptance_required", "Не сохранена дата согласия с документами.", 400
+        )
     for document, version in versions.items():
         await db.execute(
             insert(LegalAcceptance)
@@ -271,14 +275,16 @@ def require_available_action(user: User, action: str, now: datetime) -> None:
 async def deletion_passkey_options(
     context: DeletionContext, proof: DeletionAuthorization
 ) -> dict[str, Any]:
-    from app.services.mfa_service import WebAuthnService
+    from app.services.mfa_service import WebAuthnService, WebAuthnContext, PasskeyAuthentication
 
     options = await WebAuthnService.get_authentication_options(
         context.db,
         context.user,
-        settings=context.settings,
-        purpose=f"deletion_{proof.action}",
-        commit=False,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(settings=context.settings),
+            purpose=f"deletion_{proof.action}",
+            commit=False,
+        ),
     )
     proof.webauthn_challenge = options["challenge"]
     return options
@@ -370,7 +376,12 @@ async def consume_deletion_recovery_code(context: DeletionContext, code: str) ->
 async def verify_deletion_factor(
     context: DeletionContext, row: DeletionAuthorization, evidence: FactorEvidence
 ) -> bool:
-    from app.services.mfa_service import TOTPService, WebAuthnService
+    from app.services.mfa_service import (
+        TOTPService,
+        WebAuthnService,
+        WebAuthnContext,
+        PasskeyAuthentication,
+    )
 
     if evidence.method not in factor_methods(context.user, context.settings):
         return False
@@ -381,10 +392,12 @@ async def verify_deletion_factor(
             context.db,
             context.user,
             evidence.credential,
-            settings=context.settings,
-            purpose=f"deletion_{row.action}",
-            expected_challenge=row.webauthn_challenge,
-            commit=False,
+            operation=PasskeyAuthentication(
+                trust=WebAuthnContext(settings=context.settings),
+                purpose=f"deletion_{row.action}",
+                expected_challenge=row.webauthn_challenge,
+                commit=False,
+            ),
         )
     if not evidence.code:
         return False

@@ -1,3 +1,15 @@
+# Актуальный статус — исправления CI в PR5, production-приёмка условная
+
+Обновление 2026-10-04T21:01:12.890399+03:00, Codex, PR5-CI-01 `in_progress`. Все обязательные GitHub Actions последнего отправленного head `c8fcdcb2bc7c707f0a01be8226cad12a0ef5228d` прошли; два внешних SES jobs пропущены согласно CI-03 без AWS credentials. CodeScene остаётся failed с 11 замечаниями до проверки новой группы исправлений. [PR5](https://github.com/alxprgstech/sso/pull/5) обновляется в той же ветке, публичный push разрешён владельцем.
+
+Новая локальная группа: WebAuthn context сохраняет exact trust policy и одноразовость; repo-only mypy roots проверяют реальные импорты; общая ORM база сохраняет схему; повреждённая дата consent отклоняется. Проверено: 112 focused actualPG/crypto tests, 9 import/callback tests, 20 enabled tests; mypy61/Ruff/runtime lock/secret scan PASS. Remote checks этой группы ещё pending; предыдущие результаты не приписываются новому head.
+
+Веточный обзор BRANCH-PR-01 завершён: другие ветки включены в main, дополнительных PR не требуется. E01 (реальные Compose/Trivy) подтверждён CI предыдущих heads; E02 пока не закрыт из-за CodeScene. E03–E07 (production HTTPS, внешняя почта, эксплуатация/OIF и приватный review исторических секретов) сохраняются как внешние условия. GOAL-09 не выполнен. Merge/deploy/release не проводились.
+
+Следующий шаг: normalpush проверенной группы, результаты exact-head CI/CodeScene, актуальное описание PR. Исторические контрольные точки ниже описывают состояние на своих датах.
+
+## История: локальная приёмка и первоначальный PR
+
 # Актуальный статус — CONDITIONALLY READY; локальное исправление F-01…F-27 завершено
 
 PR5-CI-01, 2026-10-04T15:04:59.289865+03:00, Codex: in_progress — remote CI37200621991 failed, локальные результаты не заменяют runner evidence. Диагностика5Actions+CodeScene и исправление в PR5, mandatory protections сохранены. Общий production verdict остаётся условным, приемка не завершена.

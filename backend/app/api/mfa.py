@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -41,6 +43,9 @@ from app.services.mfa_service import (
     TOTPService,
     WebAuthnService,
     _cred_id_to_bytes,
+    WebAuthnContext,
+    PasskeyRegistration,
+    PasskeyAuthentication,
 )
 from app.services.verification_email import request_details
 
@@ -246,7 +251,11 @@ async def passkey_register_options(
     session: Session = Depends(get_current_session),
 ) -> dict[str, Any]:
     return await WebAuthnService.get_registration_options(
-        db, user, rp_id=settings.WEBAUTHN_RP_ID, settings=settings, session_id=session.id
+        db,
+        user,
+        context=WebAuthnContext(
+            rp_id=settings.WEBAUTHN_RP_ID, settings=settings, session_id=session.id
+        ),
     )
 
 
@@ -261,12 +270,13 @@ async def passkey_register_verify(
     await WebAuthnService.verify_registration(
         db,
         user,
-        payload.credential,
-        name=payload.name,
-        rp_id=settings.WEBAUTHN_RP_ID,
-        origin=settings.WEBAUTHN_ORIGIN,
-        settings=settings,
-        session_id=session.id,
+        PasskeyRegistration(payload.credential, name=payload.name),
+        context=WebAuthnContext(
+            rp_id=settings.WEBAUTHN_RP_ID,
+            origin=settings.WEBAUTHN_ORIGIN,
+            settings=settings,
+            session_id=session.id,
+        ),
     )
     return {"status": "ok", "message": "Passkey успешно зарегистрирован"}
 
@@ -277,7 +287,11 @@ async def passkey_auth_options(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return await WebAuthnService.get_authentication_options(
-        db, user=None, rp_id=settings.WEBAUTHN_RP_ID, settings=settings
+        db,
+        user=None,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(rp_id=settings.WEBAUTHN_RP_ID, settings=settings)
+        ),
     )
 
 
@@ -337,10 +351,12 @@ async def passkey_auth_verify(
         db,
         user,
         payload.credential,
-        rp_id=settings.WEBAUTHN_RP_ID,
-        origin=settings.WEBAUTHN_ORIGIN,
-        settings=settings,
-        commit=False,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(
+                rp_id=settings.WEBAUTHN_RP_ID, origin=settings.WEBAUTHN_ORIGIN, settings=settings
+            ),
+            commit=False,
+        ),
     )
 
     ip = get_client_ip(request)
@@ -409,6 +425,54 @@ email_router = APIRouter(
 )
 
 
+@dataclass(frozen=True, repr=False)
+class EmailRequestContext:
+    request: Request
+    db: AsyncSession
+    settings: Settings
+
+
+async def _request_user_email(
+    context: EmailRequestContext, user: User, email: str | None
+) -> dict[str, str]:
+    cookie_name = get_cookie_name(context.settings, context.request)
+    if context.request.cookies.get(cookie_name):
+        session = await get_current_session(context.request, context.db, context.settings)
+        await verify_csrf(context.request, session, context.settings)
+
+    target_email = (email or user.email).strip().lower()
+    if target_email != user.email:
+        from app.services.reauthentication_service import consume
+
+        session = await get_current_session(context.request, context.db, context.settings)
+        await consume(context.db, user, session, context.request)
+    await EmailVerificationService.send_verification(
+        context.db,
+        user,
+        target_email,
+        context.settings,
+        request_details(context.request, context.settings),
+    )
+    return {"status": "ok", "message": f"Письмо с подтверждением отправлено на {target_email}"}
+
+
+async def _request_unverified_email(context: EmailRequestContext, email: str) -> None:
+    from sqlalchemy import func, select
+
+    clean_email = email.strip().lower()
+    stmt = select(User).where(func.lower(User.email) == clean_email)
+    target_user = (await context.db.execute(stmt)).scalar_one_or_none()
+
+    if target_user and not target_user.email_verified:
+        await EmailVerificationService.send_verification(
+            context.db,
+            target_user,
+            clean_email,
+            context.settings,
+            request_details(context.request, context.settings),
+        )
+
+
 @email_router.post("/request")
 async def request_email_verification(
     payload: EmailVerificationRequest,
@@ -423,7 +487,6 @@ async def request_email_verification(
     без активной сессии (с защитой от перечисления аккаунтов и rate limiting).
     """
     from fastapi import HTTPException, status
-    from sqlalchemy import func, select
 
     from app.core.rate_limit import check_email_request_rate_limit, get_client_ip
 
@@ -432,25 +495,9 @@ async def request_email_verification(
     # Ограничение частоты запросов подтверждения
     await check_email_request_rate_limit(db, ip)
 
-    # 1. Если пользователь уже аутентифицирован
+    context = EmailRequestContext(request, db, settings)
     if user:
-        cookie_name = get_cookie_name(settings, request)
-        if request.cookies.get(cookie_name):
-            from app.api.deps import get_current_session, verify_csrf
-
-            session = await get_current_session(request, db, settings)
-            await verify_csrf(request, session, settings)
-
-        target_email = (payload.email or user.email).strip().lower()
-        if target_email != user.email:
-            from app.services.reauthentication_service import consume
-
-            session = await get_current_session(request, db, settings)
-            await consume(db, user, session, request)
-        await EmailVerificationService.send_verification(
-            db, user, target_email, settings, request_details(request, settings)
-        )
-        return {"status": "ok", "message": f"Письмо с подтверждением отправлено на {target_email}"}
+        return await _request_user_email(context, user, payload.email)
 
     # 2. Неаутентифицированный запрос (неподтвержденный пользователь)
     if not payload.email:
@@ -459,14 +506,7 @@ async def request_email_verification(
             detail="Необходимо указать email для отправки подтверждения",
         )
 
-    clean_email = payload.email.strip().lower()
-    stmt = select(User).where(func.lower(User.email) == clean_email)
-    target_user = (await db.execute(stmt)).scalar_one_or_none()
-
-    if target_user and not target_user.email_verified:
-        await EmailVerificationService.send_verification(
-            db, target_user, clean_email, settings, request_details(request, settings)
-        )
+    await _request_unverified_email(context, payload.email)
 
     # Защита от перечисления аккаунтов (Account Enumeration):
     # Возвращаем нейтральный ответ

@@ -93,7 +93,10 @@ app.include_router(reauthentication_router)
 
 app.add_middleware(BodyLimitMiddleware)
 if settings.ENVIRONMENT == "production":
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[urlsplit(settings.BASE_URL).hostname])
+    production_hostname = urlsplit(settings.BASE_URL).hostname
+    if production_hostname is None:
+        raise ValueError("Production BASE_URL requires a hostname")
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[production_hostname])
 
 # Настройка CORS для доверенных клиентских приложений
 app.add_middleware(

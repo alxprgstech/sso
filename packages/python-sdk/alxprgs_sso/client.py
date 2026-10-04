@@ -369,16 +369,7 @@ class SSOClient:
                 issuer=target_issuer,
             )
             validate_claims(payload, self.client_id, "id_token")
-            if max_age is not None:
-                if (
-                    type(max_age) is not int
-                    or max_age < 0
-                    or type(payload.get("auth_time")) is not int
-                ):
-                    raise ValueError("Invalid max_age/auth_time")
-                transit = self.FRESH_AUTH_TRANSIT_SECONDS if max_age == 0 else 0
-                if int(time.time()) - payload["auth_time"] > max_age + transit:
-                    raise ValueError("Authentication is too old")
+            self._require_id_token_age(payload, max_age)
         except jwt.ExpiredSignatureError:
             raise TokenExpiredError("Срок действия ID токена истёк") from None
         except (jwt.InvalidTokenError, ValueError, TypeError):
@@ -395,6 +386,15 @@ class SSOClient:
                 )
 
         return payload
+
+    def _require_id_token_age(self, payload: dict[str, Any], max_age: int | None) -> None:
+        if max_age is None:
+            return
+        if type(max_age) is not int or max_age < 0 or type(payload.get("auth_time")) is not int:
+            raise ValueError("Invalid max_age/auth_time")
+        transit = self.FRESH_AUTH_TRANSIT_SECONDS if max_age == 0 else 0
+        if int(time.time()) - payload["auth_time"] > max_age + transit:
+            raise ValueError("Authentication is too old")
 
     async def handle_web_callback(
         self,

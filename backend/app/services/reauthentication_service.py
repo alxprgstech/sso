@@ -27,14 +27,14 @@ class AuthenticatedActor:
     session: Session
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class MutationProof:
     password: str
     action: str
     digest: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class FactorProof:
     authorization: str
     method: str
@@ -42,7 +42,7 @@ class FactorProof:
     credential: dict[str, Any] | None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class FactorVerification:
     user: User
     settings: Settings
@@ -70,7 +70,7 @@ async def _confirm_recovery(
 async def _confirm_passkey(
     db: AsyncSession, context: FactorVerification, proof: FactorProof
 ) -> bool:
-    from app.services.mfa_service import WebAuthnService
+    from app.services.mfa_service import WebAuthnService, WebAuthnContext, PasskeyAuthentication
 
     if not proof.credential:
         return False
@@ -78,10 +78,12 @@ async def _confirm_passkey(
         db,
         context.user,
         proof.credential,
-        settings=context.settings,
-        purpose="security_reauth",
-        expected_challenge=context.expected_challenge,
-        commit=False,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(settings=context.settings),
+            purpose="security_reauth",
+            expected_challenge=context.expected_challenge,
+            commit=False,
+        ),
     )
 
 
@@ -132,6 +134,21 @@ def reject() -> AuthenticationException:
     )
 
 
+def _require_authorization_stage(
+    row: SecurityAuthorization | None, stage: str
+) -> SecurityAuthorization:
+    if row is None:
+        raise reject()
+    if row.stage != stage or row.failed_attempts >= 5:
+        raise reject()
+    return row
+
+
+def _require_authorization_revision(row: SecurityAuthorization, user: User, now: datetime) -> None:
+    if row.expires_at <= now or row.security_revision != revision(user):
+        raise reject()
+
+
 async def scoped_row(db: AsyncSession, actor: AuthenticatedActor, raw: str, stage: str):
     user, session = actor.user, actor.session
     current = await lock_user(db, user.id)
@@ -146,14 +163,8 @@ async def scoped_row(db: AsyncSession, actor: AuthenticatedActor, raw: str, stag
         .execution_options(populate_existing=True)
     )
     now = datetime.now(timezone.utc)
-    if (
-        row is None
-        or row.stage != stage
-        or row.expires_at <= now
-        or row.failed_attempts >= 5
-        or row.security_revision != revision(current)
-    ):
-        raise reject()
+    row = _require_authorization_stage(row, stage)
+    _require_authorization_revision(row, current, now)
     if not await db.scalar(
         select(Session.id).where(
             Session.id == session.id,
@@ -167,13 +178,10 @@ async def scoped_row(db: AsyncSession, actor: AuthenticatedActor, raw: str, stag
 
 
 def _require_mutation_proof(proof: MutationProof) -> None:
+    if len(proof.action) > 255 or not re.fullmatch(r"[0-9a-f]{64}", proof.digest):
+        raise reject()
     parts = proof.action.split(" ", 1)
-    if (
-        len(parts) != 2
-        or not sensitive_action(*parts)
-        or len(proof.action) > 255
-        or not re.fullmatch(r"[0-9a-f]{64}", proof.digest)
-    ):
+    if len(parts) != 2 or not sensitive_action(*parts):
         raise reject()
 
 
@@ -231,10 +239,14 @@ async def start(
     db.add(row)
     options = None
     if "passkey" in methods:
-        from app.services.mfa_service import WebAuthnService
+        from app.services.mfa_service import WebAuthnService, WebAuthnContext, PasskeyAuthentication
 
         options = await WebAuthnService.get_authentication_options(
-            db, current, settings=cfg, purpose="security_reauth", commit=False
+            db,
+            current,
+            operation=PasskeyAuthentication(
+                trust=WebAuthnContext(settings=cfg), purpose="security_reauth", commit=False
+            ),
         )
         row.webauthn_challenge = options["challenge"]
     await db.commit()

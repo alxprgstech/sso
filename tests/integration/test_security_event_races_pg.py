@@ -30,7 +30,7 @@ pytestmark = [pytest.mark.postgres, pytest.mark.concurrency, pytest.mark.asyncio
 NEW_PASSWORD = "DistinctFreshRevisionPassword2026!"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class RaceScenario:
     scenario: str
     user_id: uuid.UUID
@@ -119,6 +119,10 @@ async def security_event(db, context: RaceScenario):
         await AuthService.change_password(db, target, PASSWORD, NEW_PASSWORD)
 
 
+def account_lock_statement(statement: str) -> bool:
+    return "FROM users" in statement and "FOR UPDATE" in statement
+
+
 class DatabaseLockRace:
     def __init__(self, engine):
         self.factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -136,7 +140,7 @@ class DatabaseLockRace:
 
         def after_cursor_execute(connection, cursor, statement, parameters, context, executemany):
             nonlocal paused
-            if not paused and "FROM users" in statement and "FOR UPDATE" in statement:
+            if not paused and account_lock_statement(statement):
                 paused = True
                 # Real SQL has executed; only scheduling waits while the row lock is held.
                 connection.connection.dbapi_connection.run_async(

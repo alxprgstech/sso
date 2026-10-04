@@ -9,6 +9,12 @@
 
 ## 1. ER-диаграмма сущностей
 
+Общие поля ORM организованы в `TimestampedBase`: единые `metadata`, registry и
+`created_at` с UTC. Абстрактный `Base` добавляет UUID `id` для прикладных сущностей;
+`SystemConfiguration` наследует `TimestampedBase` и сохраняет собственный integer
+`id = 1`. Это разделение уточняет Python-типы и не меняет PostgreSQL-схему:
+проверки чистых миграций, предыдущей версии и отсутствия schema drift сохраняются.
+
 ```mermaid
 erDiagram
     USERS ||--o{ USER_ROLES : has

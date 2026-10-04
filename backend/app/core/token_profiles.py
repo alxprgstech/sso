@@ -19,10 +19,14 @@ def _nonnegative_integer(value: Any) -> bool:
     return type(value) is int and value >= 0
 
 
-def _validate_dates(payload: dict[str, Any]) -> None:
+def _validate_numeric_dates(payload: dict[str, Any]) -> None:
     for key in ("exp", "iat", "nbf", "auth_time"):
         if key in payload and not _nonnegative_integer(payload[key]):
             raise ValueError("Invalid NumericDate")
+
+
+def _validate_dates(payload: dict[str, Any]) -> None:
+    _validate_numeric_dates(payload)
     if payload["exp"] <= payload["iat"] or payload["iat"] > time.time():
         raise ValueError("Invalid temporal order")
     auth_time = payload.get("auth_time", payload["iat"])
@@ -30,12 +34,17 @@ def _validate_dates(payload: dict[str, Any]) -> None:
         raise ValueError("Authentication time cannot follow issue time")
 
 
-def _audience_values(raw: Any) -> list[str]:
-    values = [raw] if isinstance(raw, str) else raw
+def _checked_audience_items(values: Any) -> list[str]:
     if not isinstance(values, list) or not 1 <= len(values) <= 10:
         raise ValueError("Invalid audience")
     if not all(_valid_string(value) for value in values):
         raise ValueError("Invalid audience")
+    return values
+
+
+def _audience_values(raw: Any) -> list[str]:
+    values = [raw] if isinstance(raw, str) else raw
+    values = _checked_audience_items(values)
     if len(set(values)) != len(values):
         raise ValueError("Invalid audience")
     return values
@@ -83,6 +92,10 @@ def _validate_access_profile(payload: dict[str, Any]) -> None:
         raise ValueError("Invalid scope")
     if not re.fullmatch(r"[\x21\x23-\x5b\x5d-\x7e]+(?: [\x21\x23-\x5b\x5d-\x7e]+)*", scope):
         raise ValueError("Invalid scope")
+    _validate_security_revision(payload)
+
+
+def _validate_security_revision(payload: dict[str, Any]) -> None:
     if "security_revision" in payload and not _nonnegative_integer(payload["security_revision"]):
         raise ValueError("Invalid security revision")
 

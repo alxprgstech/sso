@@ -36,7 +36,7 @@ from app.services.security_state import (
 settings = get_settings()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class LoginAttempt:
     username: str
     password: str
@@ -385,9 +385,7 @@ class AuthService:
         has_passkey = bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0)
 
         # Инвариант SEC-FLAG-04: предотвращение скрытого понижения класса защиты (No Silent Bypass)
-        if (has_totp and not settings.FEATURE_TOTP_ENABLED) or (
-            has_passkey and not settings.FEATURE_PASSKEY_ENABLED
-        ):
+        if AuthService._factor_policy_unavailable(has_totp, has_passkey, settings):
             await AuditService.log_event(
                 db,
                 event_type="login_blocked_mfa_disabled",
@@ -401,15 +399,9 @@ class AuthService:
                 "Обратитесь к администратору для сброса факторов."
             )
 
-        # Если MFA включено на сервере и у пользователя настроены факторы:
-        available_methods = []
-        if settings.FEATURE_TOTP_ENABLED and has_totp:
-            available_methods.append("totp")
-            if settings.FEATURE_RECOVERY_CODES_ENABLED:
-                available_methods.append("recovery_code")
-        if settings.FEATURE_PASSKEY_ENABLED and has_passkey:
-            available_methods.append("passkey")
+        from app.services.privacy_service import factor_methods
 
+        available_methods = factor_methods(user, settings)
         return available_methods
 
     @staticmethod
@@ -476,3 +468,11 @@ class AuthService:
         if step.security_revision != revision(user):
             raise AuthenticationException("Шаг MFA недействителен или уже использован")
         return step
+
+    @staticmethod
+    def _factor_policy_unavailable(totp: bool, passkey: bool, settings: Settings) -> bool:
+        factors = (
+            (totp, settings.FEATURE_TOTP_ENABLED),
+            (passkey, settings.FEATURE_PASSKEY_ENABLED),
+        )
+        return any(present and not enabled for present, enabled in factors)
