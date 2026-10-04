@@ -1,36 +1,33 @@
-# Воспроизведение AUDIT-PROD-01
+# Воспроизведение исходного и повторного аудита
 
-Основной результат — [русский отчёт](../PRODUCTION_READINESS_AUDIT.md). Проверен source SHA `7e857ab80398f8084169ee29b141c6edc6794fe8`, версия 0.2.0. Диагностические файлы не меняют приложение и не входят в обычный pytest testpaths. На этом SHA ожидается **27 failed / 9 passed**: assertions описывают желаемую защиту и сохраняют воспроизведение найденных нарушений. После исправлений failures должны стать PASS без ослабления assertions.
+Текущий [отчёт](../PRODUCTION_READINESS_AUDIT.md) относится к code SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, версия0.2.0, ветка `new/production-readiness-remediation`: CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. [Summary](../REMEDIATION_SUMMARY.md), [новые безопасные evidence](remediation-evidence.json).
 
-## Локальные probes
+## Сохранённый baseline
 
-PowerShell из корня репозитория, с установленным `requirements-lock.txt` и исходным SDK:
+[Первоначальный отчёт](../PRODUCTION_READINESS_AUDIT_BASELINE.md), source SHA `7e857ab80398f8084169ee29b141c6edc6794fe8`, NOT READY/27 findings; [архив исходных probes](readiness_probes_baseline.py) неизменён. На исходном SHA было27 failed/9passed; эти результаты не переписаны. Baseline doubles были явно unit, не доказательством PG locks/crypto/E2E.
+
+## Текущий replay
+
+[Карта28 исходных критериев](readiness-probe-map.md) указывает постоянные regressions, включая реальные PG и RSA negatives. Актуальный модуль импортирует эти проверки и запускается отдельно от обычного testpaths:
 
 ```powershell
 $env:PYTHONUTF8 = '1'
 $env:PYTHONPATH = 'backend;packages/python-sdk;.'
-New-Item -ItemType Directory -Force artifacts/audit | Out-Null
-.venv-sentry/Scripts/python.exe -m pytest docs/audit/test_readiness_probes.py -q --junitxml=artifacts/audit/probes-final.xml
+# Сначала выделенная synthetic PostgreSQL с marker/guard по testing/plan.md.
+# TEST_DATABASE_URL и остальные private variables задаются вне Git/вывода.
+python -m pytest -p tests.conftest docs/audit/test_readiness_probes.py -q --junitxml=artifacts/audit/probes-current.xml
 ```
 
-`.venv-sentry` — реально работавшая среда этого аудита, а не обязательное имя для других машин; можно использовать эквивалентный Python с закреплёнными зависимостями. Tests используют synthetic users, реальные RSA/Argon2/Fernet/PKCE библиотеки и ASGI HTTP. `unit_db`, DB responses и legal receipt state — явные doubles. Они **не подтверждают PostgreSQL locks, constraints или concurrency**. Нет внешней отправки email, production данных или изменения production ключей.
+Точный локальный run с private environment wrapper записан как C03 в отчёте:104 passed/1Starlette warning. Он пересекается с535full, не отдельное суммируемое покрытие. Negative assertions/UV/PKCE/verified-email/quota не ослаблялись. Missing production RSA запрещён; persistent/restart тест использует доставленный реальный key. Обычный CI также исполняет постоянные исходные тесты.
 
 ## Git-история без вывода значений
 
-```powershell
-.venv-sentry/Scripts/python.exe docs/audit/inspect_history.py
-```
+`python docs/audit/inspect_history.py` читает refs/blobs и пишет только paths/lines/types/fingerprints, не candidate values. Detect-secrets1.5.0 закреплён; offline network provider verification не является live credential check. [Исторический summary](history-summary.json) сохранён; новая28-candidate context assessment — [secret review](../testing/secret-review-remediation.md). Первоначальное owner решение по58 историческим signals остаётся E07, не объявлено автоматически выполненным.
 
-Требуется detect-secrets 1.5.0 из lock. Скрипт читает доступные refs/blobs, использует detector settings текущего baseline, отключает только сетевую provider verification для offline read-only сканирования; detectors не отключаются. Временные копии blobs удаляются. Output `artifacts/audit/history-scan.json` содержит paths/lines/types/fingerprints, **не значения**. Candidates вне baseline требуют приватного контекстного review. Итог текущего review — [history-summary.json](history-summary.json); отсутствие signals не является гарантией отсутствия секретов. Скрипт не изменяет baseline и не удаляет историю.
+## Evidence и границы
 
-## Результаты и границы
-
-- [evidence.json](evidence.json): команды/итоги и SHA-256 доступных локальных logs. Logs находятся в игнорируемом `artifacts`, не публикуются автоматически; synthetic pytest tracebacks могут содержать test JWT.
-- [python-dependencies.json](python-dependencies.json), [frontend-dependencies.json](frontend-dependencies.json): versions и license metadata существующих locked packages; не юридическое заключение.
-- Для настоящих integration/browser/backup проверок нужна отдельная защищённая test PostgreSQL по [operations](../operations.md) и [test plan](../testing/plan.md). Guard не отключать, рабочую БД не использовать, SQLite не подставлять.
-- UI appearance tests используют mocked API; telemetry browser tests используют настоящий SDK с intercepted ingestion; это не SSO E2E и не live Sentry delivery.
-- Локальный `release_bundle.py build` проверил восемь payload files и checksums. `source_tree_dirty=true` из-за audit docs: этот dry-run не разрешает публикацию. Фактический tag/release/production deployment отдельно поручает владелец.
-
-Production source остался неизменным. Все fixes из отчёта находятся в статусе planned/open.
-
-Digest metadata хранится в `sha256_bytes`, full commit — в `source_commit_bytes`: JSON arrays unsigned bytes, канонический hex получается `bytes(array).hex()`. Это публичные контрольные суммы, а не секреты. Такой формат устраняет ложные entropy signals без изменения baseline/detectors и сохраняет полную проверку целостности logs.
+- [evidence.json](evidence.json), dependency inventories и qa-summary — исторический исходный аудит, не актуальные PASS нового SHA.
+- [remediation-evidence.json](remediation-evidence.json) содержит точный implementation SHA, XML counts/timestamps/контрольные суммы и clean release manifest payload metadata. Digests/commits записаны arrays unsigned bytes; canonical hex = `bytes(array).hex()`. Это публичные IDs, не secrets.
+- Raw local logs/captures/private maps/DSN/packages игнорируются и не публикуются; даже synthetic failures могут содержать JWT. Guard/test DB не отключать, рабочую БД/SQLite не использовать.
+- Actual local PG/races/backup, Nginx/Chromium SSO/admin/default-off/enabled и TLS loopback PASS. Telemetry uses actual SDK/rrweb/intercepted ingestion, не live Sentry. Production Replay hard-off.
+- Exact code SHA local bundle clean/source_tree_dirty=false PASS, tag=null, никаких published artifacts. Actual Linux images/Trivy/remoteCI/publicHTTPS/provider/ops/OIF/owner review требуют E01…E07 и не считаются пройденными.

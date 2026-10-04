@@ -27,3 +27,7 @@ Codex проверил исходный контекст каждого ново
 | `tests/test_smtp_tls.py` | 2 | Буквальные synthetic SMTP AUTH credentials у локального TLS стенда; не внешняя учётная запись. |
 
 Историческая необходимость оценки владельцем первоначальных baseline сигналов не объявляется выполненной этой записью. Никакие credentials/ключи из .env, private output или runtime captures не добавлялись в Git.
+
+## Дополнительный публичный doc signal — 2026-10-04T14:35:44.386399+03:00
+
+Codex приватно проверил один новый точный Secret Keyword fingerprint в docs/PRODUCTION_READINESS_AUDIT.md, строка C07: это публичный перечень команд CLI и их результатов, не пароль/ключ/credential. Добавлен только этот exact fingerprint с сохранением всего baseline. В сумме28 source fixture signals и1doc signal; detectors/global exclusions не изменены, random secret self-test обязателен. Историческое owner acceptance остаётся E07.

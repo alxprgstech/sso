@@ -1015,3 +1015,21 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 2026-10-04T14:10:31.858756+03:00 — AUDIT-FIX-01…06 in_progress: все local implementations готовы и доступны regression evidence; full-final02/clean exact-SHA release/re-audit27 являются оставшимися локальными критериями. External proofs выделяются отдельно.
 
 2026-10-04T14:13:08.231568+03:00 — AUDIT-FIX-01…06 in_progress:535full/20enabled passed, код готов к локальному commit; оставшиеся local criteria — exact-SHA bundle,27 closure records и documentation links.
+
+
+## AUDIT-REMEDIATION-01 — итоговый локальный результат 2026-10-04T14:32:18.518409+03:00
+
+Начало2026-10-04T02:25:20.3844113+03:00, локальное завершение 2026-10-04T14:32:18.518409+03:00, Codex. Поручение устранить F-01…F-27 и повторно аудировать code SHA выполнено локально; внешние критерии прозрачны и остаются blocked. Исходная таблица planned выше историческая, текущий срез ниже не отменяет критерии.
+
+| ID | Приоритет | Зависимости | Текущий статус / результат / условие |
+| --- | --- | --- | --- |
+| AUDIT-FIX-01 | P0 | secure synthetic destination | done: strict config/real worker RSA/overlap/verified loopback SMTP/TOTP rotation/runbook PASS; реальный production custody/transport E03…E05 отдельно |
+| AUDIT-FIX-02 | P0 | FIX-01, guarded PG | done: quotas/reauth/revision/verified identity и настоящие PG races/positive/negative PASS |
+| AUDIT-FIX-03 | P1 | FIX-02 | blocked: wire/crypto/fresh-auth/logout/scopes/clean SDK PASS, применимые OIF plans E06 ещё не выполнены; unblock reachable dedicated HTTPS issuer/suite alias/clients/run results |
+| AUDIT-FIX-04 | P1 | FIX-02, policy ADR0016 | done: actual forced change/recovery/password/blocklist/timing отрицательные и положительные PASS |
+| AUDIT-FIX-05 | P1 | FIX-01/02, staging/Docker/PG | blocked: PG roles/drift/backup/restore/erasure, origins/logs/real enforced CSP/proxy negatives PASS; actual images/Trivy/public TLS/alerts E01/E03/E05 не выполнены; unblock изолированный Docker/Linux и утверждённый staging |
+| AUDIT-FIX-06 | P2 | related fixes | done: Windows5.1/7/encoding/safety/real lifecycle, supported Gmail JOSE, API63/docs/installed examples/source integrity PASS |
+
+Все существенные implementation завершены в code commit `ae700d7a9803b9757980ef1862af31f6f360a97d`. Документированный verdict CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Общий GOAL-09 не done. E01…E07 раздела7 отчёта — конечный список внешних действий с prerequisites/командами/evidence; отсутствие доступа не объявлено успехом и не требует новых локальных code fixes.
+
+Точка продолжения: E01/E02 затем synthetic staging E03…E06/private E07. Полный run535/16subtests и20enabled/replay104/browser34+10/SDK17/scans/clean8payload bundle подтверждены; не суммировать overlap. Publication/production/live sending не выполнялись.

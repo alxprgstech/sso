@@ -1,4 +1,14 @@
-# Актуальный статус — NOT READY; аудит выполнен, production-приёмка не закрыта
+# Актуальный статус — CONDITIONALLY READY; локальное исправление F-01…F-27 завершено
+
+Обновление **2026-10-04T14:32:18.518409+03:00**, Codex, AUDIT-REMEDIATION-01 `done` в рамках локального поручения. Проверенный implementation SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, ветка `new/production-readiness-remediation`, версия0.2.0. [Повторный аудит](PRODUCTION_READINESS_AUDIT.md):22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL; [краткая карта](REMEDIATION_SUMMARY.md), [безопасное evidence](audit/remediation-evidence.json). Все code/test/CI/docs изменения готовы, первоначальная история сохранена.
+
+Проверено:535full +16subtests/5external-email deselected,20enabled с обязательным email,104criteria replay на code SHA, настоящий PG+Nginx/Chromium34default-off/10enabled,17clean installed SDK,11unit/28component/9telemetry browser, Ruff/mypy/build/types/invariants/scans,0known dependency vulnerabilities, clean exact-SHA bundle8payload/manifest/checksums. Числа пересекающихся наборов не суммируются. Подробные commands/versions/failures/воспроизведение в отчёте и worklog.
+
+Не проверены **E01…E07**: actual Linux Docker/Trivy, remote CI точного SHA, public HTTPS/proxy/cookies, live SES/Gmail, operational keys/backup/alerts/staging privacy, OIF plans, исторический owner secret review. Их inputs/команды/условия снятия — раздел7 отчёта. **GOAL-09 и production-приёмка не закрыты.** AUDIT-FIX-03/05 `blocked` по оставшимся внешним критериям OIF/images/alerts; остальные FIX `done` по локальным regression/runbook критериям, custody/transport отдельно в E03…E05. Нет push/PR/tag/publish/deploy/DNS/live mail.
+
+Точка продолжения: разрешённый отдельный Docker/Linux стенд для E01, required Actions на reviewed SHA для E02; выбранный synthetic HTTPS issuer/provider/ops для E03…E06 и private owner review E07. Production secrets/data не затрагивались. Исторические записи ниже отражают состояние на своих датах и не являются текущим verdict.
+
+## История: первоначальный NOT READY audit и прежние контрольные точки
 
 - **AUDIT-PROD-01, 2026-10-04T02:08:51.7543440+03:00, Codex — done (аудит).** [Русский отчёт](PRODUCTION_READINESS_AUDIT.md), source SHA7e857ab80398f8084169ee29b141c6edc6794fe8, версия0.2.0, ветка new/production-readiness-audit. Verdict NOT READY:27 open findings (8HIGH/15MEDIUM/4LOW). Production source не менялся. Frontend11unit/28components/23browserUI и9telemetry, SDKclean8+3, две demo initiation, backend/SDK packages, offline migrations SQL и release bundle passed. Python доступный набор268passed/5failed; probes27failed/9passed сохраняют нарушения. PostgreSQL/liveSSO/WebAuthn/Compose/backup/SES/Gmail/OIF/TLS/remoteCI не проверены с точными условиями в отчёте. GOAL-09 не закрыт. Точка продолжения — AUDIT-FIX-01/02: production config/keys/SMTP TLS и auth lifecycle/quotas/reauth на выделенной guarded PG; fixes planned, без повторного аудита с нуля. Branch не опубликована, commit/PR не создавались.
 

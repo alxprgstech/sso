@@ -5,7 +5,7 @@
 - **Целевой домен**: `alxprgs.tech`
 - **Идентификатор поставщика (Issuer)**: `https://auth.alxprgs.tech`
 - **Версия продукта**: `0.2.0` (SemVer, единый источник истины — `VERSION`)
-- **Статус**: **NOT READY** по [аудиту production readiness от 04.10.2026](docs/PRODUCTION_READINESS_AUDIT.md): подтверждены открытые нарушения защиты и протокольного поведения; обязательная runtime-приёмка не завершена ([актуальные ограничения](docs/status.md)).
+- **Статус**: **CONDITIONALLY READY** по [повторному аудиту от 04.10.2026](docs/PRODUCTION_READINESS_AUDIT.md), code SHA `ae700d7`: все локальные исправления F-01…F-27 готовы; до production нужны семь внешних gates E01…E07 (Docker/CI/HTTPS/provider/ops/OIF/owner review). [Карта исправлений](docs/REMEDIATION_SUMMARY.md), [актуальный статус](docs/status.md). Общая приёмка GOAL-09 ещё не закрыта.
 
 ---
 
@@ -30,7 +30,7 @@ chmod +x start.sh
 
 1. **Проверка окружения**: проверяет наличие `docker` в PATH, доступность демона Docker и доступность порта `127.0.0.1:3000` (TEST-SETUP-04).
 2. **Безопасная конфигурация**: автоматически генерирует локальный файл `.env` с уникальными криптостойкими ключами (`SESSION_SECRET_KEY`, `TOTP_ENCRYPTION_KEY`, пароль БД) без перезаписи уже существующего файла (SETUP-04).
-   Windows-скрипт записывает файл в UTF-8 без BOM. Три независимых пароля: `POSTGRES_PASSWORD` для bootstrap-владельца БД, `SSO_MIGRATOR_PASSWORD` для одноразового migration job и `SSO_RUNTIME_PASSWORD` для ограниченной роли приложения. `DATABASE_URL`/`DATABASE_URL_SYNC` приложения используют `sso_runtime`; Compose задаёт мигратору отдельный DSN. Обновление существующей БД требует [передачи владения схемой](docs/operations.md#роли-бд-и-обновление-существующей-установки), без сброса данных.
+   Windows-скрипт записывает файл в UTF-8 без BOM. Три независимых пароля: `POSTGRES_PASSWORD` для bootstrap-владельца БД, `SSO_MIGRATOR_PASSWORD` для одноразового migration job и `SSO_RUNTIME_PASSWORD` для ограниченной роли приложения. `DATABASE_URL`/`DATABASE_URL_SYNC` приложения используют `sso_runtime`; Compose задаёт мигратору отдельный DSN. Обновление существующей БД требует [передачи владения схемой](docs/operations.md#раздельные-роли-бд-и-обновление-существующего-volume), без сброса данных.
 3. **Запуск сервисов**: поднимает изолированный контур Docker Compose (база данных PostgreSQL 16, бэкенд FastAPI, фронтенд Nginx + React).
 4. **Проверка готовности**: ожидает успешного прохождения liveness healthcheck (`/health/live`) с контролем таймаута (до 60 секунд).
 5. **Интерактивный мастер первого администратора (SETUP-03..SETUP-07)** запускается только после успешного старта контейнеров и проверки готовности. Если Compose сообщает, что backend `unhealthy`, скрипт остановится до запросов логина, email и пароля:
