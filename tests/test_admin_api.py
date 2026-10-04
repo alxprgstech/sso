@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -67,7 +68,7 @@ async def test_last_admin_protection():
     role_admin = Role(name=ROLE_ADMIN)
     admin_user.roles = [role_admin]
 
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
 
     # Моделируем, что в базе ровно 1 активный администратор
     mock_db.execute.side_effect = [
@@ -83,7 +84,7 @@ async def test_last_admin_protection():
 @pytest.mark.asyncio
 async def test_admin_service_create_and_update_user():
     """Тестирование создания и обновления пользователя администратором."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     # 1. Проверка уникальности (пользователя нет)
     mock_db.execute.side_effect = [
         MagicMock(scalar_one_or_none=MagicMock(return_value=None)),  # unique check
@@ -121,7 +122,7 @@ async def test_admin_client_secret_shown_once():
     Секрет OIDC клиента генерируется и возвращается клиенту ТОЛЬКО ОДИН РАЗ при создании.
     При обычном запросе списка клиентов секрет скрыт.
     """
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
 
     created_client = OIDCClient(
         id=uuid.uuid4(),

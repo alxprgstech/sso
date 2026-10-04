@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -250,8 +251,8 @@ async def test_registration_code_attempts_resend_and_expiry_pg(
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "code_rules",
             "email": "code_rules@alxprgs.tech",
-            "password": "CodeRules2026!",
-            "confirm_password": "CodeRules2026!",
+            "password": "CodeRulesPassword2026!",
+            "confirm_password": "CodeRulesPassword2026!",
         },
     )
     assert registration.status_code == 202
@@ -370,8 +371,8 @@ async def test_registration_duplicate_collisions_pg(
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "existing_user",
             "email": "existing@alxprgs.tech",
-            "password": "Password1234!",
-            "confirm_password": "Password1234!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
         },
     )
     assert r1.status_code == 202
@@ -393,8 +394,8 @@ async def test_registration_duplicate_collisions_pg(
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "existing_user",
             "email": "different_email@alxprgs.tech",
-            "password": "Password1234!",
-            "confirm_password": "Password1234!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
         },
     )
     assert r_dup_uname.status_code == 409
@@ -414,8 +415,8 @@ async def test_registration_duplicate_collisions_pg(
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "different_user",
             "email": "existing@alxprgs.tech",
-            "password": "Password1234!",
-            "confirm_password": "Password1234!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
         },
     )
     assert r_dup_email.status_code == 409
@@ -433,8 +434,8 @@ async def test_registration_duplicate_collisions_pg(
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "another_user",
             "email": "ExIsTiNg@alxprgs.tech",
-            "password": "Password1234!",
-            "confirm_password": "Password1234!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
         },
     )
     assert r_dup_case.status_code == 409
@@ -478,10 +479,14 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
     assert st_res.json()["bootstrap_completed"] is True
 
     # 4. Попытка переключить режим с неверным паролем -> 401 Unauthorized
-    fail_toggle = await pg_client.post(
-        "/api/v1/admin/system/registration-mode",
-        headers={"X-CSRF-Token": csrf_token},
-        json={"mode": "open", "current_admin_password": "WrongPassword!"},
+    fail_toggle = await authorized_request(
+        pg_client,
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/system/registration-mode",
+            json_body={"mode": "open", "current_admin_password": "WrongPassword!"},
+        ),
+        RequestAuthorization("MasterAdminPassword123!", {"X-CSRF-Token": csrf_token}),
     )
     assert fail_toggle.status_code == 401
 
@@ -492,10 +497,14 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
     assert cfg_check.scalar_one() == "closed"
 
     # 5. Успешное переключение режима с корректным паролем
-    ok_toggle = await pg_client.post(
-        "/api/v1/admin/system/registration-mode",
-        headers={"X-CSRF-Token": csrf_token},
-        json={"mode": "open", "current_admin_password": "MasterAdminPassword123!"},
+    ok_toggle = await authorized_request(
+        pg_client,
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/system/registration-mode",
+            json_body={"mode": "open", "current_admin_password": "MasterAdminPassword123!"},
+        ),
+        RequestAuthorization("MasterAdminPassword123!", {"X-CSRF-Token": csrf_token}),
     )
     assert ok_toggle.status_code == 200
     assert ok_toggle.json()["registration_mode"] == "open"

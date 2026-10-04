@@ -1,10 +1,10 @@
 """Safe independent stdout logs: no exception values, SQL, headers or URL queries."""
 
+import builtins
 import json
 import logging
-import builtins
-from typing import Any
 from datetime import datetime, timezone
+from typing import Any
 
 
 class SafeFormatter(logging.Formatter):
@@ -60,6 +60,16 @@ class SafeFormatter(logging.Formatter):
                 if kind is not None and kind in vars(builtins).values()
                 else "ApplicationError"
             )
+        from app.core.diagnostics import CODES, request_id
+
+        operation = getattr(record, "operation", None)
+        reason = getattr(record, "reason", None)
+        if isinstance(operation, str) and operation in CODES and reason in CODES[operation]:
+            result["operation"] = operation
+            result["reason"] = reason
+        current_id = request_id.get()
+        if current_id:
+            result["request_id"] = current_id
         return json.dumps(result, ensure_ascii=False)
 
 

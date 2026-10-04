@@ -1,0 +1,12 @@
+{
+  "commits": 47,
+  "text_blobs": 987,
+  "signals": 2285,
+  "outside_baseline": {
+    "npm integrity/hash metadata": 936,
+    "commit SHA metadata": 1,
+    "historical bootstrap DB URL template": 4
+  },
+  "confirmed_secret_leaks": 0,
+  "limitations": "Heuristic detector; current baseline contains synthetic fixtures. Historical bootstrap placeholders must not be used in production. Not proof of absence of undetected secrets."
+}

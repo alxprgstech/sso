@@ -13,7 +13,7 @@ from app.models.privacy import DeletedSubject, DeletionAuthorization, LegalAccep
 from app.models.session import Session
 from app.models.user import PasswordCredential, User
 from app.services import privacy_service as privacy
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -40,7 +40,7 @@ async def subject(db, *, admin=False, accepted=True):
     await db.commit()
     await db.refresh(user)
     _, session, csrf = await AuthService.create_user_session(
-        db, user.id, None, None, get_settings()
+        db=db, request=SessionRequest(user.id, None, None), settings=get_settings()
     )
     return user, session, csrf
 
@@ -72,7 +72,7 @@ async def test_wait_cancel_cooldown_and_no_token_resurrection(pg_session):
     with pytest.raises(HTTPException, match="403"):
         await privacy.require_access(pg_session, user)
     _, login_session, _ = await AuthService.create_user_session(
-        pg_session, user.id, None, None, get_settings()
+        db=pg_session, request=SessionRequest(user.id, None, None), settings=get_settings()
     )
     assert login_session.purpose == "deletion_management"
     # Login cannot move the scheduled deadline.
@@ -86,7 +86,7 @@ async def test_wait_cancel_cooldown_and_no_token_resurrection(pg_session):
     )
     assert await pg_session.scalar(select(func.count()).select_from(Session)) == 0
     _, fresh, _ = await AuthService.create_user_session(
-        pg_session, user.id, None, None, get_settings()
+        db=pg_session, request=SessionRequest(user.id, None, None), settings=get_settings()
     )
     assert fresh.purpose == "full"
     with pytest.raises(HTTPException) as error:
@@ -100,7 +100,7 @@ async def test_permission_binding_expiry_and_last_admin(pg_session):
     user, session, _ = await subject(pg_session, admin=True)
     raw = await permission(pg_session, user, session, "request")
     _, other, _ = await AuthService.create_user_session(
-        pg_session, user.id, None, None, get_settings()
+        db=pg_session, request=SessionRequest(user.id, None, None), settings=get_settings()
     )
     for action, bound in [("cancel", session), ("request", other)]:
         with pytest.raises(HTTPException):
@@ -355,7 +355,7 @@ async def test_duplicate_requests_and_cancellation_race(pg_session, pg_engine):
     )
     await pg_session.commit()
     _, fresh, _ = await AuthService.create_user_session(
-        pg_session, user_id, None, None, get_settings()
+        db=pg_session, request=SessionRequest(user_id, None, None), settings=get_settings()
     )
     renewed = await permission(pg_session, user, fresh, "request")
     new_status, _ = await privacy.request_deletion(pg_session, user, fresh, renewed)
@@ -477,7 +477,7 @@ async def test_stale_documents_block_direct_oidc_and_userinfo(pg_session, pg_cli
     ).status_code == 401
     with pytest.raises(HTTPException) as error:
         await OIDCService.create_authorization_code(
-            pg_session, client, user, "http://localhost/callback", "synthetic-challenge"
+            pg_session, client, user, "http://localhost/callback", "A" * 43
         )
     assert error.value.status_code == 403
     with pytest.raises(OAuthErrorException):

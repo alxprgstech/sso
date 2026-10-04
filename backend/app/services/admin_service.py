@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from app.core.exceptions import AuthorizationException
 from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin, lock_admin_invariant
-from app.core.security import generate_random_token, hash_password
+from app.core.security import async_hash_password, generate_random_token
 from app.models.audit import AuditEvent
 from app.models.oidc import OIDCClient, OIDCRedirectUri
 from app.models.session import Session
 from app.models.user import PasswordCredential, Role, User, UserRole
 from app.services.audit_service import AuditService
+from app.services.security_state import invalidate_security_state, lock_user
 
 
 class AdminService:
@@ -107,11 +111,13 @@ class AdminService:
         await db.flush()
 
         # Создание пароля (Argon2id)
-        pwd_hash = hash_password(password)
+        pwd_hash = await async_hash_password(password)
         pwd_cred = PasswordCredential(
             user_id=user.id,
             password_hash=pwd_hash,
             algorithm="argon2id",
+            requires_change=True,
+            temporary_expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
         db.add(pwd_cred)
 
@@ -168,15 +174,22 @@ class AdminService:
             ):
                 await ensure_not_last_admin(db, user.id)
 
-        if email is not None:
-            user.email = email.strip().lower()
-
         must_revoke_sessions = False
+        if email is not None and email.strip().lower() != user.email:
+            user.email = email.strip().lower()
+            user.email_verified = False
+            must_revoke_sessions = True
+            await AuditService.log_event(
+                db,
+                event_type="admin_email_changed",
+                user_id=current_admin.id,
+                details={"target_user_id": str(user.id)},
+                commit=False,
+            )
 
         if is_active is not None and is_active != user.is_active:
             user.is_active = is_active
-            if not is_active:
-                must_revoke_sessions = True
+            must_revoke_sessions = True
             await AuditService.log_event(
                 db,
                 commit=False,
@@ -185,10 +198,27 @@ class AdminService:
                 details={"target_user_id": str(user.id)},
             )
 
-        if is_superuser is not None:
+        if is_superuser is not None and is_superuser != user.is_superuser:
             user.is_superuser = is_superuser
+            must_revoke_sessions = True
+            await AuditService.log_event(
+                db,
+                "admin_privileges_changed",
+                user_id=current_admin.id,
+                details={"target_user_id": str(user.id)},
+                commit=False,
+            )
 
         if roles is not None:
+            if set(roles) != {role.name for role in user.roles}:
+                must_revoke_sessions = True
+                await AuditService.log_event(
+                    db,
+                    "admin_roles_changed",
+                    user_id=current_admin.id,
+                    details={"target_user_id": str(user.id)},
+                    commit=False,
+                )
             # Переопределяем роли
             await db.execute(delete(UserRole).where(UserRole.user_id == user.id))
             for r_name in set(roles):
@@ -201,11 +231,18 @@ class AdminService:
                 db.add(UserRole(user_id=user.id, role_id=role_obj.id))
 
         if new_password is not None:
-            pwd_hash = hash_password(new_password)
+            pwd_hash = await async_hash_password(new_password)
             if user.password_credential:
                 user.password_credential.password_hash = pwd_hash
             else:
-                db.add(PasswordCredential(user_id=user.id, password_hash=pwd_hash))
+                user.password_credential = PasswordCredential(
+                    user_id=user.id, password_hash=pwd_hash
+                )
+            user.password_credential.requires_change = True
+            user.password_credential.temporary_expires_at = datetime.now(timezone.utc) + timedelta(
+                minutes=15
+            )
+            user.password_credential.temporary_consumed_at = None
             must_revoke_sessions = True
             await AuditService.log_event(
                 db,
@@ -216,7 +253,7 @@ class AdminService:
             )
 
         if must_revoke_sessions:
-            await db.execute(delete(Session).where(Session.user_id == user.id))
+            await invalidate_security_state(db, user)
 
         await db.commit()
         return await AdminService.get_user_by_id(db, user.id)  # type: ignore
@@ -227,10 +264,12 @@ class AdminService:
         user_id: uuid.UUID,
         admin_user_id: uuid.UUID,
     ) -> int:
-        stmt = delete(Session).where(Session.user_id == user_id)
-        res = await db.execute(stmt)
+        user = await lock_user(db, user_id)
+        count = (
+            await db.scalar(select(func.count(Session.id)).where(Session.user_id == user_id)) or 0
+        )
+        await invalidate_security_state(db, user)
         await db.commit()
-        count = getattr(res, "rowcount", 0) or 0
         await AuditService.log_event(
             db,
             event_type="admin_revoked_sessions",
@@ -266,6 +305,7 @@ class AdminService:
         client_type: str,
         redirect_uris: list[str],
         admin_user_id: uuid.UUID | None = None,
+        allowed_scopes: list[str] | None = None,
     ) -> tuple[OIDCClient, str | None]:
         """
         Регистрация нового OIDC клиента.
@@ -277,7 +317,7 @@ class AdminService:
 
         if client_type == "confidential":
             raw_secret = f"sec_{generate_random_token(32)}"
-            secret_hash = hash_password(raw_secret)
+            secret_hash = await async_hash_password(raw_secret)
 
         client = OIDCClient(
             id=uuid.uuid4(),
@@ -286,6 +326,7 @@ class AdminService:
             client_type=client_type,
             client_secret_hash=secret_hash,
             is_active=True,
+            allowed_scopes=" ".join(allowed_scopes or ["openid", "profile", "email"]),
         )
         db.add(client)
         await db.flush()
@@ -330,7 +371,7 @@ class AdminService:
             raise AuthorizationException("Клиент не найден")
 
         raw_secret = f"sec_{generate_random_token(32)}"
-        client.client_secret_hash = hash_password(raw_secret)
+        client.client_secret_hash = await async_hash_password(raw_secret)
         await db.commit()
 
         await AuditService.log_event(

@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from app.legal import REQUIRED_DOCUMENTS
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath("backend"))
 sys.path.insert(0, os.path.abspath("packages/python-sdk"))
@@ -103,7 +104,7 @@ async def test_oidc_service_issues_isolated_codes_for_two_clients_unit():
         OIDCRedirectUri(client_id=oidc_client_2.id, uri=client2_redirect)
     ]
 
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     mock_db.add = MagicMock()
     mock_db.scalar.return_value = user
     mock_db.execute.return_value = MagicMock(

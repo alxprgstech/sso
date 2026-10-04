@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 import re
@@ -40,6 +41,20 @@ from tests.db_guard import (
 )
 
 SYNTHETIC_USERS = [
+    {
+        "username": "e2e_totp_user",
+        "email": "e2e_totp@example.test",
+        "password": "TOTPBrowserSynthetic2026!",
+        "is_superuser": False,
+        "roles": [ROLE_USER],
+    },
+    {
+        "username": "e2e_protocol_user",
+        "email": "e2e_protocol@example.test",
+        "password": "ProtocolBrowserSynthetic2026!",
+        "is_superuser": False,
+        "roles": [ROLE_USER],
+    },
     {
         "username": "compose_admin",
         "email": "compose_admin@alxprgs.tech",
@@ -86,7 +101,13 @@ if privacy_username:
     )
 
 
-async def prepare_e2e_data() -> None:
+async def reset_e2e_rate_windows(session: AsyncSession) -> None:
+    """Explicit case boundary on a proven, dedicated synthetic test database."""
+    await verify_test_database_marker(session)
+    await session.execute(text("DELETE FROM privacy_rate_windows"))
+
+
+async def prepare_e2e_data(*, reset_rate_limits: bool = False) -> None:
     db_url = get_test_database_url()
     print(f"[INFO] Подготовка E2E данных на тестовой базе: {mask_dsn(db_url)}")
 
@@ -95,6 +116,9 @@ async def prepare_e2e_data() -> None:
     async with AsyncSession(engine) as session:
         # Marker provisioning is a separate fresh-database operation.
         await verify_test_database_marker(session)
+        if reset_rate_limits:
+            # Explicit case boundary only; never called during a browser scenario.
+            await reset_e2e_rate_windows(session)
 
         # 1. Обеспечиваем наличие базовых ролей
         role_map: dict[str, Role] = {}
@@ -225,6 +249,13 @@ async def prepare_e2e_data() -> None:
                         session.add(OIDCRedirectUri(client_id=c_obj.id, uri=uri))
                 print(f"[OK] Обновлен OIDC клиент {c_data['client_id']}")
 
+        # Reset only these owned, synthetic factor fixtures on the guarded test DB.
+        for table in ("totp_credentials", "recovery_codes"):
+            await session.execute(
+                text(
+                    f"DELETE FROM {table} WHERE user_id IN (SELECT id FROM users WHERE username='e2e_totp_user')"
+                )
+            )
         # 4. Очищаем устаревшие webauthn credentials для синтетических passkey пользователей
         await session.execute(
             text(
@@ -253,4 +284,7 @@ async def prepare_e2e_data() -> None:
 if __name__ == "__main__":
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.run(prepare_e2e_data())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--reset-rate-limits", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(prepare_e2e_data(reset_rate_limits=args.reset_rate_limits))

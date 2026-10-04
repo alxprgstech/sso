@@ -47,15 +47,18 @@ describe("Frontend Security Utils: sanitizeReturnTo (G8-SEC, FINAL-04)", () => {
     assert.equal(sanitizeReturnTo("/dashboard\t"), null);
   });
 
-  test("allows trusted target SSO absolute origins", () => {
+  test("allows only the current exact absolute origin", () => {
     assert.equal(
-      sanitizeReturnTo("http://localhost:8000/oauth/authorize?client_id=test"),
-      "http://localhost:8000/oauth/authorize?client_id=test"
+      sanitizeReturnTo("http://localhost:5173/oauth/authorize?client_id=test"),
+      "http://localhost:5173/oauth/authorize?client_id=test"
     );
     assert.equal(
       sanitizeReturnTo("https://auth.alxprgs.tech/oauth/authorize"),
-      "https://auth.alxprgs.tech/oauth/authorize"
+      null
     );
+    assert.equal(sanitizeReturnTo("http://localhost:8000/oauth/authorize"), null);
+    assert.equal(sanitizeReturnTo("https://localhost:5173/oauth/authorize"), null);
+    assert.equal(sanitizeReturnTo("http://user:password@localhost:5173/oauth/authorize"), null);
   });
 
   test("rejects untrusted external absolute origins", () => {

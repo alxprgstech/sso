@@ -59,3 +59,15 @@ class SSOFastAPISecurity:
             return user
 
         return _role_checker
+
+    def require_scope(self, scope: str) -> Callable[[UserClaims], UserClaims]:
+        def check(user: UserClaims = Depends(self.get_current_user)) -> UserClaims:
+            if scope not in user.scopes:
+                raise HTTPException(
+                    403,
+                    detail="Недостаточно scope для этой операции",
+                    headers={"WWW-Authenticate": 'Bearer error="insufficient_scope"'},
+                )
+            return user
+
+        return check

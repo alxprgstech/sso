@@ -102,10 +102,14 @@ if [ ! -f "$ENV_FILE" ]; then
         SESSION_SECRET=$(openssl rand -hex 64)
         TOTP_KEY=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n')
         DB_PASSWORD=$(openssl rand -hex 24)
+        RUNTIME_PASSWORD=$(openssl rand -hex 32)
+        MIGRATOR_PASSWORD=$(openssl rand -hex 32)
     else
         SESSION_SECRET=$(head -c 64 /dev/urandom | xxd -p | tr -d '\n' || od -An -tx1 -N64 /dev/urandom | tr -d ' \n')
         TOTP_KEY=$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n')
         DB_PASSWORD=$(head -c 24 /dev/urandom | xxd -p | tr -d '\n' || od -An -tx1 -N24 /dev/urandom | tr -d ' \n')
+        RUNTIME_PASSWORD=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
+        MIGRATOR_PASSWORD=$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')
     fi
 
     if [ ! -f "$ENV_EXAMPLE" ]; then
@@ -113,7 +117,7 @@ if [ ! -f "$ENV_FILE" ]; then
         exit 1
     fi
 
-    for key in DEBUG BASE_URL FRONTEND_URL DATABASE_URL DATABASE_URL_SYNC POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB SESSION_SECRET_KEY TOTP_ENCRYPTION_KEY WEBAUTHN_RP_ID WEBAUTHN_ORIGIN FEATURE_TOTP_ENABLED FEATURE_PASSKEY_ENABLED FEATURE_RECOVERY_CODES_ENABLED REQUIRE_VERIFIED_EMAIL; do
+    for key in DEBUG BASE_URL FRONTEND_URL DATABASE_URL DATABASE_URL_SYNC POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB SSO_RUNTIME_PASSWORD SSO_MIGRATOR_PASSWORD SESSION_SECRET_KEY TOTP_ENCRYPTION_KEY WEBAUTHN_RP_ID WEBAUTHN_ORIGIN FEATURE_TOTP_ENABLED FEATURE_PASSKEY_ENABLED FEATURE_RECOVERY_CODES_ENABLED REQUIRE_VERIFIED_EMAIL; do
         count=$(grep -c "^${key}=" "$ENV_EXAMPLE" || true)
         if [ "$count" -ne 1 ]; then
             echo -e "${RED}[ERROR] Некорректный шаблон .env.example: ожидается ровно одна строка ${key}.${NC}" >&2
@@ -123,7 +127,7 @@ if [ ! -f "$ENV_FILE" ]; then
 
     umask 077
     cp "$ENV_EXAMPLE" "$ENV_FILE"
-    DB_URL="postgresql+psycopg://sso_user:${DB_PASSWORD}@db:5432/sso_db"
+    DB_URL="postgresql+psycopg://sso_runtime:${RUNTIME_PASSWORD}@db:5432/sso_db"
     sed -i.bak \
         -e 's|^DEBUG=.*|DEBUG=false|' \
         -e 's|^BASE_URL=.*|BASE_URL=http://localhost:3000|' \
@@ -132,6 +136,8 @@ if [ ! -f "$ENV_FILE" ]; then
         -e "s|^DATABASE_URL_SYNC=.*|DATABASE_URL_SYNC=${DB_URL}|" \
         -e 's|^POSTGRES_USER=.*|POSTGRES_USER=sso_user|' \
         -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${DB_PASSWORD}|" \
+        -e "s|^SSO_RUNTIME_PASSWORD=.*|SSO_RUNTIME_PASSWORD=${RUNTIME_PASSWORD}|" \
+        -e "s|^SSO_MIGRATOR_PASSWORD=.*|SSO_MIGRATOR_PASSWORD=${MIGRATOR_PASSWORD}|" \
         -e 's|^POSTGRES_DB=.*|POSTGRES_DB=sso_db|' \
         -e "s|^SESSION_SECRET_KEY=.*|SESSION_SECRET_KEY=${SESSION_SECRET}|" \
         -e "s|^TOTP_ENCRYPTION_KEY=.*|TOTP_ENCRYPTION_KEY=${TOTP_KEY}|" \

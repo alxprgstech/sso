@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
-import re
-import math
 import builtins
-from pathlib import Path
-from typing import Any, TYPE_CHECKING, cast
+import logging
+import math
+import re
 from collections.abc import Mapping
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from sentry_sdk._types import DataCollectionUserOptions, Event
@@ -259,8 +259,8 @@ def initialize_sentry(settings: Settings, *, transport: Transport | None = None)
             ),
         ]
         if settings.SENTRY_TRACES_SAMPLE_RATE:
-            from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
             from sentry_sdk.integrations.httpx import HttpxIntegration
+            from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
             integrations += [SqlalchemyIntegration(), HttpxIntegration()]
         sentry_sdk.init(
@@ -308,6 +308,11 @@ def initialize_sentry(settings: Settings, *, transport: Transport | None = None)
 def capture_infrastructure_failure(error: Exception, operation: str) -> None:
     if operation not in _OPERATIONS:
         return
+    if operation == "email_delivery":
+        from app.core.diagnostics import CODES, diagnostic
+
+        reason = getattr(error, "reason", "failed")
+        diagnostic(operation, reason if reason in CODES[operation] else "failed", failed=True)
     try:
         with sentry_sdk.new_scope() as scope:
             scope.set_tag("operation", operation)

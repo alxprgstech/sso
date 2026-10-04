@@ -1,25 +1,24 @@
 from __future__ import annotations
 
 import json
-import secrets
-import string
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
-import pyotp
-from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+
 import webauthn
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
     ResidentKeyRequirement,
     UserVerificationRequirement,
 )
+
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     AuthenticationException,
-    AuthorizationException,
 )
 from app.core.security import (
     decrypt_totp_secret,
@@ -29,13 +28,12 @@ from app.core.security import (
 )
 from app.models.mfa import (
     EmailVerificationToken,
-    RecoveryCode,
-    TOTPCredential,
     WebAuthnChallenge,
     WebAuthnCredential,
 )
 from app.models.user import User
 from app.services.audit_service import AuditService
+from app.services.security_state import invalidate_security_state, lock_user, revision
 from app.services.ses_email import SESEmailDeliveryError
 from app.services.verification_email import (
     CODE_TTL_SECONDS,
@@ -48,333 +46,128 @@ from app.services.verification_email import (
     new_code,
 )
 
+from app.services.totp_service import TOTPService, totp_step_usable
+from app.services.recovery_codes_service import RecoveryCodesService
+from app.services.webauthn_assertion import (
+    AssertionPolicy,
+    _cred_id_to_bytes,
+    assertion_dictionary,
+    locked_assertion_credential,
+    signed_assertion_challenge,
+    locked_assertion_challenge,
+    verify_assertion_signature,
+)
+
+__all__ = [
+    "TOTPService",
+    "RecoveryCodesService",
+    "WebAuthnService",
+    "WebAuthnContext",
+    "PasskeyRegistration",
+    "PasskeyAuthentication",
+    "EmailVerificationService",
+    "sent_emails_sink",
+    "encrypt_totp_secret",
+    "decrypt_totp_secret",
+    "_cred_id_to_bytes",
+    "totp_step_usable",
+]
+
 settings = get_settings()
 
 # Локальный сборщик доступен только при ENVIRONMENT=testing.
 sent_emails_sink: list[dict[str, Any]] = []
 
 
-def totp_step_usable(matched: int | None, previous: int | None) -> bool:
-    if matched is None:
-        return False
-    if previous is None:
-        return True
-    return matched > previous
-
-
-class TOTPService:
-    @staticmethod
-    async def setup_totp(db: AsyncSession, user: User) -> tuple[str, str]:
-        """
-        Инициализирует подключение TOTP.
-        Секрет шифруется симметричным ключом (AES/Fernet) перед сохранением в БД.
-        Возвращает: (raw_base32_secret, provisioning_uri).
-        """
-        secret = pyotp.random_base32()
-        encrypted = encrypt_totp_secret(secret)
-
-        stmt = select(TOTPCredential).where(TOTPCredential.user_id == user.id)
-        existing = (await db.execute(stmt)).scalar_one_or_none()
-
-        if existing:
-            existing.encrypted_secret = encrypted
-            existing.is_confirmed = False
-            existing.confirmed_at = None
-            existing.last_verified_step = None
-        else:
-            cred = TOTPCredential(
-                user_id=user.id,
-                encrypted_secret=encrypted,
-                is_confirmed=False,
-            )
-            db.add(cred)
-
-        await db.commit()
-
-        totp_obj = pyotp.TOTP(secret)
-        otpauth_url = totp_obj.provisioning_uri(
-            name=user.email,
-            issuer_name=settings.WEBAUTHN_RP_NAME,
-        )
-        return secret, otpauth_url
-
-    @staticmethod
-    async def confirm_totp(db: AsyncSession, user: User, code: str) -> bool:
-        """
-        Подтверждение первого кода при подключении TOTP.
-        Только после этого фактор считается активным.
-        """
-        stmt = select(TOTPCredential).where(TOTPCredential.user_id == user.id)
-        cred = (await db.execute(stmt)).scalar_one_or_none()
-        if not cred:
-            raise AuthenticationException("Подключение TOTP не было инициировано")
-
-        raw_secret = decrypt_totp_secret(cred.encrypted_secret)
-        totp = pyotp.TOTP(raw_secret)
-
-        if not totp.verify(code, valid_window=1):
-            return False
-
-        cred.is_confirmed = True
-        cred.confirmed_at = datetime.now(timezone.utc)
-        await db.commit()
-        await AuditService.log_event(db, event_type="totp_enabled", user_id=user.id)
-        return True
-
-    @staticmethod
-    async def verify_totp(db: AsyncSession, user: User, code: str, *, commit: bool = True) -> bool:
-        """
-        Проверка TOTP кода при входе.
-        """
-        stmt = select(TOTPCredential).where(
-            TOTPCredential.user_id == user.id,
-            TOTPCredential.is_confirmed.is_(True),
-        )
-        cred = (await db.execute(stmt.with_for_update())).scalar_one_or_none()
-        if not cred:
-            return False
-
-        raw_secret = decrypt_totp_secret(cred.encrypted_secret)
-        totp = pyotp.TOTP(raw_secret)
-        current_step = int(datetime.now(timezone.utc).timestamp()) // totp.interval
-        matched = next(
-            (
-                step
-                for step in (current_step - 1, current_step, current_step + 1)
-                if totp.verify(
-                    code, for_time=datetime.fromtimestamp(step * totp.interval, timezone.utc)
-                )
-            ),
-            None,
-        )
-        if not totp_step_usable(matched, cred.last_verified_step):
-            return False
-        cred.last_verified_step = matched
-        await db.flush()
-        if commit:
-            await db.commit()
-        return True
-
-    @staticmethod
-    async def remove_totp(db: AsyncSession, user: User) -> None:
-        """
-        Удаление фактора TOTP и связанных резервных кодов.
-        """
-        await db.execute(delete(TOTPCredential).where(TOTPCredential.user_id == user.id))
-        await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-        await db.commit()
-        await AuditService.log_event(db, event_type="totp_disabled", user_id=user.id)
-
-
-class RecoveryCodesService:
-    @staticmethod
-    def _normalize_code(code: str) -> str:
-        return code.replace("-", "").replace(" ", "").upper().strip()
-
-    @staticmethod
-    async def generate_codes(db: AsyncSession, user: User) -> list[str]:
-        """
-        Выпуск нового набора из 10 резервных кодов.
-        Разрешен ТОЛЬКО при активном подтвержденном факторе TOTP (SEC-FLAG-03).
-        Показываются пользователю ТОЛЬКО ОДИН РАЗ.
-        """
-        if not (user.totp_credential and user.totp_credential.is_confirmed):
-            raise AuthorizationException(
-                "Резервные коды могут быть выпущены только при активном факторе TOTP"
-            )
-
-        # Удаляем предыдущие коды пользователя
-        await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-
-        alphabet = string.ascii_uppercase + string.digits
-        plain_codes = []
-        for _ in range(10):
-            part1 = "".join(secrets.choice(alphabet) for _ in range(5))
-            part2 = "".join(secrets.choice(alphabet) for _ in range(5))
-            code_str = f"{part1}-{part2}"
-            plain_codes.append(code_str)
-
-            normalized = RecoveryCodesService._normalize_code(code_str)
-            h = hash_token(normalized)
-            rec = RecoveryCode(
-                user_id=user.id,
-                code_hash=h,
-                is_used=False,
-            )
-            db.add(rec)
-
-        await db.commit()
-        await AuditService.log_event(db, event_type="recovery_codes_generated", user_id=user.id)
-        return plain_codes
-
-    @staticmethod
-    async def consume_code(db: AsyncSession, user: User, code: str) -> bool:
-        """
-        Атомарное одноразовое погашение резервного кода (SEC-FLAG-03).
-        Резервный код заменяет второй фактор после ввода пароля, но не является самостоятельным входом.
-        """
-        normalized = RecoveryCodesService._normalize_code(code)
-        h = hash_token(normalized)
-        now = datetime.now(timezone.utc)
-
-        stmt = (
-            update(RecoveryCode)
-            .where(
-                RecoveryCode.user_id == user.id,
-                RecoveryCode.code_hash == h,
-                RecoveryCode.is_used.is_(False),
-            )
-            .values(is_used=True, used_at=now)
-            .returning(RecoveryCode.id)
-        )
-        result = await db.execute(stmt)
-        await db.commit()
-
-        consumed_id = result.scalar_one_or_none()
-        if consumed_id:
-            await AuditService.log_event(db, event_type="recovery_code_used", user_id=user.id)
-            return True
-        return False
-
-
-def _cred_id_to_bytes(cred_id: str) -> bytes:
-    try:
-        return webauthn.helpers.base64url_to_bytes(cred_id)
-    except Exception:
-        return cred_id.encode("utf-8")
-
-
-@dataclass(frozen=True)
-class AssertionPolicy:
-    rp_id: str
-    origins: list[str]
-    purpose: str
-    expected_challenge: str | None
-
-
-def assertion_dictionary(credential: str | dict[str, Any]) -> dict[str, Any]:
-    return json.loads(credential) if isinstance(credential, str) else credential
-
-
-async def locked_assertion_credential(
-    db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any]
-) -> WebAuthnCredential:
-    raw_id = assertion.get("id") or assertion.get("rawId")
-    if not raw_id:
-        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
-    credentials = (
-        (
-            await db.execute(
-                select(WebAuthnCredential)
-                .where(
-                    WebAuthnCredential.user_id == user_id,
-                )
-                .with_for_update()
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if not credentials:
-        raise AuthenticationException("У пользователя отсутствуют зарегистрированные ключи Passkey")
-    for credential in credentials:
-        if credential.credential_id == raw_id or _cred_id_to_bytes(
-            credential.credential_id
-        ) == _cred_id_to_bytes(raw_id):
-            return credential
-    raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
-
-
-def signed_assertion_challenge(assertion: dict[str, Any], policy: AssertionPolicy) -> str | None:
-    try:
-        raw = assertion.get("response", {}).get("clientDataJSON")
-        if not raw:
-            return None
-        client_data = json.loads(webauthn.helpers.base64url_to_bytes(raw).decode("utf-8"))
-        challenge = client_data.get("challenge")
-    except (ValueError, TypeError, AttributeError):
-        return None
-    if policy.expected_challenge is not None:
-        if challenge != policy.expected_challenge:
-            return None
-    return challenge
-
-
-async def locked_assertion_challenge(
-    db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any], policy: AssertionPolicy
+async def locked_registration_challenge(
+    db: AsyncSession, user: User, credential_json, session_id: uuid.UUID | None
 ) -> WebAuthnChallenge:
-    signed = signed_assertion_challenge(assertion, policy)
-    query = select(WebAuthnChallenge).where(
-        WebAuthnChallenge.purpose == policy.purpose,
-        WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-    )
-    row = None
-    if signed:
-        row = await db.scalar(query.where(WebAuthnChallenge.challenge == signed).with_for_update())
-    if row is None:
-        row = await authentication_fallback_challenge(db, user_id, policy)
-    if row is None:
-        raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
-    if row.user_id is not None:
-        if row.user_id != user_id:
-            raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
-    return row
-
-
-async def authentication_fallback_challenge(
-    db: AsyncSession, user_id: uuid.UUID, policy: AssertionPolicy
-) -> WebAuthnChallenge | None:
-    # Only ordinary authentication supports the legacy latest-challenge lookup.
-    # Action-bound deletion proofs never enter this fallback.
-    if policy.purpose != "authentication":
-        return None
-    if policy.expected_challenge is not None:
-        return None
-    return await db.scalar(
+    try:
+        assertion = assertion_dictionary(credential_json)
+        signed = signed_assertion_challenge(
+            assertion, AssertionPolicy("", [], "registration", None)
+        )
+    except (ValueError, TypeError):
+        signed = None
+    if not signed:
+        raise AuthenticationException("Некорректный challenge регистрации WebAuthn")
+    stmt = (
         select(WebAuthnChallenge)
         .where(
-            WebAuthnChallenge.user_id == user_id,
-            WebAuthnChallenge.purpose == policy.purpose,
+            WebAuthnChallenge.user_id == user.id,
+            WebAuthnChallenge.purpose == "registration",
+            WebAuthnChallenge.session_id == session_id,
+            WebAuthnChallenge.challenge == signed,
             WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
         )
         .order_by(WebAuthnChallenge.created_at.desc())
         .with_for_update()
     )
+    challenge_record = (await db.execute(stmt)).scalars().first()
+    if not challenge_record:
+        raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
+
+    return challenge_record
 
 
-def verify_assertion_signature(
-    credential: str | dict[str, Any],
-    target: WebAuthnCredential,
-    challenge: WebAuthnChallenge,
-    policy: AssertionPolicy,
-) -> int:
+def verify_registration_signature(
+    credential_json, challenge_record: WebAuthnChallenge, policy: AssertionPolicy
+):
     try:
-        verification = webauthn.verify_authentication_response(
-            credential=credential,
-            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge.challenge),
+        verification = webauthn.verify_registration_response(
+            credential=credential_json,
+            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_record.challenge),
             expected_rp_id=policy.rp_id,
             expected_origin=policy.origins,
-            credential_public_key=bytes.fromhex(target.public_key),
-            credential_current_sign_count=target.sign_count,
             require_user_verification=True,
         )
     except Exception:
-        raise AuthenticationException("Ошибка проверки аутентификации WebAuthn") from None
-    return verification.new_sign_count
+        raise AuthenticationException("Ошибка проверки регистрации WebAuthn") from None
+
+    return verification
+
+
+@dataclass(frozen=True, repr=False)
+class WebAuthnContext:
+    settings: Settings = field(default_factory=get_settings)
+    rp_id: str | None = None
+    origin: str | None = None
+    session_id: uuid.UUID | None = None
+
+    @property
+    def effective_rp_id(self) -> str:
+        return self.rp_id or self.settings.WEBAUTHN_RP_ID
+
+    @property
+    def expected_origins(self) -> list[str]:
+        return [self.origin] if self.origin else [self.settings.WEBAUTHN_ORIGIN]
+
+
+@dataclass(frozen=True, repr=False)
+class PasskeyRegistration:
+    credential: str | dict[str, Any]
+    name: str = "Passkey"
+
+
+@dataclass(frozen=True, repr=False)
+class PasskeyAuthentication:
+    trust: WebAuthnContext = field(default_factory=WebAuthnContext)
+    purpose: str = "authentication"
+    expected_challenge: str | None = None
+    commit: bool = True
 
 
 class WebAuthnService:
     @staticmethod
     async def get_registration_options(
-        db: AsyncSession,
-        user: User,
-        rp_id: str | None = None,
-        settings: Settings | None = None,
+        db: AsyncSession, user: User, context: WebAuthnContext | None = None
     ) -> dict[str, Any]:
         """
         Генерирует challenge и опции для регистрации нового WebAuthn Passkey (W3C WebAuthn Level 3).
         """
-        active_settings = settings or get_settings()
+        context = context or WebAuthnContext()
+        active_settings = context.settings
+        session_id = context.session_id
 
         # Получаем уже существующие credentials пользователя
         existing_creds_stmt = select(WebAuthnCredential).where(
@@ -389,7 +182,7 @@ class WebAuthnService:
             for cred in existing_creds
         ]
 
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
+        effective_rp_id = context.effective_rp_id
 
         options = webauthn.generate_registration_options(
             rp_id=effective_rp_id,
@@ -413,6 +206,7 @@ class WebAuthnService:
         now = datetime.now(timezone.utc)
         challenge_record = WebAuthnChallenge(
             user_id=user.id,
+            session_id=session_id,
             challenge=challenge_str,
             purpose="registration",
             expires_at=now + timedelta(minutes=5),
@@ -426,44 +220,27 @@ class WebAuthnService:
     async def verify_registration(
         db: AsyncSession,
         user: User,
-        credential_json: str | dict[str, Any],
-        name: str = "Passkey",
-        rp_id: str | None = None,
-        origin: str | None = None,
-        settings: Settings | None = None,
+        registration: PasskeyRegistration,
+        context: WebAuthnContext | None = None,
     ) -> bool:
         """
         Проверяет результат регистрации Passkey и сохраняет открытый ключ (SEC-FLAG-06, G4-PASSKEY, G6-WEBAUTHN).
         Параметры доверия (RP ID, origin, user verification) поступают строго из конфигурации сервера.
         """
-        active_settings = settings or get_settings()
+        context = context or WebAuthnContext()
+        session_id = context.session_id
+        credential_json, name = registration.credential, registration.name
+        user = await lock_user(db, user.id)
 
-        stmt = (
-            select(WebAuthnChallenge)
-            .where(
-                WebAuthnChallenge.user_id == user.id,
-                WebAuthnChallenge.purpose == "registration",
-                WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-            )
-            .order_by(WebAuthnChallenge.created_at.desc())
+        challenge_record = await locked_registration_challenge(
+            db, user, credential_json, session_id
         )
-        challenge_record = (await db.execute(stmt)).scalars().first()
-        if not challenge_record:
-            raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
 
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
-        expected_origins = [origin] if origin else [active_settings.WEBAUTHN_ORIGIN]
+        effective_rp_id = context.effective_rp_id
+        expected_origins = context.expected_origins
 
-        try:
-            verification = webauthn.verify_registration_response(
-                credential=credential_json,
-                expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_record.challenge),
-                expected_rp_id=effective_rp_id,
-                expected_origin=expected_origins,
-                require_user_verification=True,
-            )
-        except Exception as e:
-            raise AuthenticationException(f"Ошибка проверки регистрации WebAuthn: {e}")
+        policy = AssertionPolicy(effective_rp_id, expected_origins, "registration", None)
+        verification = verify_registration_signature(credential_json, challenge_record, policy)
 
         # Сохранение credential в безопасном представлении Base64URL
         cred_id_str = webauthn.helpers.bytes_to_base64url(verification.credential_id)
@@ -478,6 +255,7 @@ class WebAuthnService:
         )
         db.add(new_cred)
         await db.delete(challenge_record)
+        await invalidate_security_state(db, user, preserve_session_id=session_id)
         await db.commit()
 
         await AuditService.log_event(
@@ -490,18 +268,14 @@ class WebAuthnService:
 
     @staticmethod
     async def get_authentication_options(
-        db: AsyncSession,
-        user: User | None = None,
-        rp_id: str | None = None,
-        settings: Settings | None = None,
-        *,
-        purpose: str = "authentication",
-        commit: bool = True,
+        db: AsyncSession, user: User | None = None, operation: PasskeyAuthentication | None = None
     ) -> dict[str, Any]:
         """
         Генерирует challenge для входа по Passkey.
         """
-        active_settings = settings or get_settings()
+        operation = operation or PasskeyAuthentication()
+        context = operation.trust
+        purpose, commit = operation.purpose, operation.commit
 
         allow_credentials = []
         if user:
@@ -514,7 +288,7 @@ class WebAuthnService:
                 for c in creds
             ]
 
-        effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
+        effective_rp_id = context.effective_rp_id
 
         options = webauthn.generate_authentication_options(
             rp_id=effective_rp_id,
@@ -545,19 +319,19 @@ class WebAuthnService:
         db: AsyncSession,
         user: User,
         credential_json: str | dict[str, Any],
-        rp_id: str | None = None,
-        origin: str | None = None,
-        settings: Settings | None = None,
-        *,
-        purpose: str = "authentication",
-        expected_challenge: str | None = None,
-        commit: bool = True,
+        operation: PasskeyAuthentication | None = None,
     ) -> bool:
         """Verify the exact server trust policy, lock and consume the assertion once."""
-        active_settings = settings or get_settings()
+        operation = operation or PasskeyAuthentication()
+        context = operation.trust
+        purpose, commit = operation.purpose, operation.commit
+        expected_challenge = operation.expected_challenge
+        user = await lock_user(db, user.id)
+        if not user.is_active:
+            raise AuthenticationException("Аккаунт недоступен")
         policy = AssertionPolicy(
-            rp_id or active_settings.WEBAUTHN_RP_ID,
-            [origin] if origin else [active_settings.WEBAUTHN_ORIGIN],
+            context.effective_rp_id,
+            context.expected_origins,
             purpose,
             expected_challenge,
         )
@@ -605,7 +379,10 @@ class WebAuthnService:
         ]
 
     @staticmethod
-    async def delete_passkey(db: AsyncSession, user: User, credential_id: str) -> bool:
+    async def delete_passkey(
+        db: AsyncSession, user: User, credential_id: str, session_id: uuid.UUID | None = None
+    ) -> bool:
+        user = await lock_user(db, user.id)
         stmt = select(WebAuthnCredential).where(
             WebAuthnCredential.user_id == user.id,
         )
@@ -622,6 +399,7 @@ class WebAuthnService:
 
         deleted_id = target.credential_id
         await db.delete(target)
+        await invalidate_security_state(db, user, preserve_session_id=session_id)
         await db.commit()
         await AuditService.log_event(
             db,
@@ -643,6 +421,12 @@ class EmailVerificationService:
     ) -> str:
         """Send a six-digit code and an independent one-use link for an existing user."""
         active_settings = settings or get_settings()
+        user = await lock_user(db, user.id)
+        if not user.is_active:
+            raise AuthenticationException("Аккаунт недоступен")
+        await db.execute(
+            delete(EmailVerificationToken).where(EmailVerificationToken.user_id == user.id)
+        )
         raw_token = generate_random_token(32)
         code = new_code()
         now = datetime.now(timezone.utc)
@@ -653,6 +437,7 @@ class EmailVerificationService:
             email=email,
             is_used=False,
             expires_at=now + timedelta(seconds=CODE_TTL_SECONDS),
+            security_revision=revision(user),
         )
         tok.code_hash = code_hash(active_settings, tok.id, code)
         db.add(tok)
@@ -694,10 +479,19 @@ class EmailVerificationService:
 
     @staticmethod
     async def confirm_email(db: AsyncSession, raw_token: str) -> bool:
+        owner = await db.scalar(
+            select(EmailVerificationToken.user_id).where(
+                EmailVerificationToken.token_hash == hash_token(raw_token)
+            )
+        )
+        if owner is None:
+            return False
+        await lock_user(db, owner)
         tok = await db.scalar(
             select(EmailVerificationToken)
             .where(EmailVerificationToken.token_hash == hash_token(raw_token))
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if tok and tok.is_used:
             await AuditService.log_event(
@@ -713,6 +507,18 @@ class EmailVerificationService:
 
     @staticmethod
     async def confirm_code(db: AsyncSession, email: str, code: str, settings: Settings) -> bool:
+        candidate = await db.scalar(
+            select(EmailVerificationToken)
+            .where(
+                EmailVerificationToken.email == email.strip().lower(),
+                EmailVerificationToken.is_used.is_(False),
+            )
+            .order_by(EmailVerificationToken.created_at.desc())
+            .limit(1)
+        )
+        if candidate is None:
+            return False
+        await lock_user(db, candidate.user_id)
         tok = await db.scalar(
             select(EmailVerificationToken)
             .where(
@@ -722,6 +528,7 @@ class EmailVerificationService:
             .order_by(EmailVerificationToken.created_at.desc())
             .limit(1)
             .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if not tok or tok.is_used or tok.expires_at <= datetime.now(timezone.utc):
             return False
@@ -737,12 +544,18 @@ class EmailVerificationService:
     async def _consume(db: AsyncSession, tok: EmailVerificationToken | None) -> bool:
         if not tok or tok.is_used or tok.expires_at <= datetime.now(timezone.utc):
             return False
-        user = await db.scalar(select(User).where(User.id == tok.user_id).with_for_update())
-        if not user:
+        user = await lock_user(db, tok.user_id)
+        if not user.is_active or tok.security_revision != revision(user):
             return False
         tok.is_used = True
         user.email = tok.email
         user.email_verified = True
-        await db.commit()
+        try:
+            await db.flush()
+            await invalidate_security_state(db, user, preserve_email_token_id=tok.id)
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            return False
         await AuditService.log_event(db, event_type="email_verified", user_id=user.id)
         return True

@@ -4,7 +4,7 @@ import sys
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -47,7 +47,9 @@ async def test_confidential_client_requires_secret_on_code_exchange(pg_session: 
         email=f"sec_{uuid.uuid4().hex[:6]}@example.com",
         is_active=True,
     )
-    user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
+    user.password_credential = PasswordCredential(
+        password_hash=hash_password("SecPass123!Synthetic2026")
+    )
     pg_session.add(user)
     await pg_session.flush()
     await record_test_consent(pg_session, user)
@@ -159,7 +161,9 @@ async def test_confidential_client_requires_secret_on_refresh_and_revoke(pg_sess
         email=f"sec_rf_{uuid.uuid4().hex[:6]}@example.com",
         is_active=True,
     )
-    user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
+    user.password_credential = PasswordCredential(
+        password_hash=hash_password("SecPass123!Synthetic2026")
+    )
     pg_session.add(user)
     await pg_session.flush()
     await record_test_consent(pg_session, user)
@@ -231,7 +235,9 @@ async def test_public_client_works_without_secret_with_pkce(pg_session: AsyncSes
         email=f"pub_{uuid.uuid4().hex[:6]}@example.com",
         is_active=True,
     )
-    user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
+    user.password_credential = PasswordCredential(
+        password_hash=hash_password("SecPass123!Synthetic2026")
+    )
     pg_session.add(user)
     await pg_session.flush()
     await record_test_consent(pg_session, user)
@@ -294,7 +300,9 @@ async def test_authorize_rejects_expired_and_idle_session(pg_session: AsyncSessi
         email=f"auth_{uuid.uuid4().hex[:6]}@example.com",
         is_active=True,
     )
-    user.password_credential = PasswordCredential(password_hash=hash_password("SecPass123!"))
+    user.password_credential = PasswordCredential(
+        password_hash=hash_password("SecPass123!Synthetic2026")
+    )
     pg_session.add(user)
     await pg_session.flush()
     await record_test_consent(pg_session, user)
@@ -433,12 +441,15 @@ def test_sdk_verify_access_token_enforces_aud_and_token_use():
     def mock_get(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = server_jwks
-        mock_resp.raise_for_status.return_value = None
-        return mock_resp
+        return httpx.Response(200, json=server_jwks)
 
-    with patch("httpx.Client.get", side_effect=mock_get):
+    original_http_client = httpx.Client
+    with patch(
+        "httpx.Client",
+        side_effect=lambda **kwargs: original_http_client(
+            **kwargs, transport=httpx.MockTransport(mock_get)
+        ),
+    ):
         # Первый вызов force_refresh=True обращается к сети
         sso.get_jwks(force_refresh=True)
         assert call_count == 1
@@ -458,7 +469,12 @@ def test_sdk_verify_access_token_enforces_aud_and_token_use():
     def mock_fail(*args, **kwargs):
         raise httpx.ConnectError("Network unreachable")
 
-    with patch("httpx.Client.get", side_effect=mock_fail):
+    with patch(
+        "httpx.Client",
+        side_effect=lambda **kwargs: original_http_client(
+            **kwargs, transport=httpx.MockTransport(mock_fail)
+        ),
+    ):
         with pytest.raises(ConfigurationError):
             # Кэш просрочен сильнее, чем max_stale_seconds, и сеть упала -> отказ, а не бесконечный stale cache
             sso.get_jwks(force_refresh=True)
@@ -589,7 +605,7 @@ async def test_deactivated_client_rejected_401(pg_session: AsyncSession):
         client_id=f"deact-{uuid.uuid4().hex[:6]}",
         client_name="Deactivated App",
         client_type="confidential",
-        client_secret_hash=hash_password("secret123"),
+        client_secret_hash=hash_password("secret123Synthetic2026"),
         is_active=False,
     )
     pg_session.add(deactivated)
@@ -597,7 +613,7 @@ async def test_deactivated_client_rejected_401(pg_session: AsyncSession):
 
     with pytest.raises(OAuthErrorException) as exc_info:
         await OIDCService.get_and_validate_client(
-            pg_session, client_id=deactivated.client_id, client_secret="secret123"
+            pg_session, client_id=deactivated.client_id, client_secret="secret123Synthetic2026"
         )
     assert exc_info.value.status_code == 401
     assert exc_info.value.error == "invalid_client"

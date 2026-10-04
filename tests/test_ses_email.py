@@ -15,6 +15,7 @@ from app.services import mfa_service, ses_email, verification_email
 from app.services.mfa_service import EmailVerificationService, sent_emails_sink
 from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class FakeSESClient:
@@ -221,9 +222,15 @@ async def test_ses_flow_escapes_html_and_does_not_capture_token(
     monkeypatch.setattr(verification_email, "send_ses_email", fake_send)
     audit = AsyncMock()
     monkeypatch.setattr(mfa_service.AuditService, "log_event", audit)
-    db = AsyncMock()
+    db = AsyncMock(spec=AsyncSession)
     db.add = MagicMock()
-    user = User(id=uuid.uuid4(), username="<script>alert(1)</script>", email="user@example.test")
+    user = User(
+        id=uuid.uuid4(),
+        username="<script>alert(1)</script>",
+        email="user@example.test",
+        is_active=True,
+    )
+    db.scalar.return_value = user
     token = await EmailVerificationService.send_verification(db, user, user.email, _settings())
     assert len(requests) == 1
     parsed = message_from_bytes(requests[0]["raw_message"], policy=default)
@@ -254,9 +261,10 @@ async def test_ses_failure_audited_without_smtp_fallback(monkeypatch: pytest.Mon
     monkeypatch.setattr(verification_email, "_send_smtp", forbidden_smtp)
     audit = AsyncMock()
     monkeypatch.setattr(mfa_service.AuditService, "log_event", audit)
-    db = AsyncMock()
+    db = AsyncMock(spec=AsyncSession)
     db.add = MagicMock()
-    user = User(id=uuid.uuid4(), username="user", email="user@example.test")
+    user = User(id=uuid.uuid4(), username="user", email="user@example.test", is_active=True)
+    db.scalar.return_value = user
     await EmailVerificationService.send_verification(db, user, user.email, _settings())
     assert audit.await_args_list[0].kwargs["event_type"] == "email_delivery_failed"
     assert audit.await_args_list[0].kwargs["details"] == {

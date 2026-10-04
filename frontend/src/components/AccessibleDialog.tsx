@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+const activeDialogs: HTMLElement[] = [];
 
 function controlsIn(dialog: HTMLElement): HTMLElement[] {
   const selector = "button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex='0']";
@@ -22,7 +23,7 @@ function trapTab(event: KeyboardEvent, dialog: HTMLElement) {
   destination.focus();
 }
 
-function useDialogFocus(onClose: () => void, busy: boolean) {
+function useDialogFocus(onClose: () => void, busy: boolean, initialFocus?: RefObject<HTMLElement>) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose); close.current = onClose;
   const loading = useRef(busy); loading.current = busy;
@@ -30,8 +31,13 @@ function useDialogFocus(onClose: () => void, busy: boolean) {
     const dialog = ref.current;
     if (!dialog) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    (controlsIn(dialog)[0] ?? dialog).focus();
+    const underneath = activeDialogs[activeDialogs.length - 1];
+    const previousInert = underneath?.inert;
+    if (underneath) underneath.inert = true;
+    activeDialogs.push(dialog);
+    (initialFocus?.current ?? controlsIn(dialog)[0] ?? dialog).focus();
     const key = (event: KeyboardEvent) => {
+      if (activeDialogs[activeDialogs.length - 1] !== dialog) return;
       if (event.key === "Tab") trapTab(event, dialog);
       if (event.key !== "Escape") return;
       event.preventDefault(); event.stopPropagation();
@@ -40,13 +46,16 @@ function useDialogFocus(onClose: () => void, busy: boolean) {
     document.addEventListener("keydown", key, true);
     return () => {
       document.removeEventListener("keydown", key, true);
+      const index = activeDialogs.indexOf(dialog);
+      if (index >= 0) activeDialogs.splice(index, 1);
+      if (underneath) underneath.inert = previousInert ?? false;
       if (previous?.isConnected) previous.focus();
     };
   }, []);
   return ref;
 }
 
-export function AccessibleDialog({ label, onClose, children, className, busy = false }: { label: string; onClose: () => void; children: ReactNode; className: string; busy?: boolean }) {
-  const ref = useDialogFocus(onClose, busy);
+export function AccessibleDialog({ label, onClose, children, className, busy = false, initialFocus }: { label: string; onClose: () => void; children: ReactNode; className: string; busy?: boolean; initialFocus?: RefObject<HTMLElement> }) {
+  const ref = useDialogFocus(onClose, busy, initialFocus);
   return <div ref={ref} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} className={className} onClick={event => event.stopPropagation()}>{children}</div>;
 }

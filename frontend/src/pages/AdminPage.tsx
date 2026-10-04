@@ -29,6 +29,7 @@ export const AdminPage: React.FC = () => {
   const [showCreateClientModal, setShowCreateClientModal] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newClientType, setNewClientType] = useState("confidential");
+  const [newClientScopes, setNewClientScopes] = useState(["openid", "profile", "email"]);
   const [newRedirectUris, setNewRedirectUris] = useState("");
 
   // Модальное окно разового показа секрета (USR-09)
@@ -180,6 +181,7 @@ export const AdminPage: React.FC = () => {
       const res = await api.createAdminClient({
         client_name: newClientName,
         client_type: newClientType,
+        allowed_scopes: newClientScopes,
         redirect_uris: uris,
       });
       setShowCreateClientModal(false);
@@ -840,6 +842,10 @@ export const AdminPage: React.FC = () => {
                   <option value="public">Public (без секрета: SPA, мобильное приложение)</option>
                 </select>
               </div>
+              <fieldset><legend className="text-xs font-medium text-gray-700">Разрешения клиента</legend>
+                <p className="text-xs text-gray-600">openid обязателен. Выберите данные, доступные приложению.</p>
+                {["profile", "email"].map(scope => <label key={scope} className="mr-4 text-sm"><input type="checkbox" checked={newClientScopes.includes(scope)} onChange={event => setNewClientScopes(current => event.target.checked ? [...current, scope] : current.filter(value => value !== scope))} /> {scope === "profile" ? "Профиль" : "Email"}</label>)}
+              </fieldset>
               <div>
                 <label htmlFor="adminpage-field-7" className="block text-xs font-medium text-gray-700">
                   Разрешенные Redirect URIs (по одному на строку)

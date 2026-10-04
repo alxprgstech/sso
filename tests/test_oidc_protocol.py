@@ -3,6 +3,7 @@ import sys
 import uuid
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -64,7 +65,8 @@ def test_id_token_rejected_as_access_token():
     res = client.get("/oauth/userinfo", headers={"Authorization": f"Bearer {id_token}"})
     assert res.status_code == 401
     assert res.json()["error"] == "invalid_token"
-    assert "ID Token" in res.json()["error_description"]
+    assert res.json()["error"] == "invalid_token"
+    assert res.headers["WWW-Authenticate"].startswith("Bearer")
 
 
 def test_oauth_authorize_endpoint_redirects_unauthenticated():
@@ -74,7 +76,7 @@ def test_oauth_authorize_endpoint_redirects_unauthenticated():
     from app.database import get_db
 
     async def mock_get_db():
-        mock_session = AsyncMock()
+        mock_session = AsyncMock(spec=AsyncSession)
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result

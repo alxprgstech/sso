@@ -10,6 +10,8 @@ import { navigationBreadcrumb } from "./telemetry/sentry";
 import { AppShell } from "./components/AppShell";
 import { AcceptancePage, LegalPage } from "./pages/LegalPage";
 import { AccountDeletionPage } from "./pages/AccountDeletionPage";
+import { ReauthenticationDialog } from "./components/ReauthenticationDialog";
+import { ForcedPasswordPage } from "./pages/ForcedPasswordPage";
 
 const MainContent: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -28,6 +30,11 @@ const MainContent: React.FC = () => {
         <div className="text-gray-500 text-sm font-medium">Загрузка данных сессии...</div>
       </div>
     );
+  }
+
+  if (user?.session_purpose === "password_change") return <ForcedPasswordPage />;
+  if (window.location.pathname === "/login" && new URLSearchParams(window.location.search).get("force_login") === "1") {
+    return <LoginPage onNavigateToRegister={() => setAuthView("register")} />;
   }
 
   if (!user) {
@@ -77,7 +84,7 @@ export const App: React.FC = () => {
   if (publicDocument) return <AppShell><LegalPage path={window.location.pathname} /></AppShell>;
   return (
     <AuthProvider>
-      <AppShell><MainContent /></AppShell>
+      <AppShell><MainContent /><ReauthenticationDialog /></AppShell>
     </AuthProvider>
   );
 };

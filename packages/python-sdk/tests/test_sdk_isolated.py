@@ -55,6 +55,8 @@ def _create_signed_jwt(
     p["iat"] = now
     p["exp"] = now + expires_in_seconds
     p["iss"] = "https://auth.alxprgs.tech"
+    if p.get("token_use") == "access_token":
+        p.setdefault("scope", "openid profile email")
     return jwt.encode(p, private_key, algorithm="RS256", headers={"kid": kid})
 
 

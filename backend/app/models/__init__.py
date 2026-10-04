@@ -1,10 +1,5 @@
 from app.models.audit import AuditEvent
-from app.models.privacy import (
-    LegalAcceptance,
-    DeletionAuthorization,
-    PrivacyRateWindow,
-    DeletedSubject,
-)
+from app.models.authentication import AuthenticationStep, SecurityAuthorization
 from app.models.mfa import (
     EmailVerificationToken,
     RecoveryCode,
@@ -18,12 +13,20 @@ from app.models.oidc import (
     OIDCRedirectUri,
     RefreshToken,
 )
-from app.models.session import Session
+from app.models.privacy import (
+    DeletedSubject,
+    DeletionAuthorization,
+    LegalAcceptance,
+    PrivacyRateWindow,
+)
 from app.models.registration import PendingRegistration
+from app.models.session import Session
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
 
 __all__ = [
+    "SecurityAuthorization",
+    "AuthenticationStep",
     "LegalAcceptance",
     "DeletionAuthorization",
     "PrivacyRateWindow",

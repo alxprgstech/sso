@@ -2,21 +2,24 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
+
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import (
     generate_csrf_token,
     get_cookie_name,
     get_current_session,
     get_current_user,
+    require_recent_reauthentication,
     verify_csrf,
 )
 from app.config import Settings, get_settings
+from app.core.rate_limit import get_client_ip
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
-from app.core.rate_limit import get_client_ip
 from app.schemas.auth import (
     CapabilitiesResponse,
     ChangePasswordRequest,
@@ -29,16 +32,20 @@ from app.schemas.auth import (
     RegistrationLinkConfirmRequest,
     RegistrationResendRequest,
     SessionInfoResponse,
-    UserProfileResponse,
     TelemetryConfigResponse,
+    UserProfileResponse,
 )
 from app.services.audit_service import AuditService
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest, SessionAuthorization
 from app.services.registration_service import RegistrationService, verify_gmail_bearer
-from app.services.verification_email import request_details
 from app.services.system_service import SystemService
+from app.services.verification_email import request_details
 
-router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+router = APIRouter(
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+    dependencies=[Depends(require_recent_reauthentication)],
+)
 
 
 @router.get("/telemetry-config", response_model=TelemetryConfigResponse)
@@ -46,8 +53,8 @@ async def telemetry_config(
     response: Response,
     settings: Settings = Depends(get_settings),
 ) -> TelemetryConfigResponse:
+    from typing import Literal, cast
     from urllib.parse import urlsplit
-    from typing import cast, Literal
 
     # No database, session or request-derived origin; this response is public.
     response.headers["Cache-Control"] = "no-store"
@@ -108,18 +115,7 @@ async def register(
     # Защита от межсайтовой подделки / недоверенного Origin (REG-07)
     origin = request.headers.get("Origin")
     if origin:
-        from urllib.parse import urlparse
-
-        origin_host = urlparse(origin).netloc.split(":")[0].lower()
-        allowed_hosts = {
-            "localhost",
-            "127.0.0.1",
-            "auth.alxprgs.tech",
-            "alxprgs.tech",
-            urlparse(settings.BASE_URL).netloc.split(":")[0].lower(),
-            urlparse(settings.FRONTEND_URL).netloc.split(":")[0].lower(),
-        }
-        if origin_host not in allowed_hosts:
+        if origin not in {settings.BASE_URL, settings.FRONTEND_URL}:
             from fastapi import HTTPException
 
             raise HTTPException(
@@ -221,7 +217,7 @@ async def login(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Any:
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
 
     user, mfa_required, mfa_token, methods = await AuthService.authenticate_user(
@@ -243,10 +239,9 @@ async def login(
     # Успешный парольный вход (сессия выпускается сразу)
     raw_token, session, csrf_token = await AuthService.create_user_session(
         db=db,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=ua,
+        request=SessionRequest(user.id, ip, ua),
         settings=settings,
+        authorization=SessionAuthorization(expected_revision=user.security_revision or 0),
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -276,6 +271,7 @@ async def login(
             has_totp=bool(user.totp_credential and user.totp_credential.is_confirmed),
             has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
             created_at=user.created_at,
+            session_purpose=session.purpose,
         ),
     }
 
@@ -295,7 +291,7 @@ async def logout(
     cookie_name = get_cookie_name(settings, request)
     response.delete_cookie(key=cookie_name, path="/")
 
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     await AuditService.log_event(
         db,
@@ -343,12 +339,15 @@ async def get_me(
 async def change_password(
     payload: ChangePasswordRequest,
     request: Request,
+    response: Response,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
-) -> dict[str, str]:
-    ip = request.client.host if request.client else None
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
+    forced = session.purpose == "password_change"
 
     await AuthService.change_password(
         db=db,
@@ -359,7 +358,15 @@ async def change_password(
         ip_address=ip,
         user_agent=ua,
     )
-    return {"status": "ok", "message": "Пароль успешно изменён, остальные сессии отозваны"}
+    if forced:
+        response.delete_cookie(get_cookie_name(settings, request), path="/")
+    return {
+        "status": "ok",
+        "requires_login": forced,
+        "message": "Пароль изменён. Войдите с новым паролем"
+        if forced
+        else "Пароль успешно изменён, остальные сессии отозваны",
+    }
 
 
 @router.get("/sessions", response_model=list[SessionInfoResponse])

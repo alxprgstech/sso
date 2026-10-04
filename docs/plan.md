@@ -936,3 +936,159 @@ UI-DELETE-01, 2026-10-03T22:46:51.1880031+03:00: владелец поручил
 UI-DELETE-01, 2026-10-03T23:07:11.4884061+03:00: четыре конфликта resolved, обе истории сохранены; nine SES gate tests и28 components, UTF-8/ссылки/whitespace/Ruff/secret scan passed. Этап in_progress до merge commit и подтверждённого push.
 
 Завершение этапа UI-DELETE-01 2026-10-03T23:09:55.7198350+03:00: done, четыре конфликта устранены с сохранением обеих сторон, [merge c99f83b](https://github.com/alxprgstech/sso/commit/c99f83bfcc6da6a5693f23285af0488873326701) опубликован обычным push в main. Remote SHA/tracking/отсутствие MERGE_HEAD и чистое дерево подтверждены. Начало2026-10-03T23:04:27.5221098+03:00. Последний docs-only учёт отправляется тем же поручением; точка продолжения — CI итогового HEAD, live/production остаются отдельными.
+
+## AUDIT-PROD-01 — полный аудит готовности SSO к production
+
+- Исполнитель: Codex. Приоритет P0. Статус `done` (аудит; исправления planned).
+- Основание: отдельное поручение владельца /goal; SSO-01..08, SDK-01..06, ARCH-01..06, SEC-FLAG-01..07, CI/REL/CD, PRIV-01..09, DOC-TRACK-01..07.
+- Зависимость: фактическое дерево commit `7e857ab80398f8084169ee29b141c6edc6794fe8`; рабочая ветка `new/production-readiness-audit`. Начальное дерево чистое.
+- План: (1) карта компонентов, доверия и заявленного профиля; (2) сквозной аудит протоколов, аккаунтов, MFA, RBAC и SDK по актуальным официальным стандартам; (3) доступные unit/integration/frontend/build/security/operations проверки и adversarial диагностика; (4) русский `docs/PRODUCTION_READINESS_AUDIT.md` с матрицами, доказательствами, verdict и планом исправлений.
+- Критерий готовности: все существенные подсистемы рассмотрены; выполняемые проверки завершены; недоступные изолированы с причиной и точным действием; существенные находки имеют доказательства; отчёт содержит все 13 запрошенных разделов. Завершение аудита не означает завершение общей реализации GOAL.
+- Код приложения не изменяется. Допускаются диагностические тесты/артефакты и документация. Production, реальные письма, публикация и новые агенты не входят в поручение.
+Фактическое начало AUDIT-PROD-01: 2026-10-03T23:41:27.3818608+03:00.
+
+AUDIT-PROD-01, 2026-10-04T00:28:07.3720031+03:00: фазы 1–2 завершены, фаза 3 завершает доступные browser UI/demo и классификацию Git. Документируются подтверждённые HIGH и отдельные NOT TESTED; verdict предварительно NOT READY. План исправлений будет включён в отчёт без правок приложения.
+
+AUDIT-PROD-01, 2026-10-04T00:56:33.9850085+03:00: report и фазы1–3 готовы; финальная phase4 проверяет доказательства/links/учёт. Fix IDs AUDIT-FIX-01…06 planned; реализация исправлений не начиналась. Все externally unproven отделены от8 подтверждённых HIGH.
+
+## AUDIT-PROD-01 — завершение и точка продолжения 2026-10-04T02:08:51.7543440+03:00
+
+Аудит done:13 разделов русского отчёта,27 findings с доказательствами, стандарты/функции/crypto/API/ops/CI,32 важных checks с local log hashes, внешние unknowns изолированы. Начало2026-10-03T23:41:27.3818608+03:00, завершение2026-10-04T02:08:51.7543440+03:00, Codex. Доступные runnable проверки выполнены; невозможные не объявлены passed. Исправление продукта не входит в завершённый audit outcome. NOT READY; GOAL-09 продолжает иметь незакрытую runtime-приёмку.
+
+| ID | Приоритет | Зависимости | Критерий готовности | Статус |
+| --- | --- | --- | --- | --- |
+| AUDIT-FIX-01 | P0 | защищённое место ключей; synthetic staging | F-01/F-08/F-20: unsafe configs fail startup, verified SMTP либо prod-only SES gate, RSA overlap/restart и безопасная TOTP rotation, точный runbook | planned |
+| AUDIT-FIX-02 | P0 | FIX-01; выделенная guarded PG | F-02…F-06: распределённые quotas, action-bound reauth, stale grants/MFA/email отказ, verified email на всех путях; реальные concurrency regressions | planned |
+| AUDIT-FIX-03 | P1 | FIX-02 | F-07/F-09…F-14/F-25: prompt/max_age/auth_time/wire/claims/PKCE/logout/scopes, positive+negative protocol/SDK и применимые OIF планы | planned |
+| AUDIT-FIX-04 | P1 | FIX-02; согласованная password policy | F-16/F-17: forced temporary password change, recovery/password storage и enumeration regression | planned |
+| AUDIT-FIX-05 | P1 | FIX-01/02; staging/Docker/PG | F-15/F-18…F-23: exact origins/proxy, least privilege, migration drift, CSP, redacted diagnostics, backup/restore/retention/image scan | planned |
+| AUDIT-FIX-06 | P2 | соответствующие fixes | F-24/F-26/F-27: Windows safety cases и достоверные required tests, JOSE maintenance, actual API/docs/clean SDK examples | planned |
+
+Предложения развивать optional DCR/introspection/DPoP/FAPI/logout channels не являются blockers текущего профиля. Реализация задач/публикация/production не начаты. Следующий шаг по отдельному поручению — FIX-01/02 и guarded runtime-приёмка на исправленном SHA. Открытые HIGH не устраняются документацией.
+
+AUDIT-PROD-01, 2026-10-04T02:16:05.4388433+03:00: окончательная completion audit подтверждена по текущему дереву,32checks/13sections/27findings, source неизменен. Дополнительная сверка уточняет окончательное завершение после записи02:08; задача done, remediation tasks planned. Точка продолжения — FIX-01/02 по новому поручению и выделенная guarded PG; внешние условия в reportsection11.
+
+
+## AUDIT-REMEDIATION-01 — начало 2026-10-04T02:25:20.3844113+03:00
+
+Исполнитель Codex. По поручению владельца устранить все F-01–F-27, включая LOW; статус in_progress. Прочитан полный исторический аудит и GOAL/AGENTS/учёт. Создана ветка new/production-readiness-remediation с сохранением незакоммиченных материалов аудита. План: AUDIT-FIX-01 (production validation, постоянный RSA/overlap, verified SMTP, безопасная ротация); FIX-02 (quotas/reauth/security revision/email); FIX-03 (OIDC/SDK); FIX-04 (recovery/password); FIX-05 (ops/origins/metadata/logs/CSP); FIX-06 (Windows/JOSE/docs). Для каждого finding отдельная запись закрытия с регрессией и фактическим результатом; затем полный доступный набор и повторный verdict. Сейчас AUDIT-FIX-01 in_progress, прочие planned. Исходный аудит сохраняется как baseline, его failures не меняются задним числом. Общая цель остаётся active до выполнения критериев. Docker/PG/публичный HTTPS требуют повторной проверки доступности; недоступность не мешает локальной реализации. Следующий шаг — config/key/TLS регрессии и исправления, ADR и runbook; новых успешных проверок пока нет.
+
+
+2026-10-04T02:42:37.2222931+03:00 — AUDIT-FIX-01 in_progress: production/key/SMTP implementation и 56 целевых real crypto/process/loopback TLS tests passed; runbook, env/Compose и системное руководство синхронизированы. Added guarded PG TOTP migration drill; выполнение впереди. Проверена официальная доступность portable PostgreSQL 16.15, лицензия PostgreSQL; скачан только в ignored artifacts, без установки службы. Docker/installed PG отсутствуют; распаковка portable PG выполняется. План расширен локальным PG стендом вместо прежнего внешнего ограничения, guard/marker остаются обязательными. Следующий шаг — запуск на loopback5433 с SCRAM, пустая dedicated DB, миграции/marker/PG drill, затем FIX-02. Остальные F пока открыты; общая цель active.
+
+
+### 2026-10-04T02:56:14.4428540+03:00 — AUDIT-FIX-01: локальный результат и переход к lifecycle
+
+Исполнитель Codex. F-01/F-08/F-20 реализованы: строгая production config, постоянные RSA/overlap/deadline, TLS cert/hostname/no fallback, private key destinations/ACL/no overwrite, transactional offline TOTP migration, session-key CSRF drill и точный runbook. Config/core scripts/tests и .env.example/Compose/operations/system guide/ADR-0014 обновлены. 62 target tests passed (19.51s), 3 настоящих PG tests passed (2.06s), mypy48files/target Ruff/diff whitespace passed. Есть прежний Authlib warning F-26. Тесты фиксируют отдельные concurrent RSA процессы, Windows ACL, реальные loopback STARTTLS trusted/untrusted/hostname/unavailable и PostgreSQL успешную/ошибочную ciphertext migration. XML artifacts/remediation/phase1.xml и phase1-pg.xml. PostgreSQL16.15 официально загружен по проверенному HTTPS и лицензии PostgreSQL, bootstrap SCRAM/new data в разрешённом ASCII visualization root, только127.0.0.1:5433. Existing app DB не использована. Fresh upgrade0001→0004 и отдельный штатный marker выполнены; повторный marker отказал корректно (он уже существовал). Первоначальная localhost IPv6 задержка диагностирована SELECT1/stack, test URL использует разрешённый127.0.0.1; default-off профиль задаётся до импорта вместо enabled .env. PG больше не считается внешним блокером. Код PG binaries не подписан Authenticode (NotSigned); источник — официальный EDB HTTPS, локальный hash сохранится в evidence. Live TLS/mail/custody и Docker пока не проверены; они отделены от доказанных библиотечных/локальных свойств. Stage01 остаётся in_progress до итоговой полной регрессии/re-audit; все findings ещё требуют финальной closure record. Исходный аудит сохранён без правок в docs/PRODUCTION_READINESS_AUDIT_BASELINE.md (тот же каталог сохраняет links).
+
+Следующий этап AUDIT-FIX-02 in_progress: сначала единая security revision/guard и атомарный отзыв sessions/codes/refresh/MFA/email; затем distributed quotas/reauth/pending enrollment/identity. Критерий — реальные PG гонки плюс UI/API регрессии. Дополнительно F-21 начат минимальным controlled app.models import в Alembic до новых migrations: проверить текущий drift и fresh/previous upgrade на isolated PG; plan FIX-05 subpart in_progress. Остальные FIX-03/04/06 planned. Общая цель active, production/публикация не выполняются.
+
+AUDIT-FIX-02, 2026-10-04T03:17:09.9267433+03:00: revision/one-use MFA базовые PG regression passed; action+payload-bound reauth и pending enrollment in_progress. AUDIT-FIX-05/F21: controlled metadata/index migration и existing-head drift passed; fresh/previous migration drills ещё нужны.
+
+AUDIT-FIX-02, 2026-10-04T03:38:21.4840816+03:00: action/payload/session proof и pendingTOTP реализованы; PostgreSQL binding/replay/expiry, independent workers quotas passed. Full regressions/PG email/race/MFA/browser остаются. F17 started (15..128 policy/recovery/dummy/bounded work), blocklist источник уточняется.
+
+AUDIT-FIX-03, 2026-10-04T03:40:22.4469489+03:00: in_progress (F07/F09..15 protocol/SDK); AUDIT-FIX-04/F16 subpart in_progress; other runtime/proxy/CSP F18/F19/F23 planned. Existing lifecycle remains in_progress for full regression.
+
+AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion fullmandatoryunit+PG suite without skipped lifecycle or AsyncMock race claims/warnings. F26/CI quality remainspending; FIX03 protocol matrices continue.
+
+
+2026-10-04T04:22:45.463203+03:00: AUDIT-FIX-05 и AUDIT-FIX-06 in_progress; F18/19/22/23 runtime/proxy/CSP/diagnostics и F26 PyJWT migration начинаются. F24 проверяется полным набором; закрытых final findings пока нет.
+
+
+2026-10-04T04:47:39.637379+03:00, AUDIT-FIX-02/05/06 in_progress:23targeted passed incl PGbackup/restore/realRSA; broadPG75/25 priorfailures сохраняются до final rerun. Docker/staging/live nottested. XML artifacts/remediation/lifecycle-third.xml. Next: WebAuthn real signing/browser/full suites/CI/docs/27closure.
+
+
+### 2026-10-04T12:06:46.250439+03:00 — AUDIT-FIX-02/05/06: продолжение и эксплуатационный drill
+Исполнитель Codex. Дополнены пропущенные записи после разрыва выполнения между показаниями часов 05:01 и 12:04; историческое время не восстанавливается предположениями. Реальные Passkey PG4 passed (13.15s, passkey-real.xml): фактические P-256 ключи/подписи, registration Session/challenge binding, UV/origin/RP/signature/replay negatives. Unit-third371passed/106deselected/16subtests/один библиотечный Starlette deprecation (56.49s). Эти выборки не заменяют fullPG/browser.
+
+До следующей существенной работы сохраняется план AUDIT-FIX-05/06: guarded fresh/0004→head upgrade и least-privilege DML/DDL drill; mandatory Windows/container/CSP CI; затем realbrowser и full suites, docs/SDK/re-audit27. Реализованы production startup DB-role/schema preflight, bounded body ASGI regressions, безопасный409 integrity conflict, case-insensitive Basic и trusted authorize lifecycle error redirect. Runtime uvicorn использует штатный HTTP h11 без optional standard extras, чтобы production-only lock был одинаковым на Linux/Windows; lock обновлён без смены версий или алгоритмов.
+
+Первый migration/role drill: функциональные миграции/роль прошли, но cleanup failed — generated previous DB name64bytes был обрезан PostgreSQL до63. Проверки cleanup правильно сохранили БД. Это не PASS. create_owned теперь до CREATE отвергает overlong/non-ASCII identifiers; тестовые имена сокращены. Единственная созданная этим прогоном БД очищена отдельным guarded recovery: server identity/current_database/exact32hexrun_id/marker/original64→observed63 совпали, затем штатный ownership-checked DROP. Другие базы/роли не изменены. Четыре body-budget tests passed. Повторный drill выполняется, результат ещё не объявлен. Alembic path_separator=os устраняет реальную legacy-path warning без подавления warning.
+
+Статус всех AUDIT-FIX задач in_progress до full verification и closure records. Docker/production/publicHTTPS/OIF/live email не проверены; публикация отсутствует. Следующий шаг: результат drill, обязательные CI и браузерные sensitive-reauth flows; цель остаётся active.
+
+
+2026-10-04T12:49:45.071066+03:00 — AUDIT-FIX-02/03/05/06 in_progress: PG101, Windows25 и default/enabled browser33/9 passed; следующий этап — полная race matrix, SDK freshness/JWKS, role handoff и дополнительные browser flows. Done ещё не достигнут; детали и ограничения в worklog/status.
+
+2026-10-04T13:33:15.462611+03:00 — AUDIT-FIX-02/03/05/06 in_progress: SDK24/races8/identity6/handoff2 и full browser both profiles passed; full verification, private secret review, probe map и exact-SHA closure впереди.
+
+2026-10-04T14:10:31.858756+03:00 — AUDIT-FIX-01…06 in_progress: все local implementations готовы и доступны regression evidence; full-final02/clean exact-SHA release/re-audit27 являются оставшимися локальными критериями. External proofs выделяются отдельно.
+
+2026-10-04T14:13:08.231568+03:00 — AUDIT-FIX-01…06 in_progress:535full/20enabled passed, код готов к локальному commit; оставшиеся local criteria — exact-SHA bundle,27 closure records и documentation links.
+
+
+## AUDIT-REMEDIATION-01 — итоговый локальный результат 2026-10-04T14:32:18.518409+03:00
+
+Начало2026-10-04T02:25:20.3844113+03:00, локальное завершение 2026-10-04T14:32:18.518409+03:00, Codex. Поручение устранить F-01…F-27 и повторно аудировать code SHA выполнено локально; внешние критерии прозрачны и остаются blocked. Исходная таблица planned выше историческая, текущий срез ниже не отменяет критерии.
+
+| ID | Приоритет | Зависимости | Текущий статус / результат / условие |
+| --- | --- | --- | --- |
+| AUDIT-FIX-01 | P0 | secure synthetic destination | done: strict config/real worker RSA/overlap/verified loopback SMTP/TOTP rotation/runbook PASS; реальный production custody/transport E03…E05 отдельно |
+| AUDIT-FIX-02 | P0 | FIX-01, guarded PG | done: quotas/reauth/revision/verified identity и настоящие PG races/positive/negative PASS |
+| AUDIT-FIX-03 | P1 | FIX-02 | blocked: wire/crypto/fresh-auth/logout/scopes/clean SDK PASS, применимые OIF plans E06 ещё не выполнены; unblock reachable dedicated HTTPS issuer/suite alias/clients/run results |
+| AUDIT-FIX-04 | P1 | FIX-02, policy ADR0016 | done: actual forced change/recovery/password/blocklist/timing отрицательные и положительные PASS |
+| AUDIT-FIX-05 | P1 | FIX-01/02, staging/Docker/PG | blocked: PG roles/drift/backup/restore/erasure, origins/logs/real enforced CSP/proxy negatives PASS; actual images/Trivy/public TLS/alerts E01/E03/E05 не выполнены; unblock изолированный Docker/Linux и утверждённый staging |
+| AUDIT-FIX-06 | P2 | related fixes | done: Windows5.1/7/encoding/safety/real lifecycle, supported Gmail JOSE, API63/docs/installed examples/source integrity PASS |
+
+Все существенные implementation завершены в code commit `ae700d7a9803b9757980ef1862af31f6f360a97d`. Документированный verdict CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Общий GOAL-09 не done. E01…E07 раздела7 отчёта — конечный список внешних действий с prerequisites/командами/evidence; отсутствие доступа не объявлено успехом и не требует новых локальных code fixes.
+
+Точка продолжения: E01/E02 затем synthetic staging E03…E06/private E07. Полный run535/16subtests и20enabled/replay104/browser34+10/SDK17/scans/clean8payload bundle подтверждены; не суммировать overlap. Publication/production/live sending не выполнялись.
+
+
+## BRANCH-PR-01 — обзор всех веток и подготовка PR
+
+Начало 2026-10-04T14:50:11.864713+03:00, Codex; приоритетP1, статусin_progress. Поручение владельца: проверить локальные и запушенные ветки, создать необходимые PR для последующего одобрения. Зависимости: актуальный origin и доступ к GitHub. План: fetch/prune и ancestry каждой ветки, existing PR inventory, приватность repo и source/secret checks; пуш только новых нужных commits в new/ ветку, создать PR без дублирования и без merge; проверить refs/PR base/head/conflicts, сохранить результат и точку продолжения. Критерий done: каждая ветка классифицирована, для незамерженных нужных изменений есть PR со ссылкой и проверенными base/head, история/данные/чужие ветки сохранены. Объединение и production не входят в текущее действие.
+
+
+2026-10-04T14:52:05.284669+03:00 — BRANCH-PR-01 in_progress: inventory completed, единственная не включённая группа remediation готовится к PR; прочие branches merged/equalmain, criteria/new PR после push.
+
+
+2026-10-04T14:55:04.544304+03:00 — BRANCH-PR-01 blocked: обзор/описание готово, push/PR отклонён auto-review из-за public repo; unblock явное согласие владельца на публичную публикацию или verified private visibility. Подробный snapshot docs/branch-review.md, merge/production не выполнялись.
+
+
+2026-10-04T14:56:19.108344+03:00 — BRANCH-PR-01 in_progress: explicit public push/PR разрешён владельцем, прежний auto-review блокер снят; local index/normal push/create/check впереди.
+
+
+2026-10-04T14:59:17.605460+03:00 — BRANCH-PR-01 done. Начало2026-10-04T14:50:11.864713+03:00, завершение 2026-10-04T14:59:17.605460+03:00, Codex. Все ветки классифицированы; только remediation требовала новый PR, создан https://github.com/alxprgstech/sso/pull/5 и прикреплён. Remote/head/base verified, mergeabletrue/no current conflicts; CIpending, не PASS. Прежнийpublic approval blocker снят explicit ответом владельца. Остальныеветки сохранены. Следующая точка: владелец review/approval и результаты checks, правки в той же ветке при необходимости.
+
+
+## PR5-CI-01 — устранение сбоев remote checks
+
+Начало 2026-10-04T15:04:59.289865+03:00, Codex, P0, in_progress. По сообщению владельца run37200621991 на head3a2aac3 имеет5failed Actions jobs и failed CodeScene,2SES skips/4success. План: получить реальные logs/annotations, установить первопричины backend/frontend/container/E2E/Windows и CodeScene, реализовать связанную корректировку с regression checks; сохранить protections/required jobs, проверять exact head и обновить тот же PR5 normal push. Критерийdone: причины исправлены, применимые local checks успешны и обязательные remote checks новогоSHA успешны, либо точный внешний blocker явно сохранён без объявления PASS. Нельзя менять assertions/security/job gates ради green; merged/production не выполнять.
+
+2026-10-04T18:15:42.3211542+03:00 — PR5-CI-01 in_progress: Actions причины исправлены, local84unit+71PG/frontend PASS; enabled browser/remoteTrivy pending. CodeScene остаётся обязательной незавершённой частью; следующие шаги docs/testing/pr5-ci-remediation.md.
+
+2026-10-04T18:37:19.9938569+03:00 — PR5-CI-01 in_progress: remaining Actions causes narrowed to enabled SMTP sink and Debian13OS vulnerabilities; local enabled20PASS, Alpine candidate ready for mandatoryCI. CodeScene23newfiles/6hotspots backlog persists, collection hook10.00.
+
+2026-10-04T19:28:35.7718180+03:00 — PR5-CI-01 in_progress: обязательные Actions восстановлены на c1a6f23; остаются CodeScene, full regression нового рефакторинга и exact-head remote verification.
+
+2026-10-04T19:54:47.5869966+03:00 — PR5-CI-01 in_progress: вторичнаядекомпозицияtested, всеActions1917f9bPASS, остаётсяCodeScene/exactheadвторойгруппы. Не менятьhistoricalarchiveилиframeworkcallbackрадиgate.
+
+2026-10-04T20:30:25.7170985+03:00 — PR5-CI-01 in_progress: устранить typechecker Any для internal imports и 5 обнаруженных типов (ADR0019), проверить unchanged schema и отказ отсутствующей даты consent; не ослаблять compiler/DB/policy.
+
+
+2026-10-04T21:01:12.890399+03:00 — PR5-CI-01 in_progress: третья quality-группа, канонические импортированные типы, unchanged PG migrations и enabled20 проверены; pending normalpush/exact-head Actions/CodeScene.
+
+
+2026-10-04T21:13:23.536885+03:00 — PR5-CI-01 in_progress: исправить последние4 code-addressable CodeScene files по session lifecycle/discoverable lookup/claims-vs-audience boundaries; archived probe и framework signature сохранить. Actions44c3ff9PASS; новыйheadpending.
+
+
+2026-10-04T21:24:36.410422+03:00 — PR5-CI-01 in_progress: четвёртая группа110actualPG/cryptoPASS, mypy65/Ruff200/runtime lock/scans/docs PASS; pending new exact-head Actions/CodeScene.
+
+
+2026-10-04T21:35:11.654052+03:00 — PR5-CI-01 in_progress: e97f7e9ActionsPASS;3addressable CodeScene files плюс2contracts. Разделить temporal/identity validation и temporary consumption guard, actualPG/crypto/CI verify.
+
+
+2026-10-04T21:38:27.846070+03:00 — PR5-CI-01 in_progress: последняя delta60actualPG/cryptoPASS,17bodies unchanged, mypy67/Ruff202/scansPASS. Pending normalpush/new exacthead.
+
+
+2026-10-04T21:47:51.194815+03:00 — PR5-CI-01 blocked: начало2026-10-04T15:04:59.289865+03:00; code-addressable fixes и9mandatory Actions наf9e06d71c7806d71d9226cfb591585cbf5f3ef83 complete. Остаются2CodeScenecontracts, неPASS; условиеразблокировки — решениевладельца о рассмотрении archived snapshot и Alembic callback вquality policy (docs/testing/codescene-contracts.md). Не менятьtoolsettings/thresholds без нового поручения. ProductionGOAL09 сохраняетсянезавершённым.
+
+
+2026-10-04T22:02:23.736246+03:00 — PR5-CI-01 in_progress: владелец разрешил ровно два исключения из docs/testing/codescene-contracts.md. Критерий завершения: применённая узкая policy и успешный CodeScene точного PR head; все9 обязательных Actions сохраняются.
+
+
+2026-10-04T23:24:44.165802+03:00 — PR5-CI-01 in_progress: callback исключение подтверждено; уточнить второе rule name у того же разрешённого archive exactpath, новый exacthead CI/CodeScene обязательны.
+
+
+2026-10-04T23:31:35.029980+03:00 — PR5-CI-01 done: начало2026-10-04T15:04:59.289865+03:00; завершение2026-10-04T23:31:35.029980+03:00. На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена. Критерийвыполнен,2исключенияпрямоодобрены,архив/защита/обязательныеchecksсохранены. Следующийшаг: finaldocs-onlyheadverification иreview/одобрениевладельцем. ОбщийGOAL09/production/releaseне закрыты.

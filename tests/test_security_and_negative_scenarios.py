@@ -6,15 +6,15 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from app.legal import REQUIRED_DOCUMENTS
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.deps import generate_csrf_token, verify_csrf
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException, OAuthErrorException
-from app.core.security import hash_password, hash_token
+from app.core.security import hash_password
 from app.main import app
 from app.models.oidc import AuthorizationCode, OIDCClient, RefreshToken
 from app.models.session import Session
@@ -27,235 +27,124 @@ client = TestClient(app)
 settings = get_settings()
 
 
-@pytest.mark.asyncio
-async def test_oidc_invalid_pkce_verifier_rejected():
-    """Неверный PKCE code_verifier приводит к ошибке invalid_grant."""
-    db = AsyncMock()
-    client_uuid = uuid.uuid4()
-    mock_client = OIDCClient(client_id="test_client", client_type="public", is_active=True)
-    mock_client.id = client_uuid
+async def seed_oidc(db):
+    from app.models.user import PasswordCredential
 
-    code_record = AuthorizationCode(
-        code_hash=hash_token("test_auth_code_1"),
-        client_id=client_uuid,
-        user_id=uuid.uuid4(),
-        redirect_uri="https://client.alxprgs.tech/callback",
-        code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-        code_challenge_method="S256",
-        scope="openid profile email",
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=60),
-        is_used=False,
+    from tests.helpers.privacy import record_test_consent
+
+    user = User(username="security_case", email="security@example.test")
+    user.password_credential = PasswordCredential(
+        password_hash=hash_password("SecurityRegression2026!")
+    )
+    client_obj = OIDCClient(client_id="test_client", client_name="Security", client_type="public")
+    db.add_all([user, client_obj])
+    await record_test_consent(db, user)
+    raw = await OIDCService.create_authorization_code(
+        db,
+        client_obj,
+        user,
+        "https://client.example.test/callback",
+        "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    )
+    return user, client_obj, raw
+
+
+async def exchange(db, raw, verifier="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"):
+    return await OIDCService.exchange_code(
+        db, "test_client", None, raw, verifier, "https://client.example.test/callback"
     )
 
-    exec_mock = AsyncMock()
-    mock_res_client = MagicMock()
-    mock_res_client.scalar_one_or_none.return_value = mock_client
 
-    mock_res_code = MagicMock()
-    mock_res_code.scalar_one_or_none.return_value = code_record
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_oidc_invalid_pkce_verifier_rejected(pg_session):
+    _, _, raw = await seed_oidc(pg_session)
+    with pytest.raises(OAuthErrorException) as exc:
+        await exchange(pg_session, raw, "wrong_verifier_123456789012345678901234567890123")
+    assert exc.value.status_code == 400 and exc.value.detail["error"] == "invalid_grant"
+    assert "code_verifier" in exc.value.detail["error_description"]
 
-    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_code]
-    db.execute = exec_mock
 
-    with pytest.raises(OAuthErrorException) as exc_info:
-        await OIDCService.exchange_code(
-            db=db,
-            client_id="test_client",
-            client_secret=None,
-            code="test_auth_code_1",
-            redirect_uri="https://client.alxprgs.tech/callback",
-            code_verifier="wrong_verifier_1234567890123456789012345",
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_oidc_expired_auth_code_rejected(pg_session):
+    from sqlalchemy import update
+
+    _, _, raw = await seed_oidc(pg_session)
+    await pg_session.execute(
+        update(AuthorizationCode).values(
+            expires_at=datetime.now(timezone.utc) - timedelta(seconds=5)
         )
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["error"] == "invalid_grant"
-    assert "code_verifier" in exc_info.value.detail["error_description"]
-
-
-@pytest.mark.asyncio
-async def test_oidc_expired_auth_code_rejected():
-    """Просроченный authorization code отклоняется с invalid_grant."""
-    db = AsyncMock()
-    client_uuid = uuid.uuid4()
-    mock_client = OIDCClient(client_id="test_client", client_type="public", is_active=True)
-    mock_client.id = client_uuid
-
-    code_record = AuthorizationCode(
-        code_hash=hash_token("expired_code"),
-        client_id=client_uuid,
-        user_id=uuid.uuid4(),
-        redirect_uri="https://client.alxprgs.tech/callback",
-        code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-        code_challenge_method="S256",
-        scope="openid profile email",
-        expires_at=datetime.now(timezone.utc) - timedelta(seconds=5),  # Expired
-        is_used=False,
+    )
+    await pg_session.commit()
+    with pytest.raises(OAuthErrorException) as exc:
+        await exchange(pg_session, raw)
+    assert (
+        exc.value.detail["error"] == "invalid_grant"
+        and "истёк" in exc.value.detail["error_description"]
     )
 
-    exec_mock = AsyncMock()
-    mock_res_client = MagicMock()
-    mock_res_client.scalar_one_or_none.return_value = mock_client
 
-    mock_res_code = MagicMock()
-    mock_res_code.scalar_one_or_none.return_value = code_record
-
-    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_code]
-    db.execute = exec_mock
-
-    with pytest.raises(OAuthErrorException) as exc_info:
-        await OIDCService.exchange_code(
-            db=db,
-            client_id="test_client",
-            client_secret=None,
-            code="expired_code",
-            redirect_uri="https://client.alxprgs.tech/callback",
-            code_verifier="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-        )
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["error"] == "invalid_grant"
-    assert "истёк" in exc_info.value.detail["error_description"]
-
-
+@pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_oidc_reused_auth_code_rejected():
-    """Повторное использование authorization code (Replay Attack) отклоняется."""
-    db = AsyncMock()
-    client_uuid = uuid.uuid4()
-    mock_client = OIDCClient(client_id="test_client", client_type="public", is_active=True)
-    mock_client.id = client_uuid
-
-    code_record = AuthorizationCode(
-        code_hash=hash_token("reused_code"),
-        client_id=client_uuid,
-        user_id=uuid.uuid4(),
-        redirect_uri="https://client.alxprgs.tech/callback",
-        code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-        code_challenge_method="S256",
-        scope="openid profile email",
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=60),
-        is_used=True,  # Already used!
+async def test_oidc_reused_auth_code_rejected(pg_session):
+    _, _, raw = await seed_oidc(pg_session)
+    assert (await exchange(pg_session, raw)).access_token
+    with pytest.raises(OAuthErrorException) as exc:
+        await exchange(pg_session, raw)
+    assert (
+        exc.value.detail["error"] == "invalid_grant"
+        and "уже был использован" in exc.value.detail["error_description"]
     )
 
-    exec_mock = AsyncMock()
-    mock_res_client = MagicMock()
-    mock_res_client.scalar_one_or_none.return_value = mock_client
 
-    mock_res_code = MagicMock()
-    mock_res_code.scalar_one_or_none.return_value = code_record
-
-    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_code]
-    db.execute = exec_mock
-
-    with pytest.raises(OAuthErrorException) as exc_info:
-        await OIDCService.exchange_code(
-            db=db,
-            client_id="test_client",
-            client_secret=None,
-            code="reused_code",
-            redirect_uri="https://client.alxprgs.tech/callback",
-            code_verifier="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-        )
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["error"] == "invalid_grant"
-    assert "уже был использован" in exc_info.value.detail["error_description"]
-
-
+@pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_oidc_refresh_token_replay_revokes_family():
-    """Повторное использование refresh token аннулирует всю семью токенов (SSO-05)."""
-    db = AsyncMock()
-    client_uuid = uuid.uuid4()
-    mock_client = OIDCClient(client_id="test_client", client_type="public", is_active=True)
-    mock_client.id = client_uuid
+async def test_oidc_refresh_token_replay_revokes_family(pg_session):
+    from sqlalchemy import select
 
-    family_id = uuid.uuid4()
-    old_rt = RefreshToken(
-        token_hash=hash_token("compromised_refresh_token"),
-        client_id=client_uuid,
-        user_id=uuid.uuid4(),
-        family_id=family_id,
-        scope="openid profile",
-        is_revoked=True,  # Already rotated and revoked!
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    _, _, raw = await seed_oidc(pg_session)
+    initial = await exchange(pg_session, raw)
+    rotated = await OIDCService.rotate_refresh_token(
+        pg_session, "test_client", None, initial.refresh_token
     )
-
-    exec_mock = AsyncMock()
-    mock_res_client = MagicMock()
-    mock_res_client.scalar_one_or_none.return_value = mock_client
-
-    mock_res_rt = MagicMock()
-    mock_res_rt.scalar_one_or_none.return_value = old_rt
-
-    mock_res_update = MagicMock()
-
-    exec_mock.side_effect = [mock_res_client, MagicMock(), mock_res_rt, mock_res_update]
-    db.execute = exec_mock
-
-    with pytest.raises(OAuthErrorException) as exc_info:
+    assert rotated.refresh_token != initial.refresh_token
+    with pytest.raises(OAuthErrorException) as exc:
         await OIDCService.rotate_refresh_token(
-            db=db,
-            client_id="test_client",
-            client_secret=None,
-            raw_refresh_token="compromised_refresh_token",
+            pg_session, "test_client", None, initial.refresh_token
         )
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["error"] == "invalid_grant"
-    assert "Всё семейство токенов отозвано" in exc_info.value.detail["error_description"]
+    assert exc.value.detail["error"] == "invalid_grant"
+    assert "Всё семейство токенов отозвано" in exc.value.detail["error_description"]
+    assert not await pg_session.scalar(select(RefreshToken).where(~RefreshToken.is_revoked))
 
 
+@pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_oidc_client_authentication_failure():
-    """Конфиденциальный клиент с неверным секретом получает 401 invalid_client."""
-    db = AsyncMock()
-    hashed_secret = hash_token("correct_secret")
-    confidential_client = OIDCClient(
+async def test_oidc_client_authentication_failure(pg_session):
+    confidential = OIDCClient(
         client_id="conf_client",
+        client_name="Confidential",
         client_type="confidential",
-        client_secret_hash=hashed_secret,
-        is_active=True,
+        client_secret_hash=hash_password("CorrectClientSecret2026!"),
     )
-    confidential_client.id = uuid.uuid4()
-
-    mock_res = MagicMock()
-    mock_res.scalar_one_or_none.return_value = confidential_client
-    db.execute.return_value = mock_res
-
-    with pytest.raises(OAuthErrorException) as exc_info:
+    pg_session.add(confidential)
+    await pg_session.commit()
+    with pytest.raises(OAuthErrorException) as exc:
         await OIDCService.get_and_validate_client(
-            db=db,
-            client_id="conf_client",
-            client_secret="wrong_secret",
-            require_secret=True,
+            pg_session, "conf_client", "wrong_secret", require_secret=True
         )
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.detail["error"] == "invalid_client"
+    assert exc.value.status_code == 401 and exc.value.detail["error"] == "invalid_client"
 
 
+@pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_blocked_user_cannot_authenticate():
-    """Заблокированный пользователь (is_active=False) не может войти (возвращается 401)."""
-    db = AsyncMock()
-    blocked_user = User(
-        username="blocked_guy",
-        email="blocked@alxprgs.tech",
-        is_active=False,  # Blocked
-    )
-
-    mock_res_user = MagicMock()
-    mock_res_user.scalar_one_or_none.return_value = blocked_user
-
-    mock_res_pwd = MagicMock()
-    mock_res_pwd.scalar_one_or_none.return_value = MagicMock(
-        password_hash=hash_password("password123")
-    )
-
-    exec_mock = AsyncMock()
-    exec_mock.side_effect = [mock_res_user, mock_res_pwd]
-    db.execute = exec_mock
-
-    with pytest.raises(AuthenticationException) as exc_info:
-        await AuthService.authenticate_user(db, "blocked_guy", "password123")
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.detail["error"] == "invalid_credentials"
+async def test_blocked_user_cannot_authenticate(pg_session):
+    user, _, _ = await seed_oidc(pg_session)
+    user.is_active = False
+    await pg_session.commit()
+    with pytest.raises(AuthenticationException) as exc:
+        await AuthService.authenticate_user(pg_session, "security_case", "SecurityRegression2026!")
+    assert exc.value.status_code == 401 and exc.value.detail["error"] == "invalid_credentials"
 
 
 @pytest.mark.asyncio
@@ -314,7 +203,7 @@ def test_deferred_features_return_404_when_disabled():
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
-    fake_db = AsyncMock()
+    fake_db = AsyncMock(spec=AsyncSession)
     fake_db.execute.side_effect = [
         MagicMock(scalar_one=MagicMock(return_value=datetime.now(timezone.utc))),
         MagicMock(scalar_one=MagicMock(return_value=1)),
@@ -351,94 +240,31 @@ def test_deferred_features_return_404_when_disabled():
         app.dependency_overrides.pop(get_db, None)
 
 
+@pytest.mark.postgres
+@pytest.mark.concurrency
 @pytest.mark.asyncio
-async def test_atomic_code_redemption_race_condition():
-    """Имитация конкурентного погашения одного и того же authorization code: ровно один завершается успешно."""
-    db = AsyncMock()
-    client_uuid = uuid.uuid4()
-    mock_client = OIDCClient(client_id="race_client", client_type="public", is_active=True)
-    mock_client.id = client_uuid
+async def test_atomic_code_redemption_race_condition(pg_session, pg_engine):
+    """Two independent PostgreSQL transactions contend for the same real code."""
+    import asyncio
 
-    code_state = {
-        "used": False,
-    }
+    from sqlalchemy import func, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    async def mock_execute(query, *args, **kwargs):
-        query_str = str(query)
-        mock_result = MagicMock()
-        if "oidc_clients" in query_str:
-            mock_result.scalar_one_or_none.return_value = mock_client
-            return mock_result
-        if "authorization_codes" in query_str:
-            if code_state["used"]:
-                used_record = AuthorizationCode(
-                    code_hash=hash_token("race_code"),
-                    client_id=client_uuid,
-                    user_id=uuid.uuid4(),
-                    redirect_uri="https://app.alxprgs.tech/callback",
-                    code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-                    code_challenge_method="S256",
-                    scope="openid profile email",
-                    expires_at=datetime.now(timezone.utc) + timedelta(seconds=60),
-                    is_used=True,  # Marked used!
-                )
-                mock_result.scalar_one_or_none.return_value = used_record
-            else:
-                code_state["used"] = True
-                active_record = AuthorizationCode(
-                    code_hash=hash_token("race_code"),
-                    client_id=client_uuid,
-                    user_id=uuid.uuid4(),
-                    redirect_uri="https://app.alxprgs.tech/callback",
-                    code_challenge="E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
-                    code_challenge_method="S256",
-                    scope="openid profile email",
-                    expires_at=datetime.now(timezone.utc) + timedelta(seconds=60),
-                    is_used=False,
-                )
-                mock_result.scalar_one_or_none.return_value = active_record
-            return mock_result
-        if "legal_acceptances" in query_str:
-            mock_result.all.return_value = list(REQUIRED_DOCUMENTS.items())
-            return mock_result
-        if "users" in query_str:
-            user = User(username="race_user", email="race@alxprgs.tech", is_active=True)
-            user.roles = []
-            mock_result.scalar_one.return_value = user
-            mock_result.scalar_one_or_none.return_value = user
-            return mock_result
-        return mock_result
+    _, _, raw = await seed_oidc(pg_session)
+    factory = async_sessionmaker(pg_engine, expire_on_commit=False)
 
-    db.execute.side_effect = mock_execute
+    async def attempt():
+        async with factory() as db:
+            try:
+                return await exchange(db, raw)
+            except OAuthErrorException as exc:
+                return exc
 
-    async def fresh_user(query):
-        if "authorization_codes.user_id" in str(query):
-            return client_uuid
-        return (await mock_execute(query)).scalar_one_or_none()
-
-    db.scalar.side_effect = fresh_user
-
-    # Attempt 1: succeeds
-    res1 = await OIDCService.exchange_code(
-        db=db,
-        client_id="race_client",
-        client_secret=None,
-        code="race_code",
-        redirect_uri="https://app.alxprgs.tech/callback",
-        code_verifier="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-    )
-    assert res1.access_token is not None
-
-    # Attempt 2: strictly fails with replay detected
-    with pytest.raises(OAuthErrorException) as exc_info:
-        await OIDCService.exchange_code(
-            db=db,
-            client_id="race_client",
-            client_secret=None,
-            code="race_code",
-            redirect_uri="https://app.alxprgs.tech/callback",
-            code_verifier="dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
-        )
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail["error"] == "invalid_grant"
-    assert "уже был использован" in exc_info.value.detail["error_description"]
+    results = await asyncio.gather(attempt(), attempt())
+    success = [item for item in results if not isinstance(item, OAuthErrorException)]
+    rejected = [item for item in results if isinstance(item, OAuthErrorException)]
+    assert len(success) == len(rejected) == 1
+    assert success[0].access_token
+    assert rejected[0].status_code == 400 and rejected[0].detail["error"] == "invalid_grant"
+    assert "уже был использован" in rejected[0].detail["error_description"]
+    assert await pg_session.scalar(select(func.count()).select_from(RefreshToken)) == 1

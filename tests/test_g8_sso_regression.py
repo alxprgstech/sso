@@ -113,8 +113,9 @@ async def test_authorize_scope_validation_negative(pg_session):
                 "code_challenge_method": "S256",
             },
         )
-        assert res.status_code == 400
-        assert res.json()["error"] == "invalid_scope"
+        assert res.status_code == 302
+        assert res.headers["location"].startswith(redirect_uri + "?")
+        assert "error=invalid_scope" in res.headers["location"]
 
         # 2. Неизвестный/неподдерживаемый scope
         res2 = await client.get(
@@ -128,8 +129,9 @@ async def test_authorize_scope_validation_negative(pg_session):
                 "code_challenge_method": "S256",
             },
         )
-        assert res2.status_code == 400
-        assert res2.json()["error"] == "invalid_scope"
+        assert res2.status_code == 302
+        assert res2.headers["location"].startswith(redirect_uri + "?")
+        assert "error=invalid_scope" in res2.headers["location"]
 
 
 @pytest.mark.asyncio

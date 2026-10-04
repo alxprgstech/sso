@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.exceptions import AuthorizationException
 from app.models.user import Role, User, UserRole
 

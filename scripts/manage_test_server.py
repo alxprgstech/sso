@@ -10,6 +10,7 @@ ALXPRGS SSO - Скрипт надежного управления процес�
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import signal
@@ -39,10 +40,11 @@ def get_pid_listening_on_port(port: int, host: str = "127.0.0.1") -> int | None:
             res = subprocess.run(
                 ["netstat", "-ano", "-p", "tcp"],
                 capture_output=True,
-                text=True,
                 check=False,
             )
-            for line in res.stdout.splitlines():
+            # Windows native tools use OEM encoding, independently of PYTHONUTF8.
+            # Parse only ASCII protocol/address/PID fields; localized headings are irrelevant.
+            for line in res.stdout.decode("ascii", errors="ignore").splitlines():
                 parts = line.strip().split()
                 if len(parts) >= 5 and parts[0].upper() == "TCP":
                     local_addr = parts[1]
@@ -305,6 +307,20 @@ def start_server(
     return 0
 
 
+def windows_process_exists(target_pid: int) -> bool:
+    result = subprocess.run(
+        ["tasklist", "/FI", f"PID eq {target_pid}", "/FO", "CSV", "/NH"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode:
+        return True  # A failed inventory cannot prove that the owned PID exited.
+    for row in csv.reader(result.stdout.decode("ascii", errors="ignore").splitlines()):
+        if len(row) > 1 and row[1] == str(target_pid):
+            return True
+    return False
+
+
 def stop_server(
     pidfile: str, port: int | None = None, host: str = "127.0.0.1", timeout: int = 5
 ) -> int:
@@ -360,13 +376,7 @@ def stop_server(
         all_gone = True
         for target_pid in pids_to_kill:
             if sys.platform == "win32":
-                res = subprocess.run(
-                    ["tasklist", "/FI", f"PID eq {target_pid}"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if str(target_pid) in res.stdout:
+                if windows_process_exists(target_pid):
                     all_gone = False
                     break
             else:

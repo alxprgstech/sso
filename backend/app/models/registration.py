@@ -24,5 +24,7 @@ class PendingRegistration(Base):
     link_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     send_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     request_details: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False)

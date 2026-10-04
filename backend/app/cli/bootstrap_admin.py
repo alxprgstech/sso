@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from datetime import datetime, timezone
 import getpass
 import os
 import sys
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.rbac import ROLE_ADMIN, ROLE_USER
-from app.core.security import hash_password
+from app.core.security import async_hash_password
 from app.database import async_session_maker
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
@@ -113,7 +115,7 @@ async def execute_bootstrap(
     await session.flush()
 
     # 6. Хеширование пароля через Argon2id
-    pw_hash = hash_password(password)
+    pw_hash = await async_hash_password(password)
     cred = PasswordCredential(
         user_id=admin_user.id,
         password_hash=pw_hash,

@@ -3,17 +3,20 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from authlib.oauth2.rfc6749.util import scope_to_list
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from authlib.oauth2.rfc6749.util import scope_to_list
+
 from app.config import get_settings
-from app.core.exceptions import OAuthErrorException
+from app.core.exceptions import AuthenticationException, OAuthErrorException
 from app.core.security import (
+    async_verify_password,
     create_jwt,
     decode_jwt,
     generate_random_token,
     hash_token,
-    verify_password,
+    valid_pkce_challenge,
     verify_pkce,
 )
 from app.models.oidc import (
@@ -25,6 +28,7 @@ from app.models.session import Session
 from app.models.user import User
 from app.schemas.oidc import TokenResponse, UserInfoResponse
 from app.services.audit_service import AuditService
+from app.services.security_state import require_account_access, revision
 
 settings = get_settings()
 
@@ -37,6 +41,10 @@ class OIDCService:
         client_secret: str | None = None,
         require_secret: bool = True,
     ) -> OIDCClient:
+        if require_secret:
+            from app.services.privacy_service import RateLimit, consume_rate_limit
+
+            await consume_rate_limit(db, settings, RateLimit("oauth-client", client_id, 30))
         stmt = select(OIDCClient).where(OIDCClient.client_id == client_id)
         client = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -46,7 +54,7 @@ class OIDCService:
         if client.client_type == "confidential" and require_secret:
             if not client_secret or not client.client_secret_hash:
                 raise OAuthErrorException("invalid_client", "Требуется client_secret", 401)
-            if not verify_password(client_secret, client.client_secret_hash):
+            if not await async_verify_password(client_secret, client.client_secret_hash):
                 raise OAuthErrorException("invalid_client", "Неверный client_secret", 401)
 
         return client
@@ -75,17 +83,22 @@ class OIDCService:
         code_challenge_method: str = "S256",
         nonce: str | None = None,
         scope: str = "openid profile email",
+        auth_time: datetime | None = None,
+        session_id: uuid.UUID | None = None,
     ) -> str:
         """
         Выпускает одноразовый authorization code с привязкой к клиенту, URI и PKCE S256 (SSO-03).
         TTL = 60 секунд.
         """
-        if code_challenge_method != "S256":
+        if code_challenge_method != "S256" or not valid_pkce_challenge(code_challenge):
             raise OAuthErrorException(
                 "invalid_request", "Поддерживается только метод PKCE S256", 400
             )
 
         from app.services.privacy_service import require_access
+
+        if not set(scope.split()) <= set((client.allowed_scopes or "openid profile email").split()):
+            raise OAuthErrorException("invalid_scope", "Scope не разрешён для этого клиента", 400)
 
         current = await db.scalar(
             select(User)
@@ -96,6 +109,22 @@ class OIDCService:
         if not current or not current.is_active:
             raise OAuthErrorException("invalid_grant", "Аккаунт недоступен", 400)
         await require_access(db, current)
+        require_account_access(current, settings)
+        if session_id is not None:
+            session = await db.scalar(
+                select(Session).where(
+                    Session.id == session_id,
+                    Session.user_id == current.id,
+                    Session.security_revision == revision(current),
+                    Session.purpose == "full",
+                    Session.expires_at > datetime.now(timezone.utc),
+                )
+            )
+            if session is None:
+                raise OAuthErrorException(
+                    "login_required", "Сессия больше не допускает авторизацию", 400
+                )
+            auth_time = session.auth_time
 
         raw_code = generate_random_token(32)
         code_hash = hash_token(raw_code)
@@ -113,6 +142,8 @@ class OIDCService:
             scope=scope,
             is_used=False,
             expires_at=expires_at,
+            security_revision=revision(current),
+            auth_time=auth_time or now,
         )
         db.add(auth_code_record)
         await db.commit()
@@ -215,6 +246,8 @@ class OIDCService:
             nonce=auth_code_obj.nonce,
             ip_address=ip_address,
             user_agent=user_agent,
+            expected_revision=auth_code_obj.security_revision or 0,
+            auth_time=auth_code_obj.auth_time,
         )
 
     @staticmethod
@@ -337,6 +370,8 @@ class OIDCService:
             family_id=rt_obj.family_id,
             ip_address=ip_address,
             user_agent=user_agent,
+            expected_revision=rt_obj.security_revision or 0,
+            auth_time=rt_obj.auth_time,
         )
 
     @staticmethod
@@ -349,8 +384,12 @@ class OIDCService:
         family_id: uuid.UUID | None = None,
         ip_address: str | None = None,
         user_agent: str | None = None,
+        expected_revision: int | None = None,
+        auth_time: datetime | None = None,
     ) -> TokenResponse:
         granted_scopes = set(scope_to_list(scope))
+        if not granted_scopes <= set((client.allowed_scopes or "openid profile email").split()):
+            raise OAuthErrorException("invalid_scope", "Scope не разрешён для этого клиента", 400)
         from app.services.privacy_service import has_current_acceptance
 
         current = await db.scalar(
@@ -368,8 +407,18 @@ class OIDCService:
             raise OAuthErrorException(
                 "invalid_grant", "Необходимо завершить взаимодействие с аккаунтом в SSO", 400
             )
+        try:
+            require_account_access(current, settings)
+        except AuthenticationException:
+            raise OAuthErrorException(
+                "invalid_grant", "Аккаунт не допускает выдачу токенов", 400
+            ) from None
+        if expected_revision is not None and revision(current) != expected_revision:
+            raise OAuthErrorException("invalid_grant", "Безопасность аккаунта изменилась", 400)
+        user = current
         roles = [r.name for r in user.roles]
         now = datetime.now(timezone.utc)
+        authenticated_at = auth_time or now
 
         # 1. Access Token (JWT RS256, 5 минут, SSO-04 фильтрация claims)
         access_payload: dict[str, Any] = {
@@ -378,6 +427,7 @@ class OIDCService:
             "scope": scope,
             "token_use": "access_token",
             "jti": str(uuid.uuid4()),
+            "security_revision": revision(current),
         }
         if "profile" in granted_scopes:
             access_payload["preferred_username"] = user.username
@@ -397,6 +447,7 @@ class OIDCService:
                 "sub": str(user.id),  # Стабильный непрозрачный UUID (SSO-04)
                 "aud": client.client_id,
                 "token_use": "id_token",
+                "auth_time": int(authenticated_at.timestamp()),
             }
             if nonce:
                 id_payload["nonce"] = nonce
@@ -439,6 +490,8 @@ class OIDCService:
             scope=scope,
             is_revoked=False,
             expires_at=rt_expires,
+            security_revision=revision(current),
+            auth_time=authenticated_at,
         )
         db.add(new_rt)
         await db.commit()
@@ -469,7 +522,8 @@ class OIDCService:
         Фильтрует claims email/profile согласно scope из access token (SSO-04).
         """
         try:
-            payload = decode_jwt(access_token)
+            payload = decode_jwt(access_token, expected_use="access_token")
+            user_id = uuid.UUID(payload["sub"])
         except Exception:
             raise OAuthErrorException(
                 "invalid_token", "Токен недействителен или срок его действия истёк", 401
@@ -486,7 +540,7 @@ class OIDCService:
         if not user_id_str:
             raise OAuthErrorException("invalid_token", "В токене отсутствует claim 'sub'", 401)
 
-        stmt = select(User).where(User.id == uuid.UUID(user_id_str))
+        stmt = select(User).where(User.id == user_id)
         user = (await db.execute(stmt)).scalar_one_or_none()
 
         from app.services.privacy_service import has_current_acceptance
@@ -500,6 +554,13 @@ class OIDCService:
             raise OAuthErrorException(
                 "invalid_token", "Пользователь заблокирован или не найден", 401
             )
+
+        try:
+            require_account_access(user, settings)
+        except AuthenticationException:
+            raise OAuthErrorException("invalid_token", "Аккаунт не допускает доступ", 401) from None
+        if payload.get("security_revision", 0) != revision(user):
+            raise OAuthErrorException("invalid_token", "Безопасность аккаунта изменилась", 401)
 
         return UserInfoResponse(
             sub=str(user.id),
@@ -536,11 +597,4 @@ class OIDCService:
             await db.commit()
             return
 
-        # Если передан session token
-        session_stmt = select(Session).where(Session.session_token_hash == token_hash)
-        sess = (await db.execute(session_stmt)).scalar_one_or_none()
-        if sess:
-            await db.delete(sess)
-            await db.commit()
-            return
         # По стандарту RFC 7009 если токен не найден, возвращается 200 OK

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import DateTime, ForeignKey, String
+
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
 
 if TYPE_CHECKING:
@@ -14,8 +16,20 @@ if TYPE_CHECKING:
 
 class Session(Base):
     __tablename__ = "sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('full', 'deletion_management', 'password_change')",
+            name="ck_sessions_purpose",
+        ),
+    )
+    security_revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     purpose: Mapped[str] = mapped_column(String(32), default="full", nullable=False)
+    auth_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Literal
-
-
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.core.security import validate_new_password
 
 
 class LoginRequest(BaseModel):
@@ -32,7 +33,8 @@ class MFAStepRequiredResponse(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1, max_length=128)
-    new_password: str = Field(..., min_length=8, max_length=128)
+    new_password: str = Field(..., min_length=15, max_length=128)
+    _password_policy = field_validator("new_password")(validate_new_password)
 
 
 class UserProfileResponse(BaseModel):
@@ -87,8 +89,9 @@ class RegisterRequest(BaseModel):
 
     username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
     email: str = Field(..., min_length=5, max_length=255, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-    password: str = Field(..., min_length=8, max_length=128)
-    confirm_password: str = Field(..., min_length=8, max_length=128)
+    password: str = Field(..., min_length=15, max_length=128)
+    _password_policy = field_validator("password")(validate_new_password)
+    confirm_password: str = Field(..., min_length=15, max_length=128)
     terms_accepted: Literal[True]
     data_processing_consent: Literal[True]
     legal_versions: dict[str, str]

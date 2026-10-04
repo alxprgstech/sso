@@ -5,7 +5,7 @@
 - **Целевой домен**: `alxprgs.tech`
 - **Идентификатор поставщика (Issuer)**: `https://auth.alxprgs.tech`
 - **Версия продукта**: `0.2.0` (SemVer, единый источник истины — `VERSION`)
-- **Статус**: Реализован; обязательная runtime-приёмка ещё не завершена ([актуальные ограничения](docs/status.md)).
+- **Статус**: **CONDITIONALLY READY** по [повторному аудиту от 04.10.2026](docs/PRODUCTION_READINESS_AUDIT.md), code SHA `ae700d7`: все локальные исправления F-01…F-27 готовы; реальные Docker/Trivy E01 и обязательные Actions подтверждены в PR5; CodeScene E02 и внешние HTTPS/provider/ops/OIF/owner review E03…E07 остаются незавершёнными. [Карта исправлений](docs/REMEDIATION_SUMMARY.md), [актуальный статус](docs/status.md). Общая приёмка GOAL-09 ещё не закрыта.
 
 ---
 
@@ -30,13 +30,13 @@ chmod +x start.sh
 
 1. **Проверка окружения**: проверяет наличие `docker` в PATH, доступность демона Docker и доступность порта `127.0.0.1:3000` (TEST-SETUP-04).
 2. **Безопасная конфигурация**: автоматически генерирует локальный файл `.env` с уникальными криптостойкими ключами (`SESSION_SECRET_KEY`, `TOTP_ENCRYPTION_KEY`, пароль БД) без перезаписи уже существующего файла (SETUP-04).
-   Windows-скрипт записывает файл в UTF-8 без BOM. Для контейнеров пароль `POSTGRES_PASSWORD` совпадает с паролем в `DATABASE_URL` и `DATABASE_URL_SYNC`; оба URL указывают на сервис `db`.
+   Windows-скрипт записывает файл в UTF-8 без BOM. Три независимых пароля: `POSTGRES_PASSWORD` для bootstrap-владельца БД, `SSO_MIGRATOR_PASSWORD` для одноразового migration job и `SSO_RUNTIME_PASSWORD` для ограниченной роли приложения. `DATABASE_URL`/`DATABASE_URL_SYNC` приложения используют `sso_runtime`; Compose задаёт мигратору отдельный DSN. Обновление существующей БД требует [передачи владения схемой](docs/operations.md#раздельные-роли-бд-и-обновление-существующего-volume), без сброса данных.
 3. **Запуск сервисов**: поднимает изолированный контур Docker Compose (база данных PostgreSQL 16, бэкенд FastAPI, фронтенд Nginx + React).
 4. **Проверка готовности**: ожидает успешного прохождения liveness healthcheck (`/health/live`) с контролем таймаута (до 60 секунд).
 5. **Интерактивный мастер первого администратора (SETUP-03..SETUP-07)** запускается только после успешного старта контейнеров и проверки готовности. Если Compose сообщает, что backend `unhealthy`, скрипт остановится до запросов логина, email и пароля:
    - Запрашивает логин администратора (по умолчанию: `admin`);
    - Запрашивает контактный email (по умолчанию: `admin@alxprgs.tech`);
-   - Запрашивает пароль администратора со **скрытым вводом в терминале** (`getpass`) и обязательным подтверждением (минимум 8 символов);
+   - Запрашивает пароль администратора со **скрытым вводом в терминале** (`getpass`) и обязательным подтверждением (15–128 символов, локальный blocklist);
    - Предлагает выбрать режим самостоятельной регистрации обычных пользователей:
      - `[1] closed` (закрытый режим, рекомендуется по умолчанию);
      - `[2] open` (открытый режим со свободной регистрацией).
@@ -85,7 +85,7 @@ docker compose exec -it backend python -m app.cli.bootstrap_admin
 - FastAPI + PostgreSQL 16 + SQLAlchemy 2.0 (драйвер `psycopg`);
 - Хеширование паролей Argon2id (RFC 9106);
 - OpenID Connect Core 1.0 Provider:
-  - Discovery (`/.well-known/openid-configuration`), JWKS (`/jwks.json`);
+  - Discovery (`/.well-known/openid-configuration`), JWKS (`/.well-known/jwks.json`);
   - Authorization Code Grant с обязательным PKCE S256 (RFC 7636);
   - Выпуск RS256 JWT Access Token (5 мин) и ID Token;
   - Ротация Refresh Token с детектированием Replay (Token Family Replay Detection, SSO-05);

@@ -93,9 +93,9 @@ def browser_profiles(suite: str, base_env: dict[str, str]) -> list[BrowserProfil
         (
             "default-off",
             ("sso", "all"),
-            ("sso", "multi_client_sso", "telemetry", "privacy", "appearance"),
+            ("sso", "multi_client_sso", "protocol_lifecycle", "telemetry", "privacy", "appearance"),
         ),
-        ("enabled", ("passkey", "all"), ("passkey", "telemetry", "privacy")),
+        ("enabled", ("passkey", "all"), ("passkey", "totp", "telemetry", "privacy")),
     )
     for name, suites, specs in definitions:
         if suite not in suites:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import time
 from typing import Any
@@ -9,6 +10,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
+from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt import PyJWKSet
 
 from alxprgs_sso.exceptions import (
@@ -18,12 +20,18 @@ from alxprgs_sso.exceptions import (
     TokenExpiredError,
 )
 from alxprgs_sso.models import TokenResponse, UserClaims, WebSessionInfo
+from alxprgs_sso.token_profiles import validate_claims
 
 
 class SSOClient:
     """
     Основной клиент взаимодействия с сервером ALXPRGS SSO.
     """
+
+    JWKS_MAX_BYTES = 65536
+    # NumericDate is integral; allow only a bounded callback transit interval for
+    # max_age=0. The OP still must perform fresh authentication for this request.
+    FRESH_AUTH_TRANSIT_SECONDS = 5
 
     def __init__(
         self,
@@ -54,63 +62,77 @@ class SSOClient:
     # JWKS кэширование (SDK-02)
     # --------------------------------------------------------------------------
 
-    def get_jwks(self, force_refresh: bool = False) -> dict[str, Any]:
-        """
-        Синхронное получение JWKS с сервера или из локального кэша (SDK-02).
-        Поддерживает ограниченный период устаревания кэша и rate-limiting force_refresh.
-        """
-        now = time.time()
-        if force_refresh:
-            if now - self._last_force_refresh_at < self._min_force_refresh_interval:
-                if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                    return self._cached_jwks
-            self._last_force_refresh_at = now
-        elif self._cached_jwks and now < self._jwks_expires_at:
+    def _stale_jwks(self, now: float) -> dict[str, Any] | None:
+        if self._cached_jwks and now < self._jwks_expires_at + self.max_stale_seconds:
             return self._cached_jwks
+        return None
 
-        jwks_url = f"{self.server_url}/.well-known/jwks.json"
+    def _cached_for_request(self, now: float, force: bool) -> dict[str, Any] | None:
+        if not force:
+            return self._cached_jwks if now < self._jwks_expires_at else None
+        if now - self._last_force_refresh_at < self._min_force_refresh_interval:
+            cached = self._stale_jwks(now)
+            if cached:
+                return cached
+        self._last_force_refresh_at = now
+        return None
+
+    def _append_jwks_chunk(self, body: bytearray, chunk: bytes) -> None:
+        body.extend(chunk)
+        if len(body) > self.JWKS_MAX_BYTES:
+            raise ValueError("JWKS exceeds response limit")
+
+    def _cache_jwks_body(self, body: bytearray, now: float) -> dict[str, Any]:
+        data = json.loads(body)
+        self._parse_jwks(data)
+        self._cached_jwks = data
+        self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
+        return data
+
+    def _jwks_unavailable(self, now: float) -> dict[str, Any]:
+        cached = self._stale_jwks(now)
+        if cached:
+            return cached
+        raise ConfigurationError("Не удалось загрузить JWKS") from None
+
+    def get_jwks(self, force_refresh: bool = False) -> dict[str, Any]:
+        """Fetch bounded JWKS with the same cache and force-refresh limits."""
+        now = time.time()
+        cached = self._cached_for_request(now, force_refresh)
+        if cached:
+            return cached
         try:
             with httpx.Client(verify=self.verify_ssl, timeout=10.0) as client:
-                resp = client.get(jwks_url)
-                resp.raise_for_status()
-                data = resp.json()
-                self._cached_jwks = data
-                self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
-                return data
+                with client.stream("GET", f"{self.server_url}/.well-known/jwks.json") as resp:
+                    resp.raise_for_status()
+                    body = bytearray()
+                    for chunk in resp.iter_bytes():
+                        self._append_jwks_chunk(body, chunk)
+                return self._cache_jwks_body(body, now)
         except Exception:
-            if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                return self._cached_jwks
-            raise ConfigurationError("Не удалось загрузить JWKS") from None
+            return self._jwks_unavailable(now)
 
     async def get_jwks_async(self, force_refresh: bool = False) -> dict[str, Any]:
-        """
-        Асинхронное получение JWKS с сервера или из локального кэша (SDK-02).
-        """
+        """Asynchronously fetch JWKS under the identical bounded cache policy."""
         now = time.time()
-        if force_refresh:
-            if now - self._last_force_refresh_at < self._min_force_refresh_interval:
-                if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                    return self._cached_jwks
-            self._last_force_refresh_at = now
-        elif self._cached_jwks and now < self._jwks_expires_at:
-            return self._cached_jwks
-
-        jwks_url = f"{self.server_url}/.well-known/jwks.json"
+        cached = self._cached_for_request(now, force_refresh)
+        if cached:
+            return cached
         try:
             async with httpx.AsyncClient(verify=self.verify_ssl, timeout=10.0) as client:
-                resp = await client.get(jwks_url)
-                resp.raise_for_status()
-                data = resp.json()
-                self._cached_jwks = data
-                self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
-                return data
+                async with client.stream("GET", f"{self.server_url}/.well-known/jwks.json") as resp:
+                    resp.raise_for_status()
+                    body = bytearray()
+                    async for chunk in resp.aiter_bytes():
+                        self._append_jwks_chunk(body, chunk)
+                return self._cache_jwks_body(body, now)
         except Exception:
-            if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                return self._cached_jwks
-            raise ConfigurationError("Не удалось загрузить JWKS") from None
+            return self._jwks_unavailable(now)
 
     def _get_signing_key(self, token_or_header: str | dict[str, Any]) -> Any:
         if isinstance(token_or_header, str):
+            if len(token_or_header) > 16384:
+                raise InvalidTokenError("Превышен допустимый размер JWT")
             try:
                 unverified_header = jwt.get_unverified_header(token_or_header)
             except Exception:
@@ -119,10 +141,14 @@ class SSOClient:
             unverified_header = token_or_header
 
         kid = unverified_header.get("kid")
-        if not isinstance(kid, str) or not kid:
+        if (
+            not isinstance(kid, str)
+            or not 1 <= len(kid) <= 128
+            or unverified_header.get("alg") != "RS256"
+        ):
             raise InvalidTokenError("В заголовке JWT отсутствует обязательный kid")
         jwks_data = self.get_jwks()
-        jwk_set = PyJWKSet.from_dict(jwks_data)
+        jwk_set = self._parse_jwks(jwks_data)
 
         signing_key = None
         for key in jwk_set.keys:
@@ -133,7 +159,7 @@ class SSOClient:
         if not signing_key:
             # Возможно, ключи были ротированы: попробуем обновить кэш JWKS
             jwks_data = self.get_jwks(force_refresh=True)
-            jwk_set = PyJWKSet.from_dict(jwks_data)
+            jwk_set = self._parse_jwks(jwks_data)
             for key in jwk_set.keys:
                 if key.key_id == kid:
                     signing_key = key
@@ -142,6 +168,34 @@ class SSOClient:
         if not signing_key:
             raise InvalidTokenError("Ключ подписи с указанным kid не найден в JWKS сервера")
         return signing_key
+
+    @staticmethod
+    def _parse_jwks(data: dict[str, Any]) -> PyJWKSet:
+        try:
+            entries = data["keys"]
+            if not isinstance(entries, list) or not 1 <= len(entries) <= 16:
+                raise ValueError("Invalid key count")
+            identifiers = [entry["kid"] for entry in entries]
+            if any(
+                not isinstance(kid, str) or not 1 <= len(kid) <= 128 for kid in identifiers
+            ) or len(set(identifiers)) != len(identifiers):
+                raise ValueError("Invalid identifiers")
+            if any(
+                entry.get("kty") != "RSA"
+                or entry.get("alg") != "RS256"
+                or entry.get("use") != "sig"
+                for entry in entries
+            ):
+                raise ValueError("Unsupported key profile")
+            result = PyJWKSet.from_dict(data)
+            if len(result.keys) != len(entries) or any(
+                not isinstance(key.key, rsa.RSAPublicKey) or key.key.key_size < 2048
+                for key in result.keys
+            ):
+                raise ValueError("Invalid RSA key")
+            return result
+        except (ValueError, TypeError, KeyError, jwt.PyJWTError):
+            raise InvalidTokenError("Недопустимый формат JWKS") from None
 
     # --------------------------------------------------------------------------
     # Валидация токенов (SDK-02, SSO-03)
@@ -174,7 +228,7 @@ class SSOClient:
             "verify_iat": True,
             "verify_aud": True,
             "verify_iss": bool(target_issuer),
-            "require": ["exp", "sub", "aud", "iss"],
+            "require": ["exp", "iat", "sub", "aud", "iss", "token_use"],
         }
 
         try:
@@ -186,26 +240,21 @@ class SSOClient:
                 audience=target_audience,
                 issuer=target_issuer,
             )
+            if payload.get("token_use") == "id_token":
+                raise InvalidTokenError("Недопустимо использовать ID Token в качестве Access Token")
+            validate_claims(payload, target_audience, "access_token")
         except jwt.ExpiredSignatureError:
             raise TokenExpiredError("Срок действия токена истёк") from None
-        except jwt.InvalidTokenError:
+        except (jwt.InvalidTokenError, ValueError, TypeError):
             raise InvalidTokenError("Недействительная подпись или атрибуты токена") from None
 
-        # Инвариант SSO-03 / G8-SEC: Строго требовать access_token (ID Token и токены без token_use запрещены)
-        token_use = payload.get("token_use")
-        if token_use != "access_token":
-            if token_use == "id_token":
-                raise InvalidTokenError("Недопустимо использовать ID Token в качестве Access Token")
-            raise InvalidTokenError(
-                "Недопустимый token_use. Токен не является валидным Access Token"
-            )
-
         return UserClaims(
-            sub=str(payload.get("sub", "")),
-            preferred_username=str(payload.get("preferred_username", "")),
+            sub=payload["sub"],
+            preferred_username=payload.get("preferred_username"),
             email=payload.get("email"),
             email_verified=bool(payload.get("email_verified", False)),
             roles=list(payload.get("roles", [])),
+            scope=payload["scope"],
         )
 
     # --------------------------------------------------------------------------
@@ -218,6 +267,8 @@ class SSOClient:
         scope: str = "openid profile email",
         state: str | None = None,
         nonce: str | None = None,
+        prompt: str | None = None,
+        max_age: int | None = None,
     ) -> tuple[str, str, str, str]:
         """
         Формирует URL перенаправления пользователя на OIDC Authorization Server (SDK-03, RFC 7636).
@@ -243,8 +294,26 @@ class SSOClient:
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
         }
+        params.update(self._prompt_parameters(prompt))
+        params.update(self._max_age_parameters(max_age))
         url = f"{self.server_url}/oauth/authorize?{urlencode(params)}"
         return url, code_verifier, actual_state, actual_nonce
+
+    @staticmethod
+    def _prompt_parameters(prompt: str | None) -> dict[str, str]:
+        if prompt is None:
+            return {}
+        if prompt not in {"login", "none"}:
+            raise ConfigurationError("Поддерживаются prompt=login и prompt=none")
+        return {"prompt": prompt}
+
+    @staticmethod
+    def _max_age_parameters(max_age: int | None) -> dict[str, str]:
+        if max_age is None:
+            return {}
+        if type(max_age) is not int or max_age < 0:
+            raise ConfigurationError("max_age должен быть неотрицательным integer")
+        return {"max_age": str(max_age)}
 
     def generate_authorization_url(
         self,
@@ -266,6 +335,7 @@ class SSOClient:
         self,
         id_token: str,
         expected_nonce: str | None = None,
+        max_age: int | None = None,
     ) -> dict[str, Any]:
         """
         Валидирует OIDC ID Token (OpenID Connect Core 1.0, SDK-03):
@@ -286,7 +356,7 @@ class SSOClient:
             "verify_iat": True,
             "verify_aud": True,
             "verify_iss": True,
-            "require": ["exp", "sub", "aud", "iss"],
+            "require": ["exp", "iat", "sub", "aud", "iss", "token_use"],
         }
         target_issuer = self.expected_issuer or self.server_url
         try:
@@ -298,9 +368,11 @@ class SSOClient:
                 audience=self.client_id,
                 issuer=target_issuer,
             )
+            validate_claims(payload, self.client_id, "id_token")
+            self._require_id_token_age(payload, max_age)
         except jwt.ExpiredSignatureError:
             raise TokenExpiredError("Срок действия ID токена истёк") from None
-        except jwt.InvalidTokenError:
+        except (jwt.InvalidTokenError, ValueError, TypeError):
             raise InvalidTokenError("Недействительный ID токен") from None
 
         if payload.get("token_use") != "id_token":
@@ -315,6 +387,15 @@ class SSOClient:
 
         return payload
 
+    def _require_id_token_age(self, payload: dict[str, Any], max_age: int | None) -> None:
+        if max_age is None:
+            return
+        if type(max_age) is not int or max_age < 0 or type(payload.get("auth_time")) is not int:
+            raise ValueError("Invalid max_age/auth_time")
+        transit = self.FRESH_AUTH_TRANSIT_SECONDS if max_age == 0 else 0
+        if int(time.time()) - payload["auth_time"] > max_age + transit:
+            raise ValueError("Authentication is too old")
+
     async def handle_web_callback(
         self,
         code: str,
@@ -323,6 +404,7 @@ class SSOClient:
         code_verifier: str,
         redirect_uri: str,
         expected_nonce: str | None = None,
+        max_age: int | None = None,
     ) -> WebSessionInfo:
         """
         Завершает авторизационный callback веб-приложения (SDK-03/06):
@@ -347,6 +429,7 @@ class SSOClient:
         id_token_claims = self.verify_id_token(
             id_token=tokens.id_token,
             expected_nonce=expected_nonce,
+            max_age=max_age,
         )
 
         claims = self.verify_access_token(tokens.access_token)

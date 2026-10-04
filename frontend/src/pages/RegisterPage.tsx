@@ -42,8 +42,8 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
       return;
     }
 
-    if (password.length < 8) {
-      setError("Длина пароля должна быть не менее 8 символов.");
+    if (password.length < 15) {
+      setError("Длина пароля должна быть не менее 15 символов.");
       return;
     }
 
@@ -217,13 +217,13 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                     <input id="registerpage-field-3" name="password" autoComplete="new-password"
                       type="password"
                       required
-                      minLength={8}
+                      minLength={15}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">Не менее 8 символов</p>
+                  <p className="mt-1 text-xs text-gray-500">Не менее 15 символов</p>
                 </div>
 
                 <div>
@@ -234,7 +234,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
                     <input id="registerpage-field-4" name="password_confirmation" autoComplete="new-password"
                       type="password"
                       required
-                      minLength={8}
+                      minLength={15}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"

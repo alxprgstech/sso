@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -71,7 +72,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
             headers={"X-CSRF-Token": csrf_token},
         )
         assert totp_setup.status_code == 404
-        assert "отключен" in str(totp_setup.json())
+        assert totp_setup.json()["error"] == "feature_disabled"
 
         # 3.2 Recovery codes generate
         rec_gen = await pg_client.post(
@@ -79,7 +80,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
             headers={"X-CSRF-Token": csrf_token},
         )
         assert rec_gen.status_code == 404
-        assert "отключен" in str(rec_gen.json())
+        assert rec_gen.json()["error"] == "feature_disabled"
 
         # 3.3 Passkey register options
         passkey_opt = await pg_client.post(
@@ -87,7 +88,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
             headers={"X-CSRF-Token": csrf_token},
         )
         assert passkey_opt.status_code == 404
-        assert "отключен" in str(passkey_opt.json())
+        assert passkey_opt.json()["error"] == "feature_disabled"
 
         # 3.4 Email request is always available. Use an unknown address without a session.
         pg_client.cookies.clear()
@@ -198,9 +199,10 @@ async def test_enabled_profile_totp_lifecycle_encrypted_pg(
         uid = login_res.json()["user"]["id"]
 
         # 2. Вызываем /api/v1/mfa/totp/setup -> получаем секрет и URI
-        setup_res = await pg_client.post(
-            "/api/v1/mfa/totp/setup",
-            headers={"X-CSRF-Token": csrf_token},
+        setup_res = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/totp/setup"),
+            RequestAuthorization("TotpPassword2026!", {"X-CSRF-Token": csrf_token}),
         )
         assert setup_res.status_code == 200
         setup_data = setup_res.json()
@@ -221,10 +223,10 @@ async def test_enabled_profile_totp_lifecycle_encrypted_pg(
         assert stored[1] is False  # Пока не подтвержден
 
         # 4. Попытка подтвердить неверным кодом -> 400 или 401
-        fail_confirm = await pg_client.post(
-            "/api/v1/mfa/totp/confirm",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"code": "000000"},
+        fail_confirm = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/totp/confirm", json_body={"code": "000000"}),
+            RequestAuthorization("TotpPassword2026!", {"X-CSRF-Token": csrf_token}),
         )
         assert fail_confirm.status_code in (400, 401)
 
@@ -232,10 +234,10 @@ async def test_enabled_profile_totp_lifecycle_encrypted_pg(
         totp_gen = pyotp.TOTP(raw_secret)
         valid_code = totp_gen.now()
 
-        ok_confirm = await pg_client.post(
-            "/api/v1/mfa/totp/confirm",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"code": valid_code},
+        ok_confirm = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/totp/confirm", json_body={"code": valid_code}),
+            RequestAuthorization("TotpPassword2026!", {"X-CSRF-Token": csrf_token}),
         )
         assert ok_confirm.status_code == 200
         assert ok_confirm.json()["status"] == "ok"
@@ -302,28 +304,41 @@ async def test_enabled_profile_recovery_codes_dependency_and_burn_pg(
         uid = uuid.UUID(login_res.json()["user"]["id"])
 
         # 2. Инвариант SEC-FLAG-05: попытка генерации recovery codes БЕЗ активного TOTP отклоняется
-        fail_gen = await pg_client.post(
-            "/api/v1/mfa/recovery-codes/generate",
-            headers={"X-CSRF-Token": csrf_token},
+        fail_gen = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/recovery-codes/generate"),
+            RequestAuthorization("RecPassword2026!", {"X-CSRF-Token": csrf_token}),
         )
         assert fail_gen.status_code in (400, 403)
         assert "TOTP" in str(fail_gen.json())
 
         # 3. Активируем TOTP
-        setup_res = await pg_client.post(
-            "/api/v1/mfa/totp/setup", headers={"X-CSRF-Token": csrf_token}
+        setup_res = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/totp/setup"),
+            RequestAuthorization("RecPassword2026!", {"X-CSRF-Token": csrf_token}),
         )
         raw_secret = setup_res.json()["secret"]
-        await pg_client.post(
-            "/api/v1/mfa/totp/confirm",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"code": pyotp.TOTP(raw_secret).now()},
+        await authorized_request(
+            pg_client,
+            MutationRequest(
+                "POST", "/api/v1/mfa/totp/confirm", json_body={"code": pyotp.TOTP(raw_secret).now()}
+            ),
+            RequestAuthorization("RecPassword2026!", {"X-CSRF-Token": csrf_token}),
         )
 
         # 4. Теперь генерируем резервные коды -> 10 кодов
-        gen_res = await pg_client.post(
-            "/api/v1/mfa/recovery-codes/generate",
-            headers={"X-CSRF-Token": csrf_token},
+        gen_res = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/recovery-codes/generate"),
+            RequestAuthorization(
+                "RecPassword2026!",
+                {"X-CSRF-Token": csrf_token},
+                factor={
+                    "method": "totp",
+                    "code": pyotp.TOTP(raw_secret).at(__import__("time").time() + 30),
+                },
+            ),
         )
         assert gen_res.status_code == 200
         codes = gen_res.json()["recovery_codes"]

@@ -121,6 +121,8 @@ def create_owned(
     created: set[str],
     expected_server: tuple[object, ...],
 ) -> None:
+    if not name.isascii() or not name.replace("_", "").isalnum() or len(name.encode("ascii")) > 63:
+        raise OpsSafetyError("Generated database identifier exceeds PostgreSQL limits")
     verify_admin(admin, expected_server)
     if database_exists(admin, name):
         raise OpsSafetyError("Generated database already exists; refusing to overwrite it")
@@ -212,8 +214,8 @@ def seed_source(base: URL, source: str, password: str, key: bytes, secret: str) 
             (user_id, Fernet(key).encrypt(secret.encode()).decode()),
         )
         conn.execute(
-            "INSERT INTO sessions (id, session_token_hash, user_id, ip_address, expires_at, last_activity_at) "
-            "VALUES (gen_random_uuid(), %s, %s, '127.0.0.1', now() + interval '1 hour', now())",
+            "INSERT INTO sessions (id, session_token_hash, user_id, ip_address, expires_at, last_activity_at, auth_time) "
+            "VALUES (gen_random_uuid(), %s, %s, '127.0.0.1', now() + interval '1 hour', now(), now())",
             (uuid.uuid4().hex + uuid.uuid4().hex, user_id),
         )
         conn.execute(

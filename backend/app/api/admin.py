@@ -6,10 +6,13 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import require_admin_user, verify_csrf
+
+from app.api.deps import require_admin_user, require_recent_reauthentication, verify_csrf
+from app.core.rate_limit import get_client_ip
 from app.database import get_db
 from app.models.user import User
 from app.schemas.admin import (
@@ -24,10 +27,12 @@ from app.schemas.admin import (
 )
 from app.services.admin_service import AdminService
 from app.services.system_service import SystemService
-from app.core.rate_limit import get_client_ip
-from fastapi import Request
 
-router = APIRouter(prefix="/api/v1/admin", tags=["Admin Panel"])
+router = APIRouter(
+    prefix="/api/v1/admin",
+    tags=["Admin Panel"],
+    dependencies=[Depends(require_recent_reauthentication)],
+)
 
 
 # ==============================================================================
@@ -177,6 +182,7 @@ async def list_clients(
             client_name=c.client_name,
             client_type=c.client_type,
             is_active=c.is_active,
+            allowed_scopes=c.allowed_scopes.split(),
             redirect_uris=[r.uri for r in c.redirect_uris],
             client_secret=None,  # Секрет никогда не отдается при обычном листинге
             created_at=c.created_at,
@@ -201,6 +207,7 @@ async def create_client(
         client_name=payload.client_name,
         client_type=payload.client_type,
         redirect_uris=payload.redirect_uris,
+        allowed_scopes=payload.allowed_scopes,
         admin_user_id=admin.id,
     )
     return AdminClientResponse(
@@ -209,6 +216,7 @@ async def create_client(
         client_name=client.client_name,
         client_type=client.client_type,
         is_active=client.is_active,
+        allowed_scopes=client.allowed_scopes.split(),
         redirect_uris=[r.uri for r in client.redirect_uris],
         client_secret=raw_secret,  # Возвращается ТОЛЬКО ОДИН РАЗ при регистрации
         created_at=client.created_at,
@@ -238,6 +246,7 @@ async def rotate_client_secret(
         is_active=client.is_active,
         redirect_uris=[r.uri for r in client.redirect_uris],
         client_secret=new_secret,  # Возвращается ТОЛЬКО ОДИН РАЗ при ротации
+        allowed_scopes=client.allowed_scopes.split(),
         created_at=client.created_at,
     )
 

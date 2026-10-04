@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -56,14 +57,18 @@ async def test_concurrent_auth_code_redemption_pg(
     assert login_res.status_code == 200
     adm_csrf = login_res.json()["csrf_token"]
 
-    client_reg = await pg_client.post(
-        "/api/v1/admin/clients",
-        headers={"X-CSRF-Token": adm_csrf},
-        json={
-            "client_name": "Race Client",
-            "client_type": "confidential",
-            "redirect_uris": ["http://localhost:8081/callback"],
-        },
+    client_reg = await authorized_request(
+        pg_client,
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "Race Client",
+                "client_type": "public",
+                "redirect_uris": ["http://localhost:8081/callback"],
+            },
+        ),
+        RequestAuthorization("RacePassword2026!", {"X-CSRF-Token": adm_csrf}),
     )
     assert client_reg.status_code == 201
     c_data = client_reg.json()
@@ -90,10 +95,10 @@ async def test_concurrent_auth_code_redemption_pg(
         text(
             "INSERT INTO authorization_codes ("
             "  id, code_hash, client_id, user_id, redirect_uri, scope, "
-            "  code_challenge, code_challenge_method, expires_at, is_used, created_at"
+            "  code_challenge, code_challenge_method, expires_at, is_used, created_at, auth_time"
             ") VALUES ("
             "  gen_random_uuid(), :ch, :cid, :uid, 'http://localhost:8081/callback', 'openid profile email', "
-            "  :chal, 'S256', now() + interval '5 minutes', false, now()"
+            "  :chal, 'S256', now() + interval '5 minutes', false, now(), now()"
             ")"
         ),
         {
@@ -259,20 +264,32 @@ async def test_concurrent_recovery_code_burn_pg(
         )
         await accept_current_documents(pg_client, login_res)
         csrf_tok = login_res.json()["csrf_token"]
-        setup_res = await pg_client.post(
-            "/api/v1/mfa/totp/setup", headers={"X-CSRF-Token": csrf_tok}
+        setup_res = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/totp/setup"),
+            RequestAuthorization("RecRacePassword2026!", {"X-CSRF-Token": csrf_tok}),
         )
         raw_secret = setup_res.json()["secret"]
-        await pg_client.post(
-            "/api/v1/mfa/totp/confirm",
-            headers={"X-CSRF-Token": csrf_tok},
-            json={"code": pyotp.TOTP(raw_secret).now()},
+        await authorized_request(
+            pg_client,
+            MutationRequest(
+                "POST", "/api/v1/mfa/totp/confirm", json_body={"code": pyotp.TOTP(raw_secret).now()}
+            ),
+            RequestAuthorization("RecRacePassword2026!", {"X-CSRF-Token": csrf_tok}),
         )
 
         # Выпускаем recovery codes
-        gen_res = await pg_client.post(
-            "/api/v1/mfa/recovery-codes/generate",
-            headers={"X-CSRF-Token": csrf_tok},
+        gen_res = await authorized_request(
+            pg_client,
+            MutationRequest("POST", "/api/v1/mfa/recovery-codes/generate"),
+            RequestAuthorization(
+                "RecRacePassword2026!",
+                {"X-CSRF-Token": csrf_tok},
+                factor={
+                    "method": "totp",
+                    "code": pyotp.TOTP(raw_secret).at(__import__("time").time() + 30),
+                },
+            ),
         )
         codes = gen_res.json()["recovery_codes"]
         burn_code = codes[0]
@@ -355,14 +372,18 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
     assert login_adm.status_code == 200
     adm_csrf = login_adm.json()["csrf_token"]
 
-    client_reg = await pg_client.post(
-        "/api/v1/admin/clients",
-        headers={"X-CSRF-Token": adm_csrf},
-        json={
-            "client_name": "RT Race Client",
-            "client_type": "confidential",
-            "redirect_uris": ["http://localhost:8081/callback"],
-        },
+    client_reg = await authorized_request(
+        pg_client,
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "RT Race Client",
+                "client_type": "confidential",
+                "redirect_uris": ["http://localhost:8081/callback"],
+            },
+        ),
+        RequestAuthorization("RtRacePassword2026!", {"X-CSRF-Token": adm_csrf}),
     )
     c_data = client_reg.json()
     client_id = c_data["client_id"]
@@ -383,10 +404,10 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
         text(
             "INSERT INTO refresh_tokens ("
             "  id, token_hash, client_id, user_id, scope, family_id, "
-            "  expires_at, is_revoked, created_at"
+            "  expires_at, is_revoked, created_at, auth_time"
             ") VALUES ("
-            "  gen_random_uuid(), :th, :cid, :uid, 'openid profile offline_access', :fid, "
-            "  now() + interval '7 days', false, now()"
+            "  gen_random_uuid(), :th, :cid, :uid, 'openid profile', :fid, "
+            "  now() + interval '7 days', false, now(), now()"
             ")"
         ),
         {

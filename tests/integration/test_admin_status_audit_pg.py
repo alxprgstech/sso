@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -82,10 +83,14 @@ async def test_status_counts_and_audit_export_pg(
     assert status.json()["total_users"] == 5
     assert status.json()["total_active_admins"] == 3
 
-    changed = await pg_client.post(
-        "/api/v1/admin/system/registration-mode",
-        headers={"X-CSRF-Token": csrf},
-        json={"mode": "open", "current_admin_password": password},
+    changed = await authorized_request(
+        pg_client,
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/system/registration-mode",
+            json_body={"mode": "open", "current_admin_password": password},
+        ),
+        RequestAuthorization(password, {"X-CSRF-Token": csrf}),
     )
     assert changed.status_code == 200
     assert changed.json()["total_users"] == 5

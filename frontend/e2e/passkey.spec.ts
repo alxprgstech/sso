@@ -1,13 +1,7 @@
 import { acceptDocumentsAfterLogin } from "./helpers/legal";
+import { confirmSensitiveAction } from "./helpers/reauthentication";
+import { prepareIndependentScenario } from "./helpers/prepare";
 import { test, expect } from "@playwright/test";
-import { execFileSync } from "child_process";
-import path from "path";
-import { fileURLToPath } from "url";
-
-import fs from "fs";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", () => {
   test.use({ baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173" });
@@ -29,28 +23,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     }
   });
 
-  test.beforeEach(() => {
-    const testDbUrl = process.env.TEST_DATABASE_URL;
-    if (!testDbUrl) {
-      throw new Error("TEST_DATABASE_URL environment variable is required for E2E tests");
-    }
-    let pythonExe =
-      process.env.PYTHON_BIN ||
-      (process.platform === "win32"
-        ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
-        : path.resolve(__dirname, "../../.venv/bin/python"));
-    if (!fs.existsSync(pythonExe)) {
-      pythonExe = process.platform === "win32" ? "python" : "python3";
-    }
-    const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
-    execFileSync(pythonExe, [scriptPath], {
-      env: {
-        ...process.env,
-        TEST_DATABASE_URL: testDbUrl,
-      },
-      stdio: "inherit",
-    });
-  });
+  test.beforeEach(prepareIndependentScenario);
 
   test("01. Enabled Profile Capabilities & Passkey Login Button Visibility", async ({ page }) => {
     await page.goto("/");
@@ -94,34 +67,74 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     await page.fill('[data-testid="passkey-name-input"]', "MacBook TouchID");
     await page.click('[data-testid="register-passkey-button"]');
 
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
+
     // Проверяем сообщение об успехе и появление ключа в списке
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="passkeys-list"]')).toContainText("MacBook TouchID");
 
     // 4. Симулируем подключение второго физического аутентификатора (YubiKey 5C / usb)
-    // Удаляем первый аутентификатор из CDP сессии и добавляем второй, чтобы excludeCredentials не блокировал регистрацию
-    await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: auth1.authenticatorId });
-    const auth2 = await cdp.send("WebAuthn.addVirtualAuthenticator", {
-      options: {
-        protocol: "ctap2",
-        transport: "usb",
-        hasResidentKey: true,
-        hasUserVerification: true,
-        isUserVerified: true,
-      },
+    // Plug in the second device only AFTER a real assertion from the enrolled
+    // first key. Reconnect that same first key for the verification action proof.
+    let auth2: { authenticatorId: string } | undefined;
+    const getFirstCredentials = () => cdp.send("WebAuthn.getCredentials", { authenticatorId: auth1.authenticatorId });
+    let firstCredentials: Awaited<ReturnType<typeof getFirstCredentials>>;
+    let secondCredentials: Awaited<ReturnType<typeof getFirstCredentials>>;
+
+    await page.route("**/api/v1/mfa/passkey/register/options", async route => {
+      if (route.request().headers()["x-reauthentication"]) {
+        firstCredentials = await getFirstCredentials();
+        await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: auth1.authenticatorId });
+        auth2 = await cdp.send("WebAuthn.addVirtualAuthenticator", { options: {
+          protocol: "ctap2", transport: "usb", hasResidentKey: true,
+          hasUserVerification: true, isUserVerified: true,
+        } });
+        await route.continue();
+        await page.unroute("**/api/v1/mfa/passkey/register/options");
+        return;
+      }
+      await route.continue();
+    });
+    await page.route("**/api/v1/mfa/passkey/register/verify", async route => {
+      if (!route.request().headers()["x-reauthentication"]) {
+        secondCredentials = await cdp.send("WebAuthn.getCredentials", { authenticatorId: auth2!.authenticatorId });
+        await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId: auth2!.authenticatorId });
+        const reconnected = await cdp.send("WebAuthn.addVirtualAuthenticator", { options: {
+          protocol: "ctap2", transport: "internal", hasResidentKey: true,
+          hasUserVerification: true, isUserVerified: true,
+        } });
+        for (const credential of firstCredentials.credentials) {
+          await cdp.send("WebAuthn.addCredential", { authenticatorId: reconnected.authenticatorId, credential });
+        }
+        await route.continue();
+        await page.unroute("**/api/v1/mfa/passkey/register/verify");
+        return;
+      }
+      await route.continue();
     });
 
     // Регистрируем второй Passkey: "Yubikey 5C" (множественные credentials)
     await page.fill('[data-testid="passkey-name-input"]', "Yubikey 5C");
     await page.click('[data-testid="register-passkey-button"]');
 
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
+
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({ timeout: 10000 });
     // Проверяем, что в списке отображаются ОБА зарегистрированных ключа
     await expect(page.locator('[data-testid="passkeys-list"]')).toContainText("MacBook TouchID");
     await expect(page.locator('[data-testid="passkeys-list"]')).toContainText("Yubikey 5C");
 
+    auth2 = await cdp.send("WebAuthn.addVirtualAuthenticator", { options: {
+      protocol: "ctap2", transport: "usb", hasResidentKey: true,
+      hasUserVerification: true, isUserVerified: true,
+    } });
+    for (const credential of secondCredentials!.credentials) {
+      await cdp.send("WebAuthn.addCredential", { authenticatorId: auth2.authenticatorId, credential });
+    }
+
     // Проверяем в CDP, что второй виртуальный аутентификатор содержит сгенерированный FIDO2 credential
-    const cdpCreds = await cdp.send("WebAuthn.getCredentials", { authenticatorId: auth2.authenticatorId });
+    expect(auth2).toBeDefined();
+    const cdpCreds = await cdp.send("WebAuthn.getCredentials", { authenticatorId: auth2!.authenticatorId });
     expect(cdpCreds.credentials.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -149,6 +162,8 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
 
     await page.fill('[data-testid="passkey-name-input"]', "Resident Login Key");
     await page.click('[data-testid="register-passkey-button"]');
+
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({ timeout: 10000 });
 
     // Выходим из системы
@@ -188,11 +203,15 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     // Регистрируем временный ключ для последующего удаления
     await page.fill('[data-testid="passkey-name-input"]', "Key To Delete");
     await page.click('[data-testid="register-passkey-button"]');
+
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({ timeout: 10000 });
 
     // Находим строку с "Key To Delete" и нажимаем кнопку "Удалить"
     const keyRow = page.locator('[data-testid="passkeys-list"] div:has-text("Key To Delete")');
     await keyRow.locator('button:has-text("Удалить")').first().click();
+
+    await confirmSensitiveAction(page, "PasskeyE2E2026!");
 
     // Проверяем сообщение об успешном удалении
     await expect(page.locator('[data-testid="passkey-success"]')).toContainText("удален", { timeout: 10000 });

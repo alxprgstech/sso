@@ -2,15 +2,19 @@
 
 import uuid
 from datetime import datetime
+
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database import Base
 
 
 class LegalAcceptance(Base):
     __tablename__ = "legal_acceptances"
-    __table_args__ = (UniqueConstraint("user_id", "document_id", "version"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "document_id", "version", name="uq_legal_acceptance_version"),
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )

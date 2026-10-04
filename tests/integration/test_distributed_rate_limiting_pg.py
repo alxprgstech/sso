@@ -271,8 +271,8 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
                     "legal_versions": REQUIRED_DOCUMENTS,
                     "username": f"dist_user_{idx}",
                     "email": f"dist_{idx}@alxprgs.tech",
-                    "password": "Password123!",
-                    "confirm_password": "Password123!",
+                    "password": "RegistrationPassword2026!",
+                    "confirm_password": "RegistrationPassword2026!",
                 }
                 res = await client.post(url, json=payload)
                 assert res.status_code == 202, (
@@ -291,8 +291,8 @@ async def test_inter_process_distributed_rate_limiting_real_processes_pg(
                     "legal_versions": REQUIRED_DOCUMENTS,
                     "username": "dist_user_4",
                     "email": "dist_4@alxprgs.tech",
-                    "password": "Password123!",
-                    "confirm_password": "Password123!",
+                    "password": "RegistrationPassword2026!",
+                    "confirm_password": "RegistrationPassword2026!",
                 },
             )
             assert res_4.status_code == 429, (

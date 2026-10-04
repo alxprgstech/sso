@@ -1,24 +1,33 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from typing import Any
+
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import (
     get_cookie_name,
+    get_current_session,
     get_current_user,
     get_optional_current_user,
+    limit_security_endpoint,
     require_feature,
+    require_recent_reauthentication,
     verify_csrf,
 )
-
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException
+from app.core.rate_limit import get_client_ip
 from app.database import get_db
+from app.models.mfa import WebAuthnCredential
+from app.models.session import Session
 from app.models.user import User
 from app.schemas.auth import UserProfileResponse
 from app.schemas.mfa import (
-    EmailVerificationConfirmRequest,
     EmailVerificationCodeConfirmRequest,
+    EmailVerificationConfirmRequest,
     EmailVerificationRequest,
     PasskeyAuthenticationVerifyRequest,
     PasskeyRegistrationVerifyRequest,
@@ -27,18 +36,24 @@ from app.schemas.mfa import (
     TOTPSetupResponse,
     TOTPVerifyRequest,
 )
-from app.models.mfa import WebAuthnCredential
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest, SessionAuthorization
 from app.services.mfa_service import (
     EmailVerificationService,
     RecoveryCodesService,
     TOTPService,
     WebAuthnService,
     _cred_id_to_bytes,
+    WebAuthnContext,
+    PasskeyRegistration,
+    PasskeyAuthentication,
 )
 from app.services.verification_email import request_details
 
-router = APIRouter(prefix="/api/v1/mfa", tags=["Multi-Factor Authentication"])
+router = APIRouter(
+    prefix="/api/v1/mfa",
+    tags=["Multi-Factor Authentication"],
+    dependencies=[Depends(limit_security_endpoint), Depends(require_recent_reauthentication)],
+)
 
 
 # ==============================================================================
@@ -54,8 +69,9 @@ totp_router = APIRouter(
 async def setup_totp(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> TOTPSetupResponse:
-    secret, otpauth_url = await TOTPService.setup_totp(db, user)
+    secret, otpauth_url = await TOTPService.setup_totp(db, user, session.id)
     return TOTPSetupResponse(secret=secret, otpauth_url=otpauth_url)
 
 
@@ -64,8 +80,9 @@ async def confirm_totp(
     payload: TOTPVerifyRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
-    success = await TOTPService.confirm_totp(db, user, payload.code)
+    success = await TOTPService.confirm_totp(db, user, payload.code, session.id)
     if not success:
         raise AuthenticationException("Неверный одноразовый код TOTP")
     return {"status": "ok", "message": "Фактор TOTP успешно подтверждён и активирован"}
@@ -83,16 +100,23 @@ async def verify_totp_login(
     if not payload.mfa_token:
         raise AuthenticationException("Параметр mfa_token обязателен для завершения входа")
 
-    user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
-    valid = await TOTPService.verify_totp(db, user, payload.code)
+    user = await AuthService.verify_mfa_step_token(
+        payload.mfa_token, db, method="totp", settings=settings
+    )
+    valid = await TOTPService.verify_totp(db, user, payload.code, commit=False)
     if not valid:
         raise AuthenticationException("Неверный одноразовый код TOTP")
 
     # Выпуск сессии после успешного прохождения второго фактора
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
-        db=db, user_id=user.id, ip_address=ip, user_agent=ua, settings=settings
+        db=db,
+        request=SessionRequest(user.id, ip, ua),
+        settings=settings,
+        authorization=SessionAuthorization(
+            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+        ),
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -121,6 +145,7 @@ async def verify_totp_login(
             has_totp=True,
             has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
             created_at=user.created_at,
+            session_purpose=session.purpose,
         ),
     }
 
@@ -129,8 +154,9 @@ async def verify_totp_login(
 async def delete_totp(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
-    await TOTPService.remove_totp(db, user)
+    await TOTPService.remove_totp(db, user, session.id)
     return {"status": "ok", "message": "Фактор TOTP и связанные резервные коды удалены"}
 
 
@@ -149,8 +175,9 @@ recovery_router = APIRouter(
 async def generate_recovery_codes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> RecoveryCodesResponse:
-    codes = await RecoveryCodesService.generate_codes(db, user)
+    codes = await RecoveryCodesService.generate_codes(db, user, session.id)
     return RecoveryCodesResponse(recovery_codes=codes)
 
 
@@ -166,15 +193,24 @@ async def verify_recovery_code_login(
     if not payload.mfa_token:
         raise AuthenticationException("Параметр mfa_token обязателен для завершения входа")
 
-    user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
-    consumed = await RecoveryCodesService.consume_code(db, user, payload.recovery_code)
+    user = await AuthService.verify_mfa_step_token(
+        payload.mfa_token, db, method="recovery_code", settings=settings
+    )
+    consumed = await RecoveryCodesService.consume_code(
+        db, user, payload.recovery_code, commit=False
+    )
     if not consumed:
         raise AuthenticationException("Недействительный или ранее использованный резервный код")
 
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
-        db=db, user_id=user.id, ip_address=ip, user_agent=ua, settings=settings
+        db=db,
+        request=SessionRequest(user.id, ip, ua),
+        settings=settings,
+        authorization=SessionAuthorization(
+            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+        ),
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -210,9 +246,14 @@ async def passkey_register_options(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, Any]:
     return await WebAuthnService.get_registration_options(
-        db, user, rp_id=settings.WEBAUTHN_RP_ID, settings=settings
+        db,
+        user,
+        context=WebAuthnContext(
+            rp_id=settings.WEBAUTHN_RP_ID, settings=settings, session_id=session.id
+        ),
     )
 
 
@@ -222,15 +263,18 @@ async def passkey_register_verify(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
     await WebAuthnService.verify_registration(
         db,
         user,
-        payload.credential,
-        name=payload.name,
-        rp_id=settings.WEBAUTHN_RP_ID,
-        origin=settings.WEBAUTHN_ORIGIN,
-        settings=settings,
+        PasskeyRegistration(payload.credential, name=payload.name),
+        context=WebAuthnContext(
+            rp_id=settings.WEBAUTHN_RP_ID,
+            origin=settings.WEBAUTHN_ORIGIN,
+            settings=settings,
+            session_id=session.id,
+        ),
     )
     return {"status": "ok", "message": "Passkey успешно зарегистрирован"}
 
@@ -241,8 +285,51 @@ async def passkey_auth_options(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     return await WebAuthnService.get_authentication_options(
-        db, user=None, rp_id=settings.WEBAUTHN_RP_ID, settings=settings
+        db,
+        user=None,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(rp_id=settings.WEBAUTHN_RP_ID, settings=settings)
+        ),
     )
+
+
+async def _find_discoverable_credential(db: AsyncSession, raw_id: str):
+    from sqlalchemy import select
+
+    cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.credential_id == raw_id)
+    cred_obj = (await db.execute(cred_stmt)).scalar_one_or_none()
+    if not cred_obj:
+        all_creds = (await db.execute(select(WebAuthnCredential))).scalars().all()
+        for c in all_creds:
+            if _cred_id_to_bytes(c.credential_id) == _cred_id_to_bytes(raw_id):
+                cred_obj = c
+                break
+
+    return cred_obj
+
+
+def _discoverable_credential_id(credential: dict[str, Any]) -> Any:
+    raw_id = credential.get("id") or credential.get("rawId")
+    if not raw_id:
+        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
+    return raw_id
+
+
+async def _active_credential_user(db: AsyncSession, cred_obj: WebAuthnCredential) -> User:
+    from sqlalchemy import select
+
+    user_stmt = select(User).where(User.id == cred_obj.user_id)
+    found_user = (await db.execute(user_stmt)).scalar_one_or_none()
+    if not found_user or not found_user.is_active:
+        raise AuthenticationException("Пользователь не найден или заблокирован")
+    return found_user
+
+
+async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any]) -> User:
+    cred_obj = await _find_discoverable_credential(db, _discoverable_credential_id(credential))
+    if not cred_obj:
+        raise AuthenticationException("Passkey не найден или был удалён")
+    return await _active_credential_user(db, cred_obj)
 
 
 @passkey_router.post("/auth/verify")
@@ -253,48 +340,35 @@ async def passkey_auth_verify(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Any:
-    from sqlalchemy import select
 
     if payload.mfa_token:
-        user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
+        user = await AuthService.verify_mfa_step_token(
+            payload.mfa_token, db, method="passkey", settings=settings
+        )
     else:
-        # Discoverable passkey login (без пароля)
-        cred_dict = payload.credential
-        raw_id = cred_dict.get("id") or cred_dict.get("rawId")
-        if not raw_id:
-            raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
-
-        cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.credential_id == raw_id)
-        cred_obj = (await db.execute(cred_stmt)).scalar_one_or_none()
-        if not cred_obj:
-            all_creds = (await db.execute(select(WebAuthnCredential))).scalars().all()
-            for c in all_creds:
-                if _cred_id_to_bytes(c.credential_id) == _cred_id_to_bytes(raw_id):
-                    cred_obj = c
-                    break
-
-        if not cred_obj:
-            raise AuthenticationException("Passkey не найден или был удалён")
-
-        user_stmt = select(User).where(User.id == cred_obj.user_id)
-        found_user = (await db.execute(user_stmt)).scalar_one_or_none()
-        if not found_user or not found_user.is_active:
-            raise AuthenticationException("Пользователь не найден или заблокирован")
-        user = found_user
+        user = await _discoverable_passkey_user(db, payload.credential)
 
     await WebAuthnService.verify_authentication(
         db,
         user,
         payload.credential,
-        rp_id=settings.WEBAUTHN_RP_ID,
-        origin=settings.WEBAUTHN_ORIGIN,
-        settings=settings,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(
+                rp_id=settings.WEBAUTHN_RP_ID, origin=settings.WEBAUTHN_ORIGIN, settings=settings
+            ),
+            commit=False,
+        ),
     )
 
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
-        db=db, user_id=user.id, ip_address=ip, user_agent=ua, settings=settings
+        db=db,
+        request=SessionRequest(user.id, ip, ua),
+        settings=settings,
+        authorization=SessionAuthorization(
+            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+        ),
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -333,10 +407,11 @@ async def delete_passkey(
     credential_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
     from fastapi import HTTPException
 
-    deleted = await WebAuthnService.delete_passkey(db, user, credential_id)
+    deleted = await WebAuthnService.delete_passkey(db, user, credential_id, session.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Passkey не найден")
     return {"status": "ok"}
@@ -348,6 +423,54 @@ async def delete_passkey(
 email_router = APIRouter(
     prefix="/email",
 )
+
+
+@dataclass(frozen=True, repr=False)
+class EmailRequestContext:
+    request: Request
+    db: AsyncSession
+    settings: Settings
+
+
+async def _request_user_email(
+    context: EmailRequestContext, user: User, email: str | None
+) -> dict[str, str]:
+    cookie_name = get_cookie_name(context.settings, context.request)
+    if context.request.cookies.get(cookie_name):
+        session = await get_current_session(context.request, context.db, context.settings)
+        await verify_csrf(context.request, session, context.settings)
+
+    target_email = (email or user.email).strip().lower()
+    if target_email != user.email:
+        from app.services.reauthentication_service import consume
+
+        session = await get_current_session(context.request, context.db, context.settings)
+        await consume(context.db, user, session, context.request)
+    await EmailVerificationService.send_verification(
+        context.db,
+        user,
+        target_email,
+        context.settings,
+        request_details(context.request, context.settings),
+    )
+    return {"status": "ok", "message": f"Письмо с подтверждением отправлено на {target_email}"}
+
+
+async def _request_unverified_email(context: EmailRequestContext, email: str) -> None:
+    from sqlalchemy import func, select
+
+    clean_email = email.strip().lower()
+    stmt = select(User).where(func.lower(User.email) == clean_email)
+    target_user = (await context.db.execute(stmt)).scalar_one_or_none()
+
+    if target_user and not target_user.email_verified:
+        await EmailVerificationService.send_verification(
+            context.db,
+            target_user,
+            clean_email,
+            context.settings,
+            request_details(context.request, context.settings),
+        )
 
 
 @email_router.post("/request")
@@ -364,7 +487,7 @@ async def request_email_verification(
     без активной сессии (с защитой от перечисления аккаунтов и rate limiting).
     """
     from fastapi import HTTPException, status
-    from sqlalchemy import func, select
+
     from app.core.rate_limit import check_email_request_rate_limit, get_client_ip
 
     ip = get_client_ip(request)
@@ -372,20 +495,9 @@ async def request_email_verification(
     # Ограничение частоты запросов подтверждения
     await check_email_request_rate_limit(db, ip)
 
-    # 1. Если пользователь уже аутентифицирован
+    context = EmailRequestContext(request, db, settings)
     if user:
-        cookie_name = get_cookie_name(settings, request)
-        if request.cookies.get(cookie_name):
-            from app.api.deps import get_current_session, verify_csrf
-
-            session = await get_current_session(request, db, settings)
-            await verify_csrf(request, session, settings)
-
-        target_email = (payload.email or user.email).strip().lower()
-        await EmailVerificationService.send_verification(
-            db, user, target_email, settings, request_details(request, settings)
-        )
-        return {"status": "ok", "message": f"Письмо с подтверждением отправлено на {target_email}"}
+        return await _request_user_email(context, user, payload.email)
 
     # 2. Неаутентифицированный запрос (неподтвержденный пользователь)
     if not payload.email:
@@ -394,14 +506,7 @@ async def request_email_verification(
             detail="Необходимо указать email для отправки подтверждения",
         )
 
-    clean_email = payload.email.strip().lower()
-    stmt = select(User).where(func.lower(User.email) == clean_email)
-    target_user = (await db.execute(stmt)).scalar_one_or_none()
-
-    if target_user and not target_user.email_verified:
-        await EmailVerificationService.send_verification(
-            db, target_user, clean_email, settings, request_details(request, settings)
-        )
+    await _request_unverified_email(context, payload.email)
 
     # Защита от перечисления аккаунтов (Account Enumeration):
     # Возвращаем нейтральный ответ

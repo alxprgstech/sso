@@ -1,0 +1,476 @@
+[
+  {
+    "name": "alembic",
+    "version": "1.20.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "annotated-doc",
+    "version": "0.0.5",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "annotated-types",
+    "version": "0.8.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "anyio",
+    "version": "4.15.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "argon2-cffi-bindings",
+    "version": "26.1.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "argon2-cffi",
+    "version": "25.1.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "ast-serialize",
+    "version": "0.11.2",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "asyncpg",
+    "version": "0.31.0",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "authlib",
+    "version": "1.8.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "boto3",
+    "version": "1.43.104",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "botocore",
+    "version": "1.43.104",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "build",
+    "version": "1.6.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "cbor2",
+    "version": "6.1.4",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "certifi",
+    "version": "2026.7.22",
+    "known_advisories": 0,
+    "license_metadata": "MPL-2.0"
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT-0"
+  },
+  {
+    "name": "charset-normalizer",
+    "version": "3.5.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "click",
+    "version": "8.5.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "colorama",
+    "version": "0.4.6",
+    "known_advisories": 0,
+    "license_metadata": "License :: OSI Approved :: BSD License"
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.1",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0 OR BSD-3-Clause"
+  },
+  {
+    "name": "detect-secrets",
+    "version": "1.5.0",
+    "known_advisories": 0,
+    "license_metadata": "UNKNOWN"
+  },
+  {
+    "name": "editables",
+    "version": "0.6",
+    "known_advisories": 0,
+    "license_metadata": "License :: OSI Approved :: MIT License"
+  },
+  {
+    "name": "fastapi",
+    "version": "0.141.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "greenlet",
+    "version": "3.5.6",
+    "known_advisories": 0,
+    "license_metadata": "MIT AND PSF-2.0"
+  },
+  {
+    "name": "h11",
+    "version": "0.16.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "hatchling",
+    "version": "1.32.4",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "httpcore",
+    "version": "1.0.9",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "httptools",
+    "version": "0.8.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "httpx",
+    "version": "0.28.1",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "idna",
+    "version": "3.20",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "iniconfig",
+    "version": "2.3.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "jmespath",
+    "version": "1.1.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "joserfc",
+    "version": "1.7.5",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "librt",
+    "version": "0.15.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "mako",
+    "version": "1.4.3",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "markupsafe",
+    "version": "3.0.3",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "mypy",
+    "version": "2.3.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "mypy-extensions",
+    "version": "1.1.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "packaging",
+    "version": "26.3",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0 OR BSD-2-Clause"
+  },
+  {
+    "name": "pathspec",
+    "version": "1.1.1",
+    "known_advisories": 0,
+    "license_metadata": "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)"
+  },
+  {
+    "name": "pluggy",
+    "version": "1.6.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "psycopg-binary",
+    "version": "3.3.6",
+    "known_advisories": 0,
+    "license_metadata": "LGPL-3.0-only"
+  },
+  {
+    "name": "psycopg",
+    "version": "3.3.6",
+    "known_advisories": 0,
+    "license_metadata": "LGPL-3.0-only"
+  },
+  {
+    "name": "sentry-sdk",
+    "version": "2.71.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pyasn1",
+    "version": "0.6.4",
+    "known_advisories": 0,
+    "license_metadata": "BSD-2-Clause"
+  },
+  {
+    "name": "pyasn1-modules",
+    "version": "0.4.2",
+    "known_advisories": 0,
+    "license_metadata": "BSD"
+  },
+  {
+    "name": "pycparser",
+    "version": "3.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "pydantic-settings",
+    "version": "2.15.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pydantic",
+    "version": "2.13.5",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pydantic-core",
+    "version": "2.46.5",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pygments",
+    "version": "2.21.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-2-Clause"
+  },
+  {
+    "name": "pyjwt",
+    "version": "2.15.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pyopenssl",
+    "version": "26.4.0",
+    "known_advisories": 0,
+    "license_metadata": "Apache License, Version 2.0"
+  },
+  {
+    "name": "pyotp",
+    "version": "2.10.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pyproject-hooks",
+    "version": "1.3.3",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "pytest-asyncio",
+    "version": "1.4.0",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "pytest",
+    "version": "9.1.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "python-dateutil",
+    "version": "2.9.0.post0",
+    "known_advisories": 0,
+    "license_metadata": "Dual License"
+  },
+  {
+    "name": "python-dotenv",
+    "version": "1.2.3",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "python-multipart",
+    "version": "0.0.32",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "pyyaml",
+    "version": "6.0.3",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "requests",
+    "version": "2.34.2",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "ruff",
+    "version": "0.16.8",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "s3transfer",
+    "version": "0.19.2",
+    "known_advisories": 0,
+    "license_metadata": "Apache License 2.0"
+  },
+  {
+    "name": "setuptools",
+    "version": "84.0.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "six",
+    "version": "1.17.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "sqlalchemy",
+    "version": "2.0.54",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "starlette",
+    "version": "1.7.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "tomlkit",
+    "version": "0.15.1",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "trove-classifiers",
+    "version": "2026.9.21.13",
+    "known_advisories": 0,
+    "license_metadata": "License :: OSI Approved :: Apache Software License"
+  },
+  {
+    "name": "types-requests",
+    "version": "2.33.0.20260906",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "typing-inspection",
+    "version": "0.4.4",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "typing-extensions",
+    "version": "4.16.0",
+    "known_advisories": 0,
+    "license_metadata": "PSF-2.0"
+  },
+  {
+    "name": "tzdata",
+    "version": "2026.4",
+    "known_advisories": 0,
+    "license_metadata": "Apache-2.0"
+  },
+  {
+    "name": "urllib3",
+    "version": "2.8.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "uvicorn",
+    "version": "0.53.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "watchfiles",
+    "version": "1.3.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  },
+  {
+    "name": "webauthn",
+    "version": "3.0.0",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "websockets",
+    "version": "17.1",
+    "known_advisories": 0,
+    "license_metadata": "BSD-3-Clause"
+  },
+  {
+    "name": "wheel",
+    "version": "0.48.0",
+    "known_advisories": 0,
+    "license_metadata": "MIT"
+  }
+]
