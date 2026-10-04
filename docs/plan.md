@@ -1061,3 +1061,5 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 2026-10-04T18:37:19.9938569+03:00 — PR5-CI-01 in_progress: remaining Actions causes narrowed to enabled SMTP sink and Debian13OS vulnerabilities; local enabled20PASS, Alpine candidate ready for mandatoryCI. CodeScene23newfiles/6hotspots backlog persists, collection hook10.00.
 
 2026-10-04T19:28:35.7718180+03:00 — PR5-CI-01 in_progress: обязательные Actions восстановлены на c1a6f23; остаются CodeScene, full regression нового рефакторинга и exact-head remote verification.
+
+2026-10-04T19:54:47.5869966+03:00 — PR5-CI-01 in_progress: вторичнаядекомпозицияtested, всеActions1917f9bPASS, остаётсяCodeScene/exactheadвторойгруппы. Не менятьhistoricalarchiveилиframeworkcallbackрадиgate.

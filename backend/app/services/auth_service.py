@@ -196,34 +196,13 @@ class AuthService:
 
         active_settings = settings or get_settings()
         await consume_rate_limit(db, active_settings, RateLimit("mfa-token", hash_token(token), 5))
-        try:
-            payload = decode_jwt(token, audience="alxprgs:mfa", expected_use="mfa_step")
-            if payload.get("purpose") != "mfa_step":
-                raise AuthenticationException("Недействительный токен MFA")
-            user_id = uuid.UUID(payload["sub"])
-            if method is not None and method not in payload.get("methods", []):
-                raise AuthenticationException("Недопустимый метод MFA")
-        except Exception:
-            raise AuthenticationException("Срок действия шага MFA истёк или токен недействителен")
+        user_id, payload = AuthService._decode_mfa_step(token, method)
 
         await consume_rate_limit(db, active_settings, RateLimit("mfa-account", str(user_id), 5))
         user = await lock_user(db, user_id)
         require_account_access(user, settings or get_settings(), allow_temporary=True)
-        step = await db.scalar(
-            select(AuthenticationStep)
-            .where(
-                AuthenticationStep.token_hash == hash_token(token),
-                AuthenticationStep.user_id == user.id,
-            )
-            .with_for_update()
-        )
-        if (
-            not step
-            or step.consumed_at is not None
-            or step.expires_at <= datetime.now(timezone.utc)
-            or step.security_revision != revision(user)
-            or payload.get("security_revision") != revision(user)
-        ):
+        await AuthService._locked_live_mfa_step(db, user, token, datetime.now(timezone.utc))
+        if payload.get("security_revision") != revision(user):
             raise AuthenticationException("Шаг MFA недействителен или уже использован")
         return user
 
@@ -337,21 +316,7 @@ class AuthService:
 
     @staticmethod
     async def _consume_mfa_step(db: AsyncSession, user: User, token: str, now: datetime) -> None:
-        step = await db.scalar(
-            select(AuthenticationStep)
-            .where(
-                AuthenticationStep.token_hash == hash_token(token),
-                AuthenticationStep.user_id == user.id,
-            )
-            .with_for_update()
-        )
-        if (
-            step is None
-            or step.consumed_at is not None
-            or step.expires_at <= now
-            or step.security_revision != revision(user)
-        ):
-            raise AuthenticationException("Шаг MFA недействителен или уже использован")
+        step = await AuthService._locked_live_mfa_step(db, user, token, now)
         step.consumed_at = now
 
     @staticmethod
@@ -473,3 +438,41 @@ class AuthService:
         )
         await db.commit()
         return mfa_token
+
+    @staticmethod
+    def _decode_mfa_step(token: str, method: str | None):
+        try:
+            payload = decode_jwt(token, audience="alxprgs:mfa", expected_use="mfa_step")
+            if payload.get("purpose") != "mfa_step":
+                raise AuthenticationException("Недействительный токен MFA")
+            user_id = uuid.UUID(payload["sub"])
+            if method is not None and method not in payload.get("methods", []):
+                raise AuthenticationException("Недопустимый метод MFA")
+        except Exception:
+            raise AuthenticationException("Срок действия шага MFA истёк или токен недействителен")
+
+        return user_id, payload
+
+    @staticmethod
+    def _require_unused_mfa_step(step: AuthenticationStep, now: datetime) -> None:
+        if step.consumed_at is not None or step.expires_at <= now:
+            raise AuthenticationException("Шаг MFA недействителен или уже использован")
+
+    @staticmethod
+    async def _locked_live_mfa_step(
+        db: AsyncSession, user: User, token: str, now: datetime
+    ) -> AuthenticationStep:
+        step = await db.scalar(
+            select(AuthenticationStep)
+            .where(
+                AuthenticationStep.token_hash == hash_token(token),
+                AuthenticationStep.user_id == user.id,
+            )
+            .with_for_update()
+        )
+        if step is None:
+            raise AuthenticationException("Шаг MFA недействителен или уже использован")
+        AuthService._require_unused_mfa_step(step, now)
+        if step.security_revision != revision(user):
+            raise AuthenticationException("Шаг MFA недействителен или уже использован")
+        return step

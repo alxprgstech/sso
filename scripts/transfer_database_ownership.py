@@ -9,9 +9,7 @@ from psycopg import sql
 from sqlalchemy.engine import make_url
 
 
-def transfer_application_ownership(conn, expected_database: str, expected_owner: str) -> int:
-    from app.migration_metadata import target_metadata
-
+def require_offline_owner_and_roles(conn, expected_database: str, expected_owner: str) -> None:
     database, login = conn.execute("SELECT current_database(), current_user").fetchone()
     if database != expected_database or login != expected_owner:
         raise ValueError("Database/owner confirmation does not match the connection")
@@ -29,6 +27,11 @@ def transfer_application_ownership(conn, expected_database: str, expected_owner:
         "SELECT count(*) FROM pg_auth_members WHERE member IN (SELECT oid FROM pg_roles WHERE rolname IN ('sso_runtime','sso_migrator'))"
     ).fetchone()[0]:
         raise ValueError("Dedicated roles must not inherit other roles")
+
+
+def application_tables(conn, expected_owner: str):
+    from app.migration_metadata import target_metadata
+
     names = sorted({*target_metadata.tables, "alembic_version"})
     tables = conn.execute(
         "SELECT c.relname,pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND c.relname=ANY(%s) ORDER BY c.relname",
@@ -38,11 +41,19 @@ def transfer_application_ownership(conn, expected_database: str, expected_owner:
         raise ValueError("Selected database has no migrated application schema")
     if any(owner != expected_owner for _, owner in tables):
         raise ValueError("Application objects have an unexpected owner; refusing partial handoff")
+    return tables
+
+
+def attached_sequences(conn, tables):
     # Only sequences attached to these exact application tables are transferred.
     sequences = conn.execute(
         "SELECT DISTINCT s.relname FROM pg_class s JOIN pg_namespace n ON n.oid=s.relnamespace JOIN pg_depend d ON d.objid=s.oid JOIN pg_class t ON t.oid=d.refobjid WHERE n.nspname='public' AND s.relkind='S' AND t.relname=ANY(%s) AND d.deptype IN ('a','i')",
         ([name for name, _ in tables],),
     ).fetchall()
+    return sequences
+
+
+def handoff_objects(conn, tables, sequences) -> None:
     for name, _ in tables:
         conn.execute(
             sql.SQL("ALTER TABLE public.{} OWNER TO sso_migrator").format(sql.Identifier(name))
@@ -51,6 +62,9 @@ def transfer_application_ownership(conn, expected_database: str, expected_owner:
         conn.execute(
             sql.SQL("ALTER SEQUENCE public.{} OWNER TO sso_migrator").format(sql.Identifier(name))
         )
+
+
+def grant_application_access(conn, tables, sequences) -> None:
     conn.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
     conn.execute("ALTER SCHEMA public OWNER TO sso_migrator")
     conn.execute("GRANT USAGE ON SCHEMA public TO sso_runtime")
@@ -72,6 +86,14 @@ def transfer_application_ownership(conn, expected_database: str, expected_owner:
     conn.execute(
         "ALTER DEFAULT PRIVILEGES FOR ROLE sso_migrator IN SCHEMA public GRANT USAGE,SELECT ON SEQUENCES TO sso_runtime"
     )
+
+
+def transfer_application_ownership(conn, expected_database: str, expected_owner: str) -> int:
+    require_offline_owner_and_roles(conn, expected_database, expected_owner)
+    tables = application_tables(conn, expected_owner)
+    sequences = attached_sequences(conn, tables)
+    handoff_objects(conn, tables, sequences)
+    grant_application_access(conn, tables, sequences)
     return len(tables)
 
 

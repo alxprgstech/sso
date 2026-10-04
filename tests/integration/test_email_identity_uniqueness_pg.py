@@ -86,9 +86,7 @@ async def test_user_and_admin_email_changes_bind_verification_to_exact_address(
         await smtp.stop()
 
 
-async def test_two_confirmations_cannot_assign_the_same_email_or_leak_integrity_error(
-    pg_session, pg_client
-):
+async def seed_email_competition(pg_session):
     users = [
         User(username=f"email_race_{index}", email=f"old{index}@example.test", email_verified=False)
         for index in range(2)
@@ -107,20 +105,35 @@ async def test_two_confirmations_cannot_assign_the_same_email_or_leak_integrity_
             )
         )
     await pg_session.commit()
-    responses = await asyncio.gather(
-        *(pg_client.post("/api/v1/mfa/email/confirm", json={"token": token}) for token in raw)
-    )
-    assert sorted(response.status_code for response in responses) == [200, 401]
+    return raw
+
+
+def assert_no_integrity_details(responses):
     for response in responses:
         assert not any(
             marker in response.text.lower()
             for marker in ("unique constraint", "insert into", "postgres", "old0@", "old1@")
         )
+
+
+async def assert_email_competition_state(pg_session):
     pg_session.expire_all()
     current = list(await pg_session.scalars(select(User).order_by(User.username)))
     assert [(user.email_verified, user.security_revision) for user in current].count((True, 1)) == 1
     loser = next(user for user in current if not user.email_verified)
     assert loser.security_revision == 0 and loser.email.startswith("old")
+
+
+async def test_two_confirmations_cannot_assign_the_same_email_or_leak_integrity_error(
+    pg_session, pg_client
+):
+    raw = await seed_email_competition(pg_session)
+    responses = await asyncio.gather(
+        *(pg_client.post("/api/v1/mfa/email/confirm", json={"token": token}) for token in raw)
+    )
+    assert sorted(response.status_code for response in responses) == [200, 401]
+    assert_no_integrity_details(responses)
+    await assert_email_competition_state(pg_session)
     assert (
         await pg_client.post("/api/v1/mfa/email/confirm", json={"token": raw[0]})
     ).status_code == 401

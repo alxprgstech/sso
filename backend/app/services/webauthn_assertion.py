@@ -50,6 +50,17 @@ def assertion_dictionary(credential: str | dict[str, Any]) -> dict[str, Any]:
     return json.loads(credential) if isinstance(credential, str) else credential
 
 
+def credential_identifier_matches(stored: str, supplied: str) -> bool:
+    return stored == supplied or _cred_id_to_bytes(stored) == _cred_id_to_bytes(supplied)
+
+
+def matching_credential(credentials, raw_id: str) -> WebAuthnCredential:
+    for credential in credentials:
+        if credential_identifier_matches(credential.credential_id, raw_id):
+            return credential
+    raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
+
+
 async def locked_assertion_credential(
     db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any]
 ) -> WebAuthnCredential:
@@ -71,12 +82,7 @@ async def locked_assertion_credential(
     )
     if not credentials:
         raise AuthenticationException("У пользователя отсутствуют зарегистрированные ключи Passkey")
-    for credential in credentials:
-        if credential.credential_id == raw_id or _cred_id_to_bytes(
-            credential.credential_id
-        ) == _cred_id_to_bytes(raw_id):
-            return credential
-    raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
+    return matching_credential(credentials, raw_id)
 
 
 def signed_assertion_challenge(assertion: dict[str, Any], policy: AssertionPolicy) -> str | None:

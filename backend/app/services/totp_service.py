@@ -50,6 +50,25 @@ def totp_step_usable(matched: int | None, previous: int | None) -> bool:
     return matched > previous
 
 
+def pending_enrollment_bound(
+    credential: TOTPCredential, session_id: uuid.UUID | None, now: datetime
+) -> bool:
+    return (
+        credential.pending_expires_at is not None
+        and credential.pending_expires_at > now
+        and credential.pending_session_id == session_id
+    )
+
+
+def last_matching_step(totp: pyotp.TOTP, code: str, now: datetime) -> int:
+    current_step = int(now.timestamp()) // totp.interval
+    return max(
+        step
+        for step in (current_step - 1, current_step, current_step + 1)
+        if totp.verify(code, for_time=datetime.fromtimestamp(step * totp.interval, timezone.utc))
+    )
+
+
 class TOTPService:
     @staticmethod
     async def setup_totp(
@@ -106,12 +125,9 @@ class TOTPService:
             raise AuthenticationException("Подключение TOTP не было инициировано")
 
         now = datetime.now(timezone.utc)
-        if (
-            not cred.pending_encrypted_secret
-            or not cred.pending_expires_at
-            or cred.pending_expires_at <= now
-            or cred.pending_session_id != session_id
-        ):
+        if not cred.pending_encrypted_secret:
+            return False
+        if not pending_enrollment_bound(cred, session_id, now):
             return False
         raw_secret = decrypt_totp_secret(cred.pending_encrypted_secret)
         totp = pyotp.TOTP(raw_secret)
@@ -125,14 +141,7 @@ class TOTPService:
         cred.pending_encrypted_secret = None
         cred.pending_expires_at = None
         cred.pending_session_id = None
-        current_step = int(now.timestamp()) // totp.interval
-        cred.last_verified_step = max(
-            step
-            for step in (current_step - 1, current_step, current_step + 1)
-            if totp.verify(
-                code, for_time=datetime.fromtimestamp(step * totp.interval, timezone.utc)
-            )
-        )
+        cred.last_verified_step = last_matching_step(totp, code, now)
         await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
         await invalidate_security_state(db, user, preserve_session_id=session_id)
         await db.commit()

@@ -24,12 +24,20 @@ def require_account_access(
 ) -> None:
     if not user.is_active:
         raise AuthenticationException("Аккаунт недоступен")
+    _require_verified_email(user, settings)
+    if allow_temporary:
+        return
+    _require_regular_password(user)
+
+
+def _require_verified_email(user: User, settings: Settings) -> None:
     if settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified:
         raise AuthenticationException(
             "Требуется подтверждение адреса электронной почты", error="email_verification_required"
         )
-    if allow_temporary:
-        return
+
+
+def _require_regular_password(user: User) -> None:
     credential = user.password_credential
     if credential and credential.requires_change:
         raise AuthenticationException(

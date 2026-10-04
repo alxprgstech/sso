@@ -12,6 +12,28 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 
 
+def mutate_claims(claims, change):
+    if change in {"iss", "aud", "azp"}:
+        claims[change] = "untrusted-sensitive-marker"
+    elif change == "exp":
+        claims["exp"] = int(time.time()) - 1
+    elif change == "iat":
+        claims["iat"] = True
+    elif change == "missing_exp":
+        del claims["exp"]
+
+
+def malformed_kid(encoded, headers):
+    from jwt.utils import base64url_encode
+
+    headers["kid"] = {"invalid": "untrusted-sensitive-marker"}
+    headers["alg"] = "RS256"
+    encoded = (
+        base64url_encode(json.dumps(headers).encode()).decode() + "." + encoded.split(".", 1)[1]
+    )
+    return encoded
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "change", [None, "iss", "aud", "azp", "exp", "iat", "kid", "signature", "missing_exp"]
@@ -28,14 +50,7 @@ async def test_google_style_real_rsa_profiles(monkeypatch, change):
         "exp": int(time.time()) + 300,
     }
     headers = {"kid": "google-fixture"}
-    if change in {"iss", "aud", "azp"}:
-        claims[change] = "untrusted-sensitive-marker"
-    elif change == "exp":
-        claims["exp"] = int(time.time()) - 1
-    elif change == "iat":
-        claims["iat"] = True
-    elif change == "missing_exp":
-        del claims["exp"]
+    mutate_claims(claims, change)
     signing_key = (
         rsa.generate_private_key(public_exponent=65537, key_size=2048)
         if change == "signature"
@@ -43,13 +58,7 @@ async def test_google_style_real_rsa_profiles(monkeypatch, change):
     )
     encoded = jwt.encode(claims, signing_key, algorithm="RS256", headers=headers)
     if change == "kid":
-        from jwt.utils import base64url_encode
-
-        headers["kid"] = {"invalid": "untrusted-sensitive-marker"}
-        headers["alg"] = "RS256"
-        encoded = (
-            base64url_encode(json.dumps(headers).encode()).decode() + "." + encoded.split(".", 1)[1]
-        )
+        encoded = malformed_kid(encoded, headers)
     calls = []
 
     def transport(request):

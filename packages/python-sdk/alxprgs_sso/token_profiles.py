@@ -90,7 +90,10 @@ def _validate_access_profile(payload: dict[str, Any]) -> None:
 def _validate_mfa_profile(payload: dict[str, Any]) -> None:
     if payload.get("purpose") != "mfa_step" or type(payload.get("security_revision")) is not int:
         raise ValueError("Invalid MFA step")
-    methods = payload.get("methods")
+    _validate_mfa_methods(payload.get("methods"))
+
+
+def _validate_mfa_methods(methods: Any) -> None:
     if not isinstance(methods, list) or not methods:
         raise ValueError("Invalid MFA methods")
     if any(method not in {"totp", "passkey", "recovery_code"} for method in methods):

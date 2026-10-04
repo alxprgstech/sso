@@ -21,18 +21,81 @@ function authorize(origin: string, policy: Record<string, string>) {
   return { url: origin + "/oauth/authorize?" + query, verifier, nonce, state };
 }
 
-test("Real browser prompt login/none/max_age and credential-event session invalidation", async ({ page, browser }) => {
-  page.on("requestfailed", request => {
-    const target = new URL(request.url());
-    console.info("Protocol transport failure", target.origin + target.pathname, request.failure()?.errorText);
-  });
-  const origin = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173";
+async function requireSilentLoginFailure(page: Page, origin: string) {
   const silent = authorize(origin, { prompt: "none" });
   const noSession = await page.request.get(silent.url, { maxRedirects: 0 });
   const error = new URL(noSession.headers().location);
   expect(error.searchParams.get("error")).toBe("login_required");
   expect(error.searchParams.get("state")).toBe(silent.state);
   expect(error.origin).toBe(new URL(callback).origin);
+}
+
+async function requireFreshAuthentication(page: Page, origin: string) {
+  const policies: Record<string, string>[] = [{ prompt: "login" }, { max_age: "0" }];
+  for (const policy of policies) {
+    const flow = authorize(origin, policy);
+    await page.goto(flow.url);
+    await expect(page.getByLabel("Имя пользователя или Email")).toBeVisible();
+    expect(page.url()).toContain("force_login=1");
+    await login(page);
+    await expect(page).toHaveURL(new RegExp("^http://localhost:8001/callback\\?"));
+    const returned = new URL(page.url());
+    expect(returned.searchParams.get("state")).toBe(flow.state);
+    const code = returned.searchParams.get("code");
+    expect(code).toBeTruthy();
+    const response = await page.request.post(origin + "/oauth/token", { form: { grant_type: "authorization_code", client_id: "client_analytics_app", client_secret: process.env.E2E_CLIENT1_SECRET || "analytics_client_secret_123", redirect_uri: callback, code: code!, code_verifier: flow.verifier } });
+    expect(response.status()).toBe(200);
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    const tokens = await response.json();
+    const claims = JSON.parse(Buffer.from(tokens.id_token.split(".")[1], "base64url").toString());
+    expect(claims.nonce).toBe(flow.nonce);
+    expect(Number.isInteger(claims.auth_time)).toBe(true);
+    expect(Date.now() / 1000 - claims.auth_time).toBeLessThan(5);
+  }
+}
+
+async function requireSilentAgePolicy(page: Page, origin: string, me: { id?: string; user_id?: string }) {
+  await page.goto("/");
+  const authenticated = authorize(origin, { prompt: "none", max_age: "300" });
+  const recent = await page.request.get(authenticated.url, { maxRedirects: 0 });
+  expect(new URL(recent.headers().location).searchParams.get("code")).toBeTruthy();
+  const stale = authorize(origin, { prompt: "none", max_age: "0" });
+  expect(new URL((await page.request.get(stale.url, { maxRedirects: 0 })).headers().location).searchParams.get("error")).toBe("login_required");
+  await expect(page.getByText("Личный кабинет", { exact: true })).toBeVisible();
+  const current = await (await page.request.get("/api/v1/auth/me")).json();
+  expect(current.id ?? current.user_id).toBe(me.id ?? me.user_id);
+}
+
+async function changePasswordWithAccessibleProof(page: Page) {
+  await page.getByRole("button", { name: "Изменить пароль", exact: true }).click();
+  const dialog = page.locator('[role="dialog"][aria-label="Смена пароля"]');
+  await dialog.getByLabel("Текущий пароль").fill(password);
+  await dialog.getByLabel("Новый пароль (мин. 15 символов)").fill("NewProtocolBrowserSynthetic2026!");
+  await dialog.getByLabel("Подтверждение нового пароля").fill("NewProtocolBrowserSynthetic2026!");
+  await dialog.getByRole("button", { name: "Сохранить новый пароль" }).click();
+  const proofDialog = page.getByRole("dialog", { name: "Подтверждение чувствительной операции" });
+  await expect(proofDialog).toBeVisible();
+  await expect(dialog).toHaveJSProperty("inert", true);
+  await proofDialog.getByLabel("Текущий пароль").focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(proofDialog.getByRole("button", { name: "Подтвердить", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(proofDialog).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveJSProperty("inert", false);
+  await expect(dialog.getByRole("button", { name: "Сохранить новый пароль" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Сохранить новый пароль" }).click();
+  await confirmSensitiveAction(page, password);
+  await expect(dialog).toBeHidden();
+}
+
+test("Real browser prompt login/none/max_age and credential-event session invalidation", async ({ page, browser }) => {
+  page.on("requestfailed", request => {
+    const target = new URL(request.url());
+    console.info("Protocol transport failure", target.origin + target.pathname, request.failure()?.errorText);
+  });
+  const origin = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173";
+  await requireSilentLoginFailure(page, origin);
   await page.goto("/");
   await login(page);
   await acceptDocumentsAfterLogin(page);
@@ -50,56 +113,9 @@ test("Real browser prompt login/none/max_age and credential-event session invali
       landing.once("error", reject);
       landing.listen(8001, "127.0.0.1", resolve);
     });
-    const policies: Record<string, string>[] = [{ prompt: "login" }, { max_age: "0" }];
-    for (const policy of policies) {
-      const flow = authorize(origin, policy);
-      await page.goto(flow.url);
-      await expect(page.getByLabel("Имя пользователя или Email")).toBeVisible();
-      expect(page.url()).toContain("force_login=1");
-      await login(page);
-      await expect(page).toHaveURL(new RegExp("^http://localhost:8001/callback\\?"));
-      const returned = new URL(page.url());
-      expect(returned.searchParams.get("state")).toBe(flow.state);
-      const code = returned.searchParams.get("code");
-      expect(code).toBeTruthy();
-      const response = await page.request.post(origin + "/oauth/token", { form: { grant_type: "authorization_code", client_id: "client_analytics_app", client_secret: process.env.E2E_CLIENT1_SECRET || "analytics_client_secret_123", redirect_uri: callback, code: code!, code_verifier: flow.verifier } });
-      expect(response.status()).toBe(200);
-      expect(response.headers()["cache-control"]).toBe("no-store");
-      const tokens = await response.json();
-      const claims = JSON.parse(Buffer.from(tokens.id_token.split(".")[1], "base64url").toString());
-      expect(claims.nonce).toBe(flow.nonce);
-      expect(Number.isInteger(claims.auth_time)).toBe(true);
-      expect(Date.now() / 1000 - claims.auth_time).toBeLessThan(5);
-    }
-    await page.goto("/");
-    const authenticated = authorize(origin, { prompt: "none", max_age: "300" });
-    const recent = await page.request.get(authenticated.url, { maxRedirects: 0 });
-    expect(new URL(recent.headers().location).searchParams.get("code")).toBeTruthy();
-    const stale = authorize(origin, { prompt: "none", max_age: "0" });
-    expect(new URL((await page.request.get(stale.url, { maxRedirects: 0 })).headers().location).searchParams.get("error")).toBe("login_required");
-    await expect(page.getByText("Личный кабинет", { exact: true })).toBeVisible();
-    const current = await (await page.request.get("/api/v1/auth/me")).json();
-    expect(current.id ?? current.user_id).toBe(me.id ?? me.user_id);
-    await page.getByRole("button", { name: "Изменить пароль", exact: true }).click();
-    const dialog = page.locator('[role="dialog"][aria-label="Смена пароля"]');
-    await dialog.getByLabel("Текущий пароль").fill(password);
-    await dialog.getByLabel("Новый пароль (мин. 15 символов)").fill("NewProtocolBrowserSynthetic2026!");
-    await dialog.getByLabel("Подтверждение нового пароля").fill("NewProtocolBrowserSynthetic2026!");
-    await dialog.getByRole("button", { name: "Сохранить новый пароль" }).click();
-    const proofDialog = page.getByRole("dialog", { name: "Подтверждение чувствительной операции" });
-    await expect(proofDialog).toBeVisible();
-    await expect(dialog).toHaveJSProperty("inert", true);
-    await proofDialog.getByLabel("Текущий пароль").focus();
-    await page.keyboard.press("Shift+Tab");
-    await expect(proofDialog.getByRole("button", { name: "Подтвердить", exact: true })).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(proofDialog).toBeHidden();
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toHaveJSProperty("inert", false);
-    await expect(dialog.getByRole("button", { name: "Сохранить новый пароль" })).toBeEnabled();
-    await dialog.getByRole("button", { name: "Сохранить новый пароль" }).click();
-    await confirmSensitiveAction(page, password);
-    await expect(dialog).toBeHidden();
+    await requireFreshAuthentication(page, origin);
+    await requireSilentAgePolicy(page, origin, me);
+    await changePasswordWithAccessibleProof(page);
     expect((await other.request.get("/api/v1/auth/me")).status()).toBe(401);
     expect((await page.request.get("/api/v1/auth/me")).status()).toBe(200);
   } finally {

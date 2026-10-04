@@ -75,6 +75,54 @@ settings = get_settings()
 sent_emails_sink: list[dict[str, Any]] = []
 
 
+async def locked_registration_challenge(
+    db: AsyncSession, user: User, credential_json, session_id: uuid.UUID | None
+) -> WebAuthnChallenge:
+    try:
+        assertion = assertion_dictionary(credential_json)
+        signed = signed_assertion_challenge(
+            assertion, AssertionPolicy("", [], "registration", None)
+        )
+    except (ValueError, TypeError):
+        signed = None
+    if not signed:
+        raise AuthenticationException("Некорректный challenge регистрации WebAuthn")
+    stmt = (
+        select(WebAuthnChallenge)
+        .where(
+            WebAuthnChallenge.user_id == user.id,
+            WebAuthnChallenge.purpose == "registration",
+            WebAuthnChallenge.session_id == session_id,
+            WebAuthnChallenge.challenge == signed,
+            WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
+        )
+        .order_by(WebAuthnChallenge.created_at.desc())
+        .with_for_update()
+    )
+    challenge_record = (await db.execute(stmt)).scalars().first()
+    if not challenge_record:
+        raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
+
+    return challenge_record
+
+
+def verify_registration_signature(
+    credential_json, challenge_record: WebAuthnChallenge, policy: AssertionPolicy
+):
+    try:
+        verification = webauthn.verify_registration_response(
+            credential=credential_json,
+            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_record.challenge),
+            expected_rp_id=policy.rp_id,
+            expected_origin=policy.origins,
+            require_user_verification=True,
+        )
+    except Exception:
+        raise AuthenticationException("Ошибка проверки регистрации WebAuthn") from None
+
+    return verification
+
+
 class WebAuthnService:
     @staticmethod
     async def get_registration_options(
@@ -154,44 +202,15 @@ class WebAuthnService:
         active_settings = settings or get_settings()
         user = await lock_user(db, user.id)
 
-        try:
-            assertion = assertion_dictionary(credential_json)
-            signed = signed_assertion_challenge(
-                assertion, AssertionPolicy("", [], "registration", None)
-            )
-        except (ValueError, TypeError):
-            signed = None
-        if not signed:
-            raise AuthenticationException("Некорректный challenge регистрации WebAuthn")
-        stmt = (
-            select(WebAuthnChallenge)
-            .where(
-                WebAuthnChallenge.user_id == user.id,
-                WebAuthnChallenge.purpose == "registration",
-                WebAuthnChallenge.session_id == session_id,
-                WebAuthnChallenge.challenge == signed,
-                WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-            )
-            .order_by(WebAuthnChallenge.created_at.desc())
-            .with_for_update()
+        challenge_record = await locked_registration_challenge(
+            db, user, credential_json, session_id
         )
-        challenge_record = (await db.execute(stmt)).scalars().first()
-        if not challenge_record:
-            raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
 
         effective_rp_id = rp_id or active_settings.WEBAUTHN_RP_ID
         expected_origins = [origin] if origin else [active_settings.WEBAUTHN_ORIGIN]
 
-        try:
-            verification = webauthn.verify_registration_response(
-                credential=credential_json,
-                expected_challenge=webauthn.helpers.base64url_to_bytes(challenge_record.challenge),
-                expected_rp_id=effective_rp_id,
-                expected_origin=expected_origins,
-                require_user_verification=True,
-            )
-        except Exception:
-            raise AuthenticationException("Ошибка проверки регистрации WebAuthn") from None
+        policy = AssertionPolicy(effective_rp_id, expected_origins, "registration", None)
+        verification = verify_registration_signature(credential_json, challenge_record, policy)
 
         # Сохранение credential в безопасном представлении Base64URL
         cred_id_str = webauthn.helpers.bytes_to_base64url(verification.credential_id)

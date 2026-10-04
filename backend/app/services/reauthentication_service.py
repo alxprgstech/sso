@@ -42,6 +42,63 @@ class FactorProof:
     credential: dict[str, Any] | None
 
 
+@dataclass(frozen=True)
+class FactorVerification:
+    user: User
+    settings: Settings
+    expected_challenge: str | None
+
+
+async def _confirm_totp(db: AsyncSession, context: FactorVerification, proof: FactorProof) -> bool:
+    from app.services.mfa_service import TOTPService
+
+    if not proof.code:
+        return False
+    return await TOTPService.verify_totp(db, context.user, proof.code, commit=False)
+
+
+async def _confirm_recovery(
+    db: AsyncSession, context: FactorVerification, proof: FactorProof
+) -> bool:
+    from app.services.mfa_service import RecoveryCodesService
+
+    if not proof.code:
+        return False
+    return await RecoveryCodesService.consume_code(db, context.user, proof.code, commit=False)
+
+
+async def _confirm_passkey(
+    db: AsyncSession, context: FactorVerification, proof: FactorProof
+) -> bool:
+    from app.services.mfa_service import WebAuthnService
+
+    if not proof.credential:
+        return False
+    return await WebAuthnService.verify_authentication(
+        db,
+        context.user,
+        proof.credential,
+        settings=context.settings,
+        purpose="security_reauth",
+        expected_challenge=context.expected_challenge,
+        commit=False,
+    )
+
+
+async def _verify_factor(db: AsyncSession, context: FactorVerification, proof: FactorProof) -> bool:
+    if proof.method not in factor_methods(context.user, context.settings):
+        return False
+    verifiers = {
+        "totp": _confirm_totp,
+        "recovery_code": _confirm_recovery,
+        "passkey": _confirm_passkey,
+    }
+    try:
+        return await verifiers[proof.method](db, context, proof)
+    except AuthenticationException:
+        return False
+
+
 def sensitive_action(method: str, path: str) -> bool:
     if method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return False
@@ -197,32 +254,12 @@ async def confirm(
     proof: FactorProof,
 ) -> dict[str, Any]:
     user, session = actor.user, actor.session
-    raw, method, code, credential = proof.authorization, proof.method, proof.code, proof.credential
+    raw = proof.authorization
     await consume_rate_limit(db, cfg, RateLimit("security-factor", str(user.id), 5))
     current = await lock_user(db, user.id)
     row = await scoped_row(db, AuthenticatedActor(current, session), raw, "factor")
-    methods = factor_methods(current, cfg)
-    from app.services.mfa_service import RecoveryCodesService, TOTPService, WebAuthnService
-
-    valid = False
-    if method in methods:
-        try:
-            if method == "totp" and code:
-                valid = await TOTPService.verify_totp(db, current, code, commit=False)
-            elif method == "recovery_code" and code:
-                valid = await RecoveryCodesService.consume_code(db, current, code, commit=False)
-            elif method == "passkey" and credential:
-                valid = await WebAuthnService.verify_authentication(
-                    db,
-                    current,
-                    credential,
-                    settings=cfg,
-                    purpose="security_reauth",
-                    expected_challenge=row.webauthn_challenge,
-                    commit=False,
-                )
-        except AuthenticationException:
-            valid = False
+    context = FactorVerification(current, cfg, row.webauthn_challenge)
+    valid = await _verify_factor(db, context, proof)
     if not valid:
         row.failed_attempts += 1
         await db.commit()

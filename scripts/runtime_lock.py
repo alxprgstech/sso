@@ -43,6 +43,19 @@ def active_dependency(
     )
 
 
+def dependency_requirements(
+    name: str, extras: tuple[str, ...], platforms: list[dict[str, str]]
+) -> list[Requirement]:
+    dependencies = [Requirement(value) for value in distribution(name).requires or []]
+    return [item for item in dependencies if active_dependency(item, platforms, extras)]
+
+
+def lock_requirement(line: str) -> Requirement | None:
+    if not line or line.startswith("#"):
+        return None
+    return Requirement(line)
+
+
 def dependency_closure(queue: list[Requirement]) -> set[str]:
     visited: set[tuple[str, tuple[str, ...]]] = set()
     required: set[str] = set()
@@ -56,21 +69,15 @@ def dependency_closure(queue: list[Requirement]) -> set[str]:
             continue
         visited.add(identity)
         required.add(name)
-        for value in distribution(name).requires or []:
-            dependency = Requirement(value)
-            if active_dependency(dependency, platforms, extras):
-                queue.append(dependency)
+        queue.extend(dependency_requirements(name, extras, platforms))
     return required
 
 
 def locked_pins(root: Path, required: set[str]) -> list[str]:
     pins = []
     for line in (root / "requirements-lock.txt").read_text(encoding="utf-8").splitlines():
-        if (
-            line
-            and not line.startswith("#")
-            and canonicalize_name(Requirement(line).name) in required
-        ):
+        requirement = lock_requirement(line)
+        if requirement is not None and canonicalize_name(requirement.name) in required:
             pins.append(line)
     if {canonicalize_name(Requirement(line).name) for line in pins} != required:
         raise ValueError("Production dependency is missing from the full lock")

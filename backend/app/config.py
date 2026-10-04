@@ -7,22 +7,24 @@ import re
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, Literal
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from cryptography.fernet import Fernet
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _require_production_origin(value: str, issuer: str) -> None:
-    parsed = urlsplit(value)
+def _require_public_https(parsed: SplitResult) -> None:
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
     if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
         raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
-    if parsed.username or parsed.password:
-        raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
-    if any((parsed.query, parsed.fragment, parsed.path)):
+
+
+def _require_production_origin(value: str, issuer: str) -> None:
+    parsed = urlsplit(value)
+    _require_public_https(parsed)
+    if any((parsed.username, parsed.password, parsed.query, parsed.fragment, parsed.path)):
         raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
     if parsed.port == 0 or value != issuer:
         raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
@@ -222,7 +224,7 @@ class Settings(BaseSettings):
         return self
 
     def validate_key_configuration(self) -> None:
-        from app.core.key_material import load_private_key, load_public_key, validate_key_id
+        from app.core.key_material import load_private_key, validate_key_id
 
         validate_key_id(self.JWT_KEY_ID)
         if self.JWT_PRIVATE_KEY_PEM:
@@ -231,10 +233,18 @@ class Settings(BaseSettings):
         if previous != bool(self.JWT_PREVIOUS_KEY_ID):
             raise ValueError("Previous RSA key and identifier must be configured together")
         if previous:
-            validate_key_id(self.JWT_PREVIOUS_KEY_ID)
-            if self.JWT_PREVIOUS_KEY_ID == self.JWT_KEY_ID:
-                raise ValueError("Active and previous RSA identifiers must differ")
-            load_public_key(self.JWT_PREVIOUS_PUBLIC_KEY_PEM)
+            self._validate_previous_key()
+        self._validate_key_retirement(previous)
+
+    def _validate_previous_key(self) -> None:
+        from app.core.key_material import load_public_key, validate_key_id
+
+        validate_key_id(self.JWT_PREVIOUS_KEY_ID)
+        if self.JWT_PREVIOUS_KEY_ID == self.JWT_KEY_ID:
+            raise ValueError("Active and previous RSA identifiers must differ")
+        load_public_key(self.JWT_PREVIOUS_PUBLIC_KEY_PEM)
+
+    def _validate_key_retirement(self, previous: bool) -> None:
         if self.JWT_PREVIOUS_KEY_VALID_UNTIL is not None:
             if not previous or self.JWT_PREVIOUS_KEY_VALID_UNTIL.utcoffset() is None:
                 raise ValueError(

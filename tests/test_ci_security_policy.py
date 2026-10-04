@@ -32,29 +32,49 @@ def test_release_context_contains_every_copied_frontend_configuration():
     assert all("!" + name in allowed for name in copies)
 
 
-def test_required_security_windows_and_browser_jobs_have_no_bypass():
-    ci = yaml.load((ROOT / ".github/workflows/ci.yml").read_text("utf-8"), Loader=yaml.BaseLoader)
-    for name in (
+def workflow_jobs():
+    return yaml.load(
+        (ROOT / ".github/workflows/ci.yml").read_text("utf-8"), Loader=yaml.BaseLoader
+    )["jobs"]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
         "windows-safety",
         "telemetry-container-check",
         "backend-lint-and-test",
         "playwright-e2e",
         "sdk-build-and-test",
-    ):
-        job = ci["jobs"][name]
-        assert "if" not in job and "continue-on-error" not in job
-        assert all("continue-on-error" not in step for step in job["steps"])
-    windows = commands(ci["jobs"]["windows-safety"])
+    ],
+)
+def test_required_jobs_and_steps_have_no_bypass(name):
+    job = workflow_jobs()[name]
+    assert "if" not in job and "continue-on-error" not in job
+    assert all("continue-on-error" not in step for step in job["steps"])
+
+
+def test_windows_jobs_run_both_shells_and_existing_regressions():
+    windows = commands(workflow_jobs()["windows-safety"])
     assert "powershell.exe -ErrorAction Stop" in windows and "pwsh.exe -ErrorAction Stop" in windows
     for path in re.findall(r"tests/[\w/]+\.py", windows):
         assert (ROOT / path).is_file(), f"Missing required Windows regression: {path}"
-    container = commands(ci["jobs"]["telemetry-container-check"])
+
+
+def test_container_job_keeps_actual_runtime_and_strict_image_audit():
+    container = commands(workflow_jobs()["telemetry-container-check"])
     assert "python scripts/check_container_runtime.py" in container
     assert "--exit-code 1" in container and "--severity HIGH,CRITICAL" in container
     assert "--ignore-unfixed" not in container
-    browser = commands(ci["jobs"]["playwright-e2e"])
+
+
+def test_browser_job_keeps_protocol_and_factor_regressions():
+    browser = commands(workflow_jobs()["playwright-e2e"])
     assert "e2e/protocol_lifecycle.spec.ts" in browser and "e2e/totp.spec.ts" in browser
-    for job in ci["jobs"].values():
+
+
+def test_every_ci_service_uses_immutable_digest():
+    for job in workflow_jobs().values():
         for service in job.get("services", {}).values():
             assert re.search(r"@sha256:[0-9a-f]{64}$", service["image"])
 

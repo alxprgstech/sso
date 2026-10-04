@@ -28,6 +28,27 @@ def claims(use="access_token"):
     }
 
 
+def attack_claims(kind):
+    now = int(time.time())
+    cases = {
+        "wrong_issuer": {"iss": "https://other.example.test"},
+        "wrong_audience": {"aud": "other-rp"},
+        "expired": {"exp": now - 60, "iat": now - 120, "auth_time": now - 120},
+        "id_as_access": {"token_use": "id_token"},
+    }
+    return cases.get(kind, {})
+
+
+def attack_key(kind):
+    if kind == "none":
+        return None
+    if kind == "HS256":
+        return secrets.token_bytes(32)
+    if kind == "bad_signature":
+        return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return security.get_rsa_private_key()
+
+
 @pytest.mark.parametrize(
     "kind",
     [
@@ -44,25 +65,10 @@ def claims(use="access_token"):
 def test_real_crypto_rejects_adversarial_access_token(kind):
     value = claims()
     headers = {"kid": security.get_active_key_id()}
-    algorithm, key = "RS256", security.get_rsa_private_key()
-    if kind == "none":
-        algorithm, key = "none", None
-    elif kind == "HS256":
-        algorithm, key = "HS256", secrets.token_bytes(32)
-    elif kind == "wrong_issuer":
-        value["iss"] = "https://other.example.test"
-    elif kind == "wrong_audience":
-        value["aud"] = "other-rp"
-    elif kind == "expired":
-        value["exp"] = int(time.time()) - 60
-        value["iat"] = int(time.time()) - 120
-        value["auth_time"] = int(time.time()) - 120
-    elif kind == "unknown_kid":
-        headers["kid"] = "unregistered-key"
-    elif kind == "id_as_access":
-        value["token_use"] = "id_token"
-    elif kind == "bad_signature":
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    value.update(attack_claims(kind))
+    algorithm = {"none": "none", "HS256": "HS256"}.get(kind, "RS256")
+    key = attack_key(kind)
+    headers["kid"] = "unregistered-key" if kind == "unknown_kid" else headers["kid"]
     token = jwt.encode(value, key, algorithm=algorithm, headers=headers)
     client = SSOClient(server_url=get_settings().OIDC_ISSUER, client_id="audit-rp")
     with pytest.raises(OAuthErrorException):

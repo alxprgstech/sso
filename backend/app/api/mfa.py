@@ -281,14 +281,8 @@ async def passkey_auth_options(
     )
 
 
-async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any]) -> User:
+async def _find_discoverable_credential(db: AsyncSession, raw_id: str):
     from sqlalchemy import select
-
-    # Discoverable passkey login (без пароля)
-    cred_dict = credential
-    raw_id = cred_dict.get("id") or cred_dict.get("rawId")
-    if not raw_id:
-        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
 
     cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.credential_id == raw_id)
     cred_obj = (await db.execute(cred_stmt)).scalar_one_or_none()
@@ -298,6 +292,20 @@ async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any
             if _cred_id_to_bytes(c.credential_id) == _cred_id_to_bytes(raw_id):
                 cred_obj = c
                 break
+
+    return cred_obj
+
+
+async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any]) -> User:
+    from sqlalchemy import select
+
+    # Discoverable passkey login (без пароля)
+    cred_dict = credential
+    raw_id = cred_dict.get("id") or cred_dict.get("rawId")
+    if not raw_id:
+        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
+
+    cred_obj = await _find_discoverable_credential(db, raw_id)
 
     if not cred_obj:
         raise AuthenticationException("Passkey не найден или был удалён")

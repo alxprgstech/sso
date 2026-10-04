@@ -294,16 +294,26 @@ class SSOClient:
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
         }
-        if prompt is not None:
-            if prompt not in {"login", "none"}:
-                raise ConfigurationError("Поддерживаются prompt=login и prompt=none")
-            params["prompt"] = prompt
-        if max_age is not None:
-            if type(max_age) is not int or max_age < 0:
-                raise ConfigurationError("max_age должен быть неотрицательным integer")
-            params["max_age"] = str(max_age)
+        params.update(self._prompt_parameters(prompt))
+        params.update(self._max_age_parameters(max_age))
         url = f"{self.server_url}/oauth/authorize?{urlencode(params)}"
         return url, code_verifier, actual_state, actual_nonce
+
+    @staticmethod
+    def _prompt_parameters(prompt: str | None) -> dict[str, str]:
+        if prompt is None:
+            return {}
+        if prompt not in {"login", "none"}:
+            raise ConfigurationError("Поддерживаются prompt=login и prompt=none")
+        return {"prompt": prompt}
+
+    @staticmethod
+    def _max_age_parameters(max_age: int | None) -> dict[str, str]:
+        if max_age is None:
+            return {}
+        if type(max_age) is not int or max_age < 0:
+            raise ConfigurationError("max_age должен быть неотрицательным integer")
+        return {"max_age": str(max_age)}
 
     def generate_authorization_url(
         self,

@@ -3,6 +3,7 @@
 import asyncio
 import time
 import uuid
+from dataclasses import dataclass
 
 import pyotp
 import pytest
@@ -10,7 +11,7 @@ from app.config import Settings
 from app.core.exceptions import AuthenticationException, OAuthErrorException
 from app.core.security import hash_password
 from app.models.mfa import TOTPCredential
-from app.models.oidc import AuthorizationCode, OIDCRedirectUri, RefreshToken
+from app.models.oidc import AuthorizationCode, OIDCClient, OIDCRedirectUri, RefreshToken
 from app.models.session import Session
 from app.models.user import PasswordCredential, User
 from app.services.admin_service import AdminService
@@ -29,13 +30,18 @@ pytestmark = [pytest.mark.postgres, pytest.mark.concurrency, pytest.mark.asyncio
 NEW_PASSWORD = "DistinctFreshRevisionPassword2026!"
 
 
-@pytest.mark.parametrize(
-    "scenario", ["reset_refresh", "change_code", "block_refresh", "revision_mfa"]
-)
-@pytest.mark.parametrize("grant_first", [False, True])
-async def test_no_stale_grant_survives_security_event_in_either_order(
-    pg_session, pg_engine, scenario, grant_first
-):
+@dataclass(frozen=True)
+class RaceScenario:
+    scenario: str
+    user_id: uuid.UUID
+    admin_id: uuid.UUID
+    client: OIDCClient
+    settings: Settings
+    secret: str
+    grant: str
+
+
+async def prepare_race(pg_session, scenario) -> RaceScenario:
     user, rp = await seed(pg_session)
     pg_session.add(OIDCRedirectUri(client_id=rp.id, uri=CALLBACK))
     admin = User(username="race_admin", email="raceadmin@example.test", is_superuser=True)
@@ -64,138 +70,196 @@ async def test_no_stale_grant_survives_security_event_in_either_order(
         )
         old_grant = old.refresh_token
     await pg_session.commit()
-    factory = async_sessionmaker(pg_engine, expire_on_commit=False)
-    first_locked, release = asyncio.Event(), asyncio.Event()
-    granted = []
-    label = "race-second-" + uuid.uuid4().hex
-    first_engine = create_async_engine(pg_engine.url)
-    second_engine = create_async_engine(pg_engine.url, connect_args={"application_name": label})
-    paused = False
+    return RaceScenario(scenario, uid, aid, rp, cfg, secret, old_grant)
 
-    async def pause_after_real_lock():
-        first_locked.set()
-        await release.wait()
 
-    def after_cursor_execute(connection, cursor, statement, parameters, context, executemany):
-        nonlocal paused
-        if not paused and "FROM users" in statement and "FOR UPDATE" in statement:
-            paused = True
-            # Scheduling only: the real SQL has executed and the row lock is held.
-            connection.connection.dbapi_connection.run_async(lambda raw: pause_after_real_lock())
+async def issue_grant(db, context: RaceScenario):
+    if context.scenario == "revision_mfa":
+        authenticated = await AuthService.verify_mfa_step_token(
+            context.grant, db, method="totp", settings=context.settings
+        )
+        assert await TOTPService.verify_totp(
+            db, authenticated, pyotp.TOTP(context.secret).now(), commit=False
+        )
+        value = await AuthService.create_user_session(
+            db,
+            context.user_id,
+            None,
+            None,
+            context.settings,
+            expected_revision=0,
+            mfa_token=context.grant,
+        )
+    elif context.scenario == "change_code":
+        value = await OIDCService.exchange_code(
+            db, context.client.client_id, None, context.grant, VERIFIER, CALLBACK
+        )
+    else:
+        value = await OIDCService.rotate_refresh_token(
+            db, context.client.client_id, None, context.grant
+        )
+    return value
 
-    sql_event.listen(first_engine.sync_engine, "after_cursor_execute", after_cursor_execute)
 
-    async def grant(db):
-        if scenario == "revision_mfa":
-            authenticated = await AuthService.verify_mfa_step_token(
-                old_grant, db, method="totp", settings=cfg
-            )
-            assert await TOTPService.verify_totp(
-                db, authenticated, pyotp.TOTP(secret).now(), commit=False
-            )
-            value = await AuthService.create_user_session(
-                db, uid, None, None, cfg, expected_revision=0, mfa_token=old_grant
-            )
-        elif scenario == "change_code":
-            value = await OIDCService.exchange_code(
-                db, rp.client_id, None, old_grant, VERIFIER, CALLBACK
-            )
-        else:
-            value = await OIDCService.rotate_refresh_token(db, rp.client_id, None, old_grant)
-        granted.append(value)
+async def security_event(db, context: RaceScenario):
+    if context.scenario in {"reset_refresh", "block_refresh"}:
+        current_admin = await db.get(User, context.admin_id)
+        await AdminService.update_user(
+            db,
+            context.user_id,
+            current_admin,
+            **(
+                {"new_password": NEW_PASSWORD}
+                if context.scenario == "reset_refresh"
+                else {"is_active": False}
+            ),
+        )
+    else:
+        target = await db.get(User, context.user_id)
+        await AuthService.change_password(db, target, PASSWORD, NEW_PASSWORD)
 
-    async def event(db):
-        if scenario in {"reset_refresh", "block_refresh"}:
-            current_admin = await db.get(User, aid)
-            await AdminService.update_user(
-                db,
-                uid,
-                current_admin,
-                **(
-                    {"new_password": NEW_PASSWORD}
-                    if scenario == "reset_refresh"
-                    else {"is_active": False}
-                ),
-            )
-        else:
-            target = await db.get(User, uid)
-            await AuthService.change_password(db, target, PASSWORD, NEW_PASSWORD)
 
-    async def first():
-        async with async_sessionmaker(first_engine, expire_on_commit=False)() as db:
-            await (grant(db) if grant_first else event(db))
+class DatabaseLockRace:
+    def __init__(self, engine):
+        self.factory = async_sessionmaker(engine, expire_on_commit=False)
+        self.first_locked, self.release = asyncio.Event(), asyncio.Event()
+        self.label = "race-second-" + uuid.uuid4().hex
+        self.first_engine = create_async_engine(engine.url)
+        self.second_engine = create_async_engine(
+            engine.url, connect_args={"application_name": self.label}
+        )
+        paused = False
 
-    async def second():
-        async with async_sessionmaker(second_engine, expire_on_commit=False)() as db:
-            if grant_first:
-                await event(db)
-            else:
-                with pytest.raises((AuthenticationException, OAuthErrorException)):
-                    await grant(db)
-                await db.rollback()
+        async def pause_after_real_lock():
+            self.first_locked.set()
+            await self.release.wait()
 
-    one = asyncio.create_task(first())
-    two = None
-    try:
-        await asyncio.wait_for(first_locked.wait(), 5)
-        two = asyncio.create_task(second())
+        def after_cursor_execute(connection, cursor, statement, parameters, context, executemany):
+            nonlocal paused
+            if not paused and "FROM users" in statement and "FOR UPDATE" in statement:
+                paused = True
+                # Real SQL has executed; only scheduling waits while the row lock is held.
+                connection.connection.dbapi_connection.run_async(
+                    lambda raw: pause_after_real_lock()
+                )
+
+        self.after_cursor_execute = after_cursor_execute
+        sql_event.listen(
+            self.first_engine.sync_engine, "after_cursor_execute", after_cursor_execute
+        )
+
+    async def invoke(self, engine, operation):
+        async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+            await operation(db)
+
+    async def observe_lock_wait(self, two):
         deadline = time.monotonic() + 5
-        async with factory() as observer:
+        async with self.factory() as observer:
             while not await observer.scalar(
                 text(
                     "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name=:label AND wait_event_type='Lock')"
                 ),
-                {"label": label},
+                {"label": self.label},
             ):
                 # pg_stat snapshots are transaction-scoped; release each observation.
                 await observer.rollback()
                 assert not two.done(), "Competing real transaction must block on the account lock"
                 assert time.monotonic() < deadline, "PostgreSQL did not observe a lock wait"
                 await asyncio.sleep(0.02)
-        release.set()
-        await asyncio.wait_for(asyncio.gather(one, two), 15)
-    finally:
-        release.set()
-        for task in (one, two):
+
+    async def cleanup(self, tasks):
+        self.release.set()
+        for task in tasks:
             if task and not task.done():
                 task.cancel()
-        await asyncio.gather(*(task for task in (one, two) if task), return_exceptions=True)
-        sql_event.remove(first_engine.sync_engine, "after_cursor_execute", after_cursor_execute)
-        await first_engine.dispose()
-        await second_engine.dispose()
+        await asyncio.gather(*(task for task in tasks if task), return_exceptions=True)
+        sql_event.remove(
+            self.first_engine.sync_engine, "after_cursor_execute", self.after_cursor_execute
+        )
+        await self.first_engine.dispose()
+        await self.second_engine.dispose()
 
-    if scenario == "block_refresh":
+    async def run(self, first_operation, second_operation):
+        one = asyncio.create_task(self.invoke(self.first_engine, first_operation))
+        two = None
+        try:
+            await asyncio.wait_for(self.first_locked.wait(), 5)
+            two = asyncio.create_task(self.invoke(self.second_engine, second_operation))
+            await self.observe_lock_wait(two)
+            self.release.set()
+            await asyncio.wait_for(asyncio.gather(one, two), 15)
+        finally:
+            await self.cleanup((one, two))
+
+
+async def require_no_stale_grants(factory, context: RaceScenario, granted, grant_first):
+    if context.scenario == "block_refresh":
         # Unblocking does not restore grants from either side of the block race.
         async with factory() as db:
-            current_admin = await db.get(User, aid)
-            await AdminService.update_user(db, uid, current_admin, is_active=True)
+            current_admin = await db.get(User, context.admin_id)
+            await AdminService.update_user(db, context.user_id, current_admin, is_active=True)
     async with factory() as db:
-        expected = 2 if scenario == "block_refresh" else 1
-        assert await db.scalar(select(User.security_revision).where(User.id == uid)) == expected
+        expected = 2 if context.scenario == "block_refresh" else 1
         assert (
-            await db.scalar(select(func.count()).select_from(Session).where(Session.user_id == uid))
+            await db.scalar(select(User.security_revision).where(User.id == context.user_id))
+            == expected
+        )
+        assert (
+            await db.scalar(
+                select(func.count()).select_from(Session).where(Session.user_id == context.user_id)
+            )
             == 0
         )
         assert (
             await db.scalar(
                 select(func.count())
                 .select_from(AuthorizationCode)
-                .where(AuthorizationCode.user_id == uid)
+                .where(AuthorizationCode.user_id == context.user_id)
             )
             == 0
         )
         assert not await db.scalar(
-            select(RefreshToken).where(RefreshToken.user_id == uid, ~RefreshToken.is_revoked)
+            select(RefreshToken).where(
+                RefreshToken.user_id == context.user_id, ~RefreshToken.is_revoked
+            )
         )
         assert len(granted) == int(grant_first)
-        if granted and scenario != "revision_mfa":
+        if granted and context.scenario != "revision_mfa":
             with pytest.raises(OAuthErrorException):
                 await OIDCService.get_userinfo(db, granted[0].access_token)
             await db.rollback()
             with pytest.raises(OAuthErrorException):
                 await OIDCService.rotate_refresh_token(
-                    db, rp.client_id, None, granted[0].refresh_token
+                    db, context.client.client_id, None, granted[0].refresh_token
                 )
-        if scenario == "revision_mfa":
+        if context.scenario == "revision_mfa":
             with pytest.raises(AuthenticationException):
-                await AuthService.verify_mfa_step_token(old_grant, db, method="totp", settings=cfg)
+                await AuthService.verify_mfa_step_token(
+                    context.grant, db, method="totp", settings=context.settings
+                )
+
+
+@pytest.mark.parametrize(
+    "scenario", ["reset_refresh", "change_code", "block_refresh", "revision_mfa"]
+)
+@pytest.mark.parametrize("grant_first", [False, True])
+async def test_no_stale_grant_survives_security_event_in_either_order(
+    pg_session, pg_engine, scenario, grant_first
+):
+    context = await prepare_race(pg_session, scenario)
+    granted = []
+
+    async def grant(db):
+        granted.append(await issue_grant(db, context))
+
+    async def event(db):
+        await security_event(db, context)
+
+    async def rejected_grant(db):
+        with pytest.raises((AuthenticationException, OAuthErrorException)):
+            await grant(db)
+        await db.rollback()
+
+    race = DatabaseLockRace(pg_engine)
+    await race.run(grant if grant_first else event, event if grant_first else rejected_grant)
+    await require_no_stale_grants(race.factory, context, granted, grant_first)

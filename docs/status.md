@@ -546,3 +546,5 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-04T19:28:35.7718180+03:00 — PR5-CI-01: Actions run37215595679 PASS на c1a6f23; CodeScene failed/in_progress. ADR0018 и рефакторинг готовы к full regression; 75 focused PASS, full pending. Исходные audit snapshots неизменны.
 
 2026-10-04T19:35:09.7398701+03:00 — PR5-CI-01: quality local546tests/16subtests PASS, CI mypy61/frontend/Ruff/runtime lock/secret scan PASS. Перваягруппаготовакnormalpush; CodeScene и remote новогоSHA ещёpending.
+
+2026-10-04T19:54:47.5869966+03:00 — PR5-CI-01: вторичнаяqualityгруппа121+31+55 checks PASS, normalpushготов; CodeScene/exact-headBrowserиDocker ещёpending, in_progress.
