@@ -299,3 +299,11 @@ Backup скрипт удаляет только собственные файл�
 ## Файлы оформления
 
 Сборка frontend включает public/theme вместе с index/assets; доставляйте весь dist. Для запуска demo из checkout необходим каталог frontend/public/theme с theme.js, palette.css и demo.css; API разрешает только эти имена. Смена темы не требует миграции и не меняет auth flags. CSP script-src/style-src self достаточен; inline exceptions не нужны. При обновлении работающего frontend пересоберите и перезапустите его обычным способом: текущий контейнер сам исходные изменения не подхватывает.
+
+### Отправка через native Resend
+
+Доступны три транспорта: SMTP (default), Amazon SES и Resend. Выберите `EMAIL_PROVIDER=resend`, задайте `RESEND_API_KEY` в защищённом окружении процесса и `SMTP_FROM_EMAIL` на проверенном в Resend домене. Имя отправителя — `ALXPRGS`. `SMTP_HOST`, SMTP credentials и AWS credentials Resend не использует; прежние настройки обоих транспортов сохраняются. Единственная новая настройка — `RESEND_API_KEY=` в `.env.example`; реальный ключ не помещайте в Git, VITE-переменные, сообщения или diagnostics. Compose передаёт его backend runtime; после изменения окружения пересоздайте backend. Вывод Compose config/inspect может содержать секреты.
+
+Клиент обращается к native HTTPS API через уже установленный async HTTPX: проверка сертификатов, network timeout 5 секунд, без redirects, автоматического retry и fallback. При выбранном Resend пустой/некорректный ключ или sender отвергается при загрузке Settings. Отправляются исходные text и HTML общего шаблона, включая код, ссылку и Schema.org; опубликованный Resend API не имеет AMP/raw MIME поля, поэтому AMP доступен по прежним SES/SMTP путям. Provider ID означает принятие запроса, не доставку. Текущий проект не обрабатывает bounce/complaint/webhooks.
+
+Локальная разработка по умолчанию остаётся SMTP; обычные Resend tests работают с fake HTTP и синтетическими ключами, без внешних писем. Перед реальным использованием владелец проверяет домен/его DNS и права sending key в Resend, HTTPS-доступ к `api.resend.com`, а также оставляет open/click tracking выключенным для authentication писем. Реальная отправка и DNS не выполнялись в этой задаче. [Официальная настройка доменов](https://resend.com/docs/dashboard/domains/introduction), [ADR](adr/0020-resend-email-provider.md), [результаты проверок](acceptance-resend.md).

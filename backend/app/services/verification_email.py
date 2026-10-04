@@ -23,6 +23,7 @@ from app.config import Settings
 from app.core.rate_limit import get_client_ip
 from app.core.security import generate_random_token, hash_token
 from app.services.ses_email import SESEmailDeliveryError, send_ses_email
+from app.services.resend_email import send_resend_email
 
 CODE_TTL_SECONDS = 600
 MAX_CODE_ATTEMPTS = 5
@@ -255,6 +256,8 @@ async def _deliver_message(message: EmailMessage, settings: Settings) -> None:
             html_body="",
             raw_message=message.as_bytes(policy=SMTP),
         )
+    elif settings.EMAIL_PROVIDER == "resend":
+        await send_resend_email(message, settings)
     else:
         if not settings.SMTP_HOST or not settings.SMTP_PORT:
             raise SESEmailDeliveryError("smtp_unconfigured")

@@ -4,13 +4,15 @@ import base64
 import ipaddress
 import json
 import re
+from email.errors import HeaderParseError
+from email.headerregistry import Address
 from datetime import datetime
 from functools import lru_cache
 from typing import Any, Literal
 from urllib.parse import SplitResult, urlsplit
 
 from cryptography.fernet import Fernet
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -160,7 +162,8 @@ class Settings(BaseSettings):
     WEBAUTHN_ORIGIN: str = "https://auth.alxprgs.tech"
 
     # Почтовый транспорт.
-    EMAIL_PROVIDER: Literal["smtp", "ses"] = "smtp"
+    EMAIL_PROVIDER: Literal["smtp", "ses", "resend"] = "smtp"
+    RESEND_API_KEY: SecretStr = Field(default=SecretStr(""), repr=False, exclude=True)
     SES_REGION: str = "us-east-1"
     SES_FROM_EMAIL: str = "sso@alxprgs.tech"
     SES_FROM_NAME: str = "ALXPRGS"
@@ -218,10 +221,35 @@ class Settings(BaseSettings):
                 "Конфигурационная ошибка: FEATURE_RECOVERY_CODES_ENABLED не может быть включен "
                 "без включения FEATURE_TOTP_ENABLED."
             )
+        self.validate_resend_configuration()
         self.validate_key_configuration()
         if self.ENVIRONMENT == "production":
             self.validate_production_configuration()
         return self
+
+    def validate_resend_configuration(self) -> None:
+        if self.EMAIL_PROVIDER != "resend":
+            return
+        key = self.RESEND_API_KEY.get_secret_value()
+        if not key or not key.isascii() or any(ord(char) <= 32 or ord(char) == 127 for char in key):
+            raise ValueError("RESEND_API_KEY is required and must contain only visible ASCII")
+        sender = self.SMTP_FROM_EMAIL
+        if (
+            not sender.isascii()
+            or sender.count("@") != 1
+            or any(
+                char.isspace() or ord(char) < 32 or ord(char) == 127 or char in "<>,;"
+                for char in sender
+            )
+        ):
+            raise ValueError("Resend requires a valid ASCII SMTP_FROM_EMAIL")
+        local, domain = sender.split("@")
+        if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+            raise ValueError("Resend requires a valid ASCII SMTP_FROM_EMAIL")
+        try:
+            Address(addr_spec=sender)
+        except (ValueError, HeaderParseError):
+            raise ValueError("Resend requires a valid ASCII SMTP_FROM_EMAIL") from None
 
     def validate_key_configuration(self) -> None:
         from app.core.key_material import load_private_key, validate_key_id

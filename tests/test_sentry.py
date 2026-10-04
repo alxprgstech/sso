@@ -70,6 +70,57 @@ def test_envelope_header_and_attachments_are_independently_filtered(telemetry_ap
     assert "attachment" not in transport.envelopes[0]
 
 
+@pytest.mark.parametrize("status", [200, 403])
+@pytest.mark.asyncio
+async def test_resend_actual_envelope_and_http_headers_are_safe(telemetry_app, monkeypatch, status):
+    from email.message import EmailMessage
+
+    from app.services import resend_email, verification_email
+    from app.services.ses_email import SESEmailDeliveryError
+    from app.telemetry import capture_infrastructure_failure
+
+    key = "re_" + "synthetic-sentry-resend-key"
+    _, transport = telemetry_app
+    headers = []
+
+    def response(request):
+        headers.append(request.headers)
+        return httpx.Response(
+            status,
+            json={
+                "id": "49a3999c-0ce1-4ea6-ab68-afcd6dc2e794",
+                "message": key + " ".join(CANARIES),
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(response))
+    monkeypatch.setattr(resend_email.httpx, "AsyncClient", lambda **_: client)
+    cfg = Settings(_env_file=None, EMAIL_PROVIDER="resend", RESEND_API_KEY=key)
+    message = EmailMessage()
+    message["From"] = "ALXPRGS <sender@example.test>"
+    message["To"] = "canary@example.invalid"
+    message["Subject"] = CANARIES[0]
+    message.set_content(" ".join(CANARIES))
+    with sentry_sdk.start_transaction(name="/api/unexpected", op="http.server", sampled=True):
+        try:
+            await verification_email.deliver_message(message, cfg)
+        except SESEmailDeliveryError as error:
+            capture_infrastructure_failure(error, "email_delivery")
+    assert client.is_closed
+    assert len(headers) == 1
+    assert "sentry-trace" not in headers[0] and "baggage" not in headers[0]
+    serialized = "".join(transport.envelopes)
+    assert all(secret not in serialized for secret in [key, "canary@example.invalid", *CANARIES])
+    event = json.loads(transport.envelopes[-1].splitlines()[2])
+    span = next(span for span in event["spans"] if span["op"] == "email.send")
+    assert span["data"] == {
+        "provider": "resend",
+        "operation": "send_email",
+        "template": "email_verification",
+        "result": "success" if status == 200 else "failure",
+    }
+
+
 @pytest.fixture
 def telemetry_app():
     transport = MemoryTransport()
