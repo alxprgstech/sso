@@ -3,8 +3,6 @@
 import asyncio
 import copy
 from datetime import datetime, timedelta, timezone
-from email import message_from_string, policy
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from app.config import get_settings
@@ -18,6 +16,7 @@ from sqlalchemy import select
 
 from tests.helpers.privacy import record_test_consent
 from tests.helpers.reauthentication import authorized_request
+from tests.helpers.smtp_message import verification_token
 from tests.integration.test_email_verification_pg import MockSMTPServer
 
 pytestmark = [pytest.mark.postgres, pytest.mark.concurrency, pytest.mark.asyncio]
@@ -55,10 +54,7 @@ async def test_user_and_admin_email_changes_bind_verification_to_exact_address(
         await pg_session.refresh(user)
         assert user.email == "verified-old@example.test" and user.email_verified
         # Read the actual SMTP delivery rather than a testing-only in-memory sink.
-        delivered = message_from_string(smtp.received_messages[0], policy=policy.default)
-        plain = delivered.get_body(preferencelist=("plain",)).get_content()
-        link = next(word for word in plain.split() if "/verify-email?" in word)
-        pending = parse_qs(urlsplit(link).query)["token"][0]
+        pending = verification_token(smtp.received_messages[0])
         assert (
             await pg_client.post("/api/v1/mfa/email/confirm", json={"token": pending})
         ).status_code == 200

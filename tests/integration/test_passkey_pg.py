@@ -138,8 +138,7 @@ async def passkey_login(db, client):
     if cfg.REQUIRE_VERIFIED_EMAIL:
         # The enabled process profile must actually verify the bootstrap email.
         # Never switch the policy off merely to obtain a passkey test session.
-        from app.services.mfa_service import sent_emails_sink
-
+        from tests.helpers.smtp_message import verification_token
         from tests.integration.test_email_verification_pg import MockSMTPServer
 
         assert cfg.ENVIRONMENT != "production"
@@ -152,13 +151,13 @@ async def passkey_login(db, client):
         cfg.SMTP_HOST, cfg.SMTP_PORT, cfg.SMTP_USE_TLS = "127.0.0.1", smtp.port, False
         cfg.SMTP_USER, cfg.SMTP_PASSWORD, cfg.EMAIL_PROVIDER = "", "", "smtp"
         try:
-            sent_emails_sink.clear()
             requested = await client.post(
                 "/api/v1/mfa/email/request", json={"email": "real-passkey@example.test"}
             )
             assert requested.status_code == 200 and len(smtp.received_messages) == 1
             confirmed = await client.post(
-                "/api/v1/mfa/email/confirm", json={"token": sent_emails_sink[-1]["token"]}
+                "/api/v1/mfa/email/confirm",
+                json={"token": verification_token(smtp.received_messages[0])},
             )
             assert confirmed.status_code == 200
         finally:

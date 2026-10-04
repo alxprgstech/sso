@@ -10,7 +10,7 @@ head `3a2aac35c5bc3ea6813c4a2fa94ade27ece068f6`.
 | Backend | SMTP-тест зависел от testing-only sink, процессные лимиты накапливались между тестами, редкий session key не проходил production policy, lifecycle не имел frontend dependencies | Токен из реально полученного SMTP-письма, изоляция на границе теста, rejection sampling прежних 512 случайных бит, обязательная сборка frontend в backend job |
 | Windows | Три PostgreSQL-теста выбраны в job без PostgreSQL | Маркерное разделение платформенных unit-проверок; реальная PG-защита остаётся в обязательном полном backend job |
 | Enabled E2E | TOTP confirm получил 429 после предыдущих независимых Passkey-сценариев | Явный beforeEach seed с очисткой rate windows только на базе с проверенным маркером; лимиты внутри сценария сохранены |
-| Containers | Trivy нашёл HIGH/CRITICAL в старой Debian 12 базе и инструментах установки | Официальный Python 3.13.16 / Debian 13 по проверенному digest; удаление ненужных curl/PG client/pip/setuptools/wheel из runtime |
+| Containers | Trivy нашёл HIGH/CRITICAL в старой Debian 12 базе и инструментах установки; Debian13 оставил45HIGH | Официальный Python 3.13.16 / Alpine3.24 по проверенному digest; удаление ненужных curl/PG client/pip/setuptools/wheel из runtime, проверка musl-совместимости обязательным Compose job |
 | CodeScene | Сложные и длинные методы, чрезмерные параметры, смешение обязанностей | Рефакторинг остаётся in_progress; подавление замечаний и изменение gates не выполняются |
 
 Обоснование: [ADR 0017](../adr/0017-ci-runtime-and-test-isolation.md).
@@ -40,3 +40,22 @@ basetemp устранил проблему каталога. Защита БД �
 
 SES skips в обычном PR разрешены CI-03; доставки они не доказывают.
 Слияние, production, выпуск версии и настоящая рассылка не выполняются.
+
+## Повторная диагностика 2026-10-04T18:37:09.000+03:00
+
+Head `820240eb49a83db02fd2c47f266ceb34f006ba06`,
+[run37212573835](https://github.com/alxprgstech/sso/actions/runs/37212573835):
+frontend, Windows, browser E2E, SDK, source security, version и CD — PASS.
+Backend default-off — PASS; enabled step выявил ещё3 testing-only SMTP sink
+в Passkey helper (17passed/3failed). Исправлено получение токена из доставленного
+письма; точный enabled набор при development ENVIRONMENT и трёх включённых MFA
+прошёл20tests62.78s на настоящем PostgreSQL. Политика verified email сохранена.
+Trivy на Debian13:45HIGH/0CRITICAL, неPASS; Alpine candidate ещё не проверен.
+CodeScene: collection hook теперь10.00, остальные23новых файла и6hotspots
+остаются failed до дальнейшего рефакторинга.
+
+Локальный enabled Nginx campaign завершился до браузерных тестов: backend startup
+превысил установленный15s readiness deadline. НеPASS, timeout не увеличивался;
+owned Nginx/SMTP остановлены. Реальный GitHub browser job на этом head — PASS.
+JWT profile decomposition дополнительно проверен96tests с реальными подписями,
+35.84s; новые crypto/UI изменения пока отделены от runtime follow-up commit.
