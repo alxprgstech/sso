@@ -86,7 +86,7 @@
 | `FEATURE_TOTP_ENABLED` | `false` | Подключение с подтверждением первого кода; второй фактор; удаление после повторной аутентификации; защита от повторного использования временного шага. Секрет шифруется отдельным управляемым ключом. |
 | `FEATURE_PASSKEY_ENABLED` | `false` | Регистрация, вход и удаление нескольких WebAuthn credentials; короткоживущие одноразовые challenges, проверка origin/RP ID и user verification. Парольный вход продолжает работать. |
 | `FEATURE_RECOVERY_CODES_ENABLED` | `false` | Выпуск и замена набора резервных кодов, показ только при выпуске, хранение хешей, атомарное одноразовое погашение. Recovery code заменяет второй фактор после пароля, но не является самостоятельным первым фактором. |
-| `FEATURE_EMAIL_VERIFICATION_ENABLED` | `true` (совместимый параметр, `false` отвергается) | Обязательный шестизначный код и ссылка на 10 минут для самостоятельной регистрации; существующее подтверждение адреса также доступно. SMTP или SES выбирается `EMAIL_PROVIDER`. |
+| `FEATURE_EMAIL_VERIFICATION_ENABLED` | `true` (совместимый параметр, `false` отвергается) | Обязательный шестизначный код и ссылка на 10 минут для самостоятельной регистрации; существующее подтверждение адреса также доступно. SMTP, SES или native Resend выбирается `EMAIL_PROVIDER`; SMTP остаётся default. |
 
 Обязательные правила:
 
@@ -262,3 +262,7 @@
 | PRIV-09 | Проверить согласия/direct API/OIDC, cookies/отзыв/storage, PostgreSQL границы 14/7 дней и гонки, CSRF/MFA/permissions/admin/restore; browser default-off/enabled с реальным виртуальным WebAuthn, Python/frontend/migrations/build/scans/docs. Непроверенное отражать отдельно. |
 
 Пауза интерфейса не ограничивает законные обращения через контакт: [статья 21 №152-ФЗ](https://mintrud.gov.ru/docs/laws/130). Данные RP управляются отдельно; автономный JWT действует до TTL (default до пяти минут). Подробный контракт: [docs/privacy.md](docs/privacy.md), ADR-0011. Это дополнение не закрывает общие и внешние критерии раздела 8.
+
+## Уточнение EMAIL-RESEND-01 от 05.10.2026
+
+По прямому поручению владельца дополнительно поддерживается native Resend API. EMAIL_PROVIDER=smtp(default)/ses/resend; RESEND_API_KEY из существующего Settings, SMTP_FROM_EMAIL и имя ALXPRGS по выбору владельца. SES/SMTP настройки, реализации, тесты и auth semantics сохраняются. Только Resend выбранная конфигурация требует key/sender validation; отсутствие AMP в published API документируется. Новых auth flags, fallback, retries, webhooks и DB migrations нет. Приёмка и проверки: [EMAIL-RESEND-01](docs/acceptance-resend.md).

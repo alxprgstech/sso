@@ -137,7 +137,7 @@ def safe_span(span: dict[str, Any]) -> dict[str, Any]:
     result["data"] = {
         key: data[key]
         for key, allowed in {
-            "provider": {"ses", "smtp"},
+            "provider": {"ses", "smtp", "resend"},
             "operation": _OPERATIONS,
             "template": {"email_verification"},
             "result": {"success", "failure"},

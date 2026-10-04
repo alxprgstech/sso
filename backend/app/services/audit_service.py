@@ -111,6 +111,7 @@ def scrub_detail(value: Any, depth: int = 0) -> Any:
         labels = {
             "smtp",
             "ses",
+            "resend",
             "open",
             "closed",
             "registration",
@@ -128,6 +129,7 @@ def scrub_detail(value: Any, depth: int = 0) -> Any:
             "access_denied",
             "identity_not_verified",
             "quota_exceeded",
+            "failed",
             "openid",
             "openid profile",
             "openid email",

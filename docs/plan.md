@@ -1092,3 +1092,16 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T23:31:35.029980+03:00 — PR5-CI-01 done: начало2026-10-04T15:04:59.289865+03:00; завершение2026-10-04T23:31:35.029980+03:00. На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена. Критерийвыполнен,2исключенияпрямоодобрены,архив/защита/обязательныеchecksсохранены. Следующийшаг: finaldocs-onlyheadverification иreview/одобрениевладельцем. ОбщийGOAL09/production/releaseне закрыты.
+
+## EMAIL-RESEND-01 — третий native email provider
+
+P1; done; зависимости: существующий email delivery; начало 2026-10-05T00:02:34.6829497+03:00, завершение 2026-10-05T00:29:57.4737202+03:00, Codex. Добавить Resend через Settings/HTTPX и прежний диспетчер; SES/SMTP без изменений. Приёмка: offline adapter/config/privacy tests, real PostgreSQL auth scenarios, full/enabled regression, Ruff/mypy/locks/scans/build/docs. Реальные письма, публикация и deployment исключены.
+
+Результат: [приёмка](acceptance-resend.md), final full624 PASS +16subtests, external5deselected; enabled20 PASS, статические проверки/audit/build PASS. Runtime Docker/Compose не проверен: Docker отсутствует; YAML/env/startup проверены статически и тестами. Реальная доставка и общая GOAL-09 не заявлены. Продолжение: локальная ветка new/resend-email-provider готова к review; владелец отдельно задаёт key/проверяет domain для активации, PR/publication не выполнялись.
+
+### EMAIL-RESEND-01 — этап commit/CI
+2026-10-05T00:33:39.6356927+03:00, Codex; in_progress. Прямое поручение владельца: commit/push, ожидание existing CI, исправление failures. Зависимость: завершённая local приёмка выше. Критерий: рабочие изменения сохранены commit, draft PR и actual CI для его ревизии проверены; no merge/deploy.
+
+2026-10-05T00:40:06.4698225+03:00 — EMAIL-RESEND-01 commit/CI: implementation commit/push/draftPR6 и CI57 выполнены,9requiredPASS/2externalSES skipped. Actual container/PG/browser regressions закрыты. Финальная docs фиксацияactualresults и еёCI в процессе; failures отсутствуют.
+
+2026-10-05T00:41:16.6519935+03:00 — EMAIL-RESEND-01 commit/CI этап done по verified implementationff13c5c и CI57: commit/push/PR и9requiredjobsPASS. Docs checkpoint55054c9 отправлен; завершающий учёт не меняет приложение. Повтор CI final docs revision выполняется отдельно, его результат будет сообщён по фактическому run/SHA.

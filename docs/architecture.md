@@ -155,3 +155,7 @@ sequenceDiagram
 ## Sentry (ADR-0010)
 
 FastAPI и React отправляют application errors в отдельные проекты EU; shared immutable VERSION/SHA release. Runtime browser config не обращается к PostgreSQL и не содержит backend DSN/credentials/user data. Transaction/static mode позволяет очищать complete traces; outgoing backend propagation выключена, browser ограничен same-origin API/OAuth. Security audit остаётся PostgreSQL, stdout использует безопасный JSON formatter. Replay — отдельный staging-only chunk/worker; все чувствительные views blocked. Private maps отделены от deploy output, token доступен единственному trusted release step. Подробности и ограничения: [observability.md](observability.md).
+
+## Третий email transport — Resend
+
+По EMAIL-RESEND-01 существующий verification_email dispatcher поддерживает native Resend через отдельный async HTTPX adapter. Settings/ошибка доставки/API сценарии прежние; selector smtp(default)/ses/resend. Resend использует RESEND_API_KEY и SMTP_FROM_EMAIL/ALXPRGS, передаёт text/HTML, без AMP, retry/fallback/queue/webhooks. SES raw MIME, boto3 credentials/retry и SMTP MIME/verified STARTTLS сохранены. finite provider allowlists в аудите и Sentry дополнены resend без снятия scrubbing. См. [ADR 0020](adr/0020-resend-email-provider.md), [приёмка](acceptance-resend.md).

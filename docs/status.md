@@ -1,3 +1,11 @@
+# EMAIL-RESEND-01 — implementation и CI done
+
+2026-10-05T00:40:06.4698225+03:00, Codex. Commitff13c5c push, draft PR6 создан. CI57 all9requiredjobsPASS, externalSES2skipped; actual Compose и браузерные default/enabled проверки прошли. [Подробности](acceptance-resend.md), [CI](https://github.com/alxprgstech/sso/actions/runs/37236671323), [PR](https://github.com/alxprgstech/sso/pull/6). Результаты реализации и CI сохранены docs-only checkpoint; повтор CI финальной документальной ревизии проверяется через Actions API и сообщается отдельно, без приписывания этой записи результатов будущего SHA. No merge/deploy; CodeScene success не заявляется.
+
+# EMAIL-RESEND-01 — done
+
+2026-10-05T00:29:57.4737202+03:00, Codex. Начало2026-10-05T00:02:34.6829497+03:00. Resend реализован через existing Settings/dispatcher/HTTPX; SES/SMTP и auth semantics сохранены. Final guarded PostgreSQL full624PASS/16subtests/5external deselected, enabled20PASS, Ruff/mypy/locks/pip/scans/audit/wheel+sdist/docs PASS. [Команды и матрица](acceptance-resend.md). Docker отсутствует: runtime Compose не проверен; реальные письма не отправлялись. Ветка new/resend-email-provider, изменения локальные, review/commit/PR не поручены. Для активации владелец задаёт RESEND_API_KEY и проверенный SMTP_FROM_EMAIL/domain. Общая GOAL-09 от этой задачи не закрывается; исторический статус ниже сохраняется.
+
 # Актуальный статус — CI и CodeScene PR5 успешны
 
 Обновление 2026-10-04T23:31:35.029980+03:00, Codex. PR5-CI-01 done; начало2026-10-04T15:04:59.289865+03:00, завершение2026-10-04T23:31:35.029980+03:00. На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена.

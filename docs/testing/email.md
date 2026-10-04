@@ -93,3 +93,7 @@ Backend child получает AWS chain, но не TESTMAIL_*; frontend preview
 | Cleanup failed | проверить собственный pidfile и владельца порта; не убивать чужой listener |
 
 Delete API отсутствует, письма удаляются автоматически по retention Essential (1–3 дня); cleanup testmail не нужен. Paid API: избегайте устойчивых >5 req/s на key и >10 req/s на IP; текущий последовательный polling остаётся значительно ниже. Параллельные runs имеют разные mailbox; xdist потребует отдельную DB/backend на worker. Получение письма не доказывает отображение Gmail AMP/OTP cards. [Retention и лимиты](https://testmail.app/docs/), [тариф](https://testmail.app/pricing/).
+
+## Offline Resend regression
+
+Третий provider проверяется tests/test_resend_email.py, дополнительными serialized-envelope cases в tests/test_sentry.py и tests/integration/test_resend_email_pg.py. Последний требует прежнюю guarded PostgreSQL, но provider HTTP использует MockTransport с синтетическим key: внешних писем нет. Все тесты автоматически входят в существующий обычный pytest tests/; CI/release SES/testmail сценарии не заменяются Resend и их credential gates сохраняются. Не задавайте настоящий RESEND_API_KEY для тестов. Точные команды/результаты: [приёмка Resend](../acceptance-resend.md).

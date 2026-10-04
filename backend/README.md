@@ -8,8 +8,8 @@ FastAPI бэкенд и OIDC-провайдер экосистемы ALXPRGS SSO
 - Самостоятельная регистрация пользователей (режимы open / closed)
 - Интерактивный CLI-мастер первичной инициализации первого администратора (`bootstrap_admin`)
 - Защита от атак повторного использования (Replay Protection) и гонок на транзакциях PostgreSQL
-- Четыре отложенных механизма (TOTP, WebAuthn Passkey, Recovery Codes, Email verification) с полным отключением по умолчанию
-- Выбираемый транспорт писем подтверждения: SMTP по умолчанию или Amazon SES API v2 через стандартную цепочку AWS credentials
+- Три отложенных механизма (TOTP, WebAuthn Passkey, Recovery Codes) выключены по умолчанию; подтверждение email обязательно для самостоятельной регистрации
+- Выбираемый транспорт писем подтверждения: SMTP по умолчанию, Amazon SES API v2 через стандартную цепочку AWS credentials или native Resend API (`EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, отправитель `SMTP_FROM_EMAIL` / `ALXPRGS`)
 
 ## Запуск
 ```bash
