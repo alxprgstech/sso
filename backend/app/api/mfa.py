@@ -1,24 +1,31 @@
 from __future__ import annotations
 
 from typing import Any
+
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import (
     get_cookie_name,
+    get_current_session,
     get_current_user,
     get_optional_current_user,
+    limit_security_endpoint,
     require_feature,
+    require_recent_reauthentication,
     verify_csrf,
 )
-
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException
+from app.core.rate_limit import get_client_ip
 from app.database import get_db
+from app.models.mfa import WebAuthnCredential
+from app.models.session import Session
 from app.models.user import User
 from app.schemas.auth import UserProfileResponse
 from app.schemas.mfa import (
-    EmailVerificationConfirmRequest,
     EmailVerificationCodeConfirmRequest,
+    EmailVerificationConfirmRequest,
     EmailVerificationRequest,
     PasskeyAuthenticationVerifyRequest,
     PasskeyRegistrationVerifyRequest,
@@ -27,7 +34,6 @@ from app.schemas.mfa import (
     TOTPSetupResponse,
     TOTPVerifyRequest,
 )
-from app.models.mfa import WebAuthnCredential
 from app.services.auth_service import AuthService
 from app.services.mfa_service import (
     EmailVerificationService,
@@ -38,7 +44,11 @@ from app.services.mfa_service import (
 )
 from app.services.verification_email import request_details
 
-router = APIRouter(prefix="/api/v1/mfa", tags=["Multi-Factor Authentication"])
+router = APIRouter(
+    prefix="/api/v1/mfa",
+    tags=["Multi-Factor Authentication"],
+    dependencies=[Depends(limit_security_endpoint), Depends(require_recent_reauthentication)],
+)
 
 
 # ==============================================================================
@@ -54,8 +64,9 @@ totp_router = APIRouter(
 async def setup_totp(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> TOTPSetupResponse:
-    secret, otpauth_url = await TOTPService.setup_totp(db, user)
+    secret, otpauth_url = await TOTPService.setup_totp(db, user, session.id)
     return TOTPSetupResponse(secret=secret, otpauth_url=otpauth_url)
 
 
@@ -64,8 +75,9 @@ async def confirm_totp(
     payload: TOTPVerifyRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
-    success = await TOTPService.confirm_totp(db, user, payload.code)
+    success = await TOTPService.confirm_totp(db, user, payload.code, session.id)
     if not success:
         raise AuthenticationException("Неверный одноразовый код TOTP")
     return {"status": "ok", "message": "Фактор TOTP успешно подтверждён и активирован"}
@@ -83,16 +95,24 @@ async def verify_totp_login(
     if not payload.mfa_token:
         raise AuthenticationException("Параметр mfa_token обязателен для завершения входа")
 
-    user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
-    valid = await TOTPService.verify_totp(db, user, payload.code)
+    user = await AuthService.verify_mfa_step_token(
+        payload.mfa_token, db, method="totp", settings=settings
+    )
+    valid = await TOTPService.verify_totp(db, user, payload.code, commit=False)
     if not valid:
         raise AuthenticationException("Неверный одноразовый код TOTP")
 
     # Выпуск сессии после успешного прохождения второго фактора
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
-        db=db, user_id=user.id, ip_address=ip, user_agent=ua, settings=settings
+        db=db,
+        user_id=user.id,
+        ip_address=ip,
+        user_agent=ua,
+        settings=settings,
+        expected_revision=user.security_revision or 0,
+        mfa_token=payload.mfa_token,
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -121,6 +141,7 @@ async def verify_totp_login(
             has_totp=True,
             has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
             created_at=user.created_at,
+            session_purpose=session.purpose,
         ),
     }
 
@@ -129,8 +150,9 @@ async def verify_totp_login(
 async def delete_totp(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
-    await TOTPService.remove_totp(db, user)
+    await TOTPService.remove_totp(db, user, session.id)
     return {"status": "ok", "message": "Фактор TOTP и связанные резервные коды удалены"}
 
 
@@ -149,8 +171,9 @@ recovery_router = APIRouter(
 async def generate_recovery_codes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> RecoveryCodesResponse:
-    codes = await RecoveryCodesService.generate_codes(db, user)
+    codes = await RecoveryCodesService.generate_codes(db, user, session.id)
     return RecoveryCodesResponse(recovery_codes=codes)
 
 
@@ -166,15 +189,25 @@ async def verify_recovery_code_login(
     if not payload.mfa_token:
         raise AuthenticationException("Параметр mfa_token обязателен для завершения входа")
 
-    user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
-    consumed = await RecoveryCodesService.consume_code(db, user, payload.recovery_code)
+    user = await AuthService.verify_mfa_step_token(
+        payload.mfa_token, db, method="recovery_code", settings=settings
+    )
+    consumed = await RecoveryCodesService.consume_code(
+        db, user, payload.recovery_code, commit=False
+    )
     if not consumed:
         raise AuthenticationException("Недействительный или ранее использованный резервный код")
 
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
-        db=db, user_id=user.id, ip_address=ip, user_agent=ua, settings=settings
+        db=db,
+        user_id=user.id,
+        ip_address=ip,
+        user_agent=ua,
+        settings=settings,
+        expected_revision=user.security_revision or 0,
+        mfa_token=payload.mfa_token,
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -210,9 +243,10 @@ async def passkey_register_options(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, Any]:
     return await WebAuthnService.get_registration_options(
-        db, user, rp_id=settings.WEBAUTHN_RP_ID, settings=settings
+        db, user, rp_id=settings.WEBAUTHN_RP_ID, settings=settings, session_id=session.id
     )
 
 
@@ -222,6 +256,7 @@ async def passkey_register_verify(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
     await WebAuthnService.verify_registration(
         db,
@@ -231,6 +266,7 @@ async def passkey_register_verify(
         rp_id=settings.WEBAUTHN_RP_ID,
         origin=settings.WEBAUTHN_ORIGIN,
         settings=settings,
+        session_id=session.id,
     )
     return {"status": "ok", "message": "Passkey успешно зарегистрирован"}
 
@@ -256,7 +292,9 @@ async def passkey_auth_verify(
     from sqlalchemy import select
 
     if payload.mfa_token:
-        user = await AuthService.verify_mfa_step_token(payload.mfa_token, db)
+        user = await AuthService.verify_mfa_step_token(
+            payload.mfa_token, db, method="passkey", settings=settings
+        )
     else:
         # Discoverable passkey login (без пароля)
         cred_dict = payload.credential
@@ -289,12 +327,19 @@ async def passkey_auth_verify(
         rp_id=settings.WEBAUTHN_RP_ID,
         origin=settings.WEBAUTHN_ORIGIN,
         settings=settings,
+        commit=False,
     )
 
-    ip = request.client.host if request.client else None
+    ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
-        db=db, user_id=user.id, ip_address=ip, user_agent=ua, settings=settings
+        db=db,
+        user_id=user.id,
+        ip_address=ip,
+        user_agent=ua,
+        settings=settings,
+        expected_revision=user.security_revision or 0,
+        mfa_token=payload.mfa_token,
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -333,10 +378,11 @@ async def delete_passkey(
     credential_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    session: Session = Depends(get_current_session),
 ) -> dict[str, str]:
     from fastapi import HTTPException
 
-    deleted = await WebAuthnService.delete_passkey(db, user, credential_id)
+    deleted = await WebAuthnService.delete_passkey(db, user, credential_id, session.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Passkey не найден")
     return {"status": "ok"}
@@ -365,6 +411,7 @@ async def request_email_verification(
     """
     from fastapi import HTTPException, status
     from sqlalchemy import func, select
+
     from app.core.rate_limit import check_email_request_rate_limit, get_client_ip
 
     ip = get_client_ip(request)
@@ -382,6 +429,11 @@ async def request_email_verification(
             await verify_csrf(request, session, settings)
 
         target_email = (payload.email or user.email).strip().lower()
+        if target_email != user.email:
+            from app.services.reauthentication_service import consume
+
+            session = await get_current_session(request, db, settings)
+            await consume(db, user, session, request)
         await EmailVerificationService.send_verification(
             db, user, target_email, settings, request_details(request, settings)
         )

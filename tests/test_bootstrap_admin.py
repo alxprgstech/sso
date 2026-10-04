@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -16,7 +17,7 @@ from app.models.user import PasswordCredential, Role, User, UserRole
 @pytest.mark.asyncio
 async def test_bootstrap_fresh_success():
     """SETUP-03..SETUP-05, SETUP-07, SETUP-10: Первичный запуск на чистой БД."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
 
     # Сначала проверяем SystemConfiguration
     config = SystemConfiguration(
@@ -99,7 +100,7 @@ async def test_bootstrap_fresh_success():
 @pytest.mark.asyncio
 async def test_bootstrap_idempotent_when_already_completed():
     """SETUP-05, SETUP-06: Повторный запуск при завершённом bootstrap безопасен и не меняет систему."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
 
     config = SystemConfiguration(
         id=1,
@@ -133,7 +134,7 @@ async def test_bootstrap_idempotent_when_already_completed():
 @pytest.mark.asyncio
 async def test_bootstrap_refuses_to_elevate_existing_user():
     """SETUP-06: Отказ в автоматическом повышении прав существующего обычного пользователя."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
 
     config = SystemConfiguration(
         id=1,
@@ -179,7 +180,7 @@ async def test_bootstrap_refuses_to_elevate_existing_user():
 @pytest.mark.asyncio
 async def test_bootstrap_rejects_short_password():
     """SETUP-03: Пароль менее 8 символов отклоняется."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
 
     config = SystemConfiguration(
         id=1,
@@ -216,7 +217,7 @@ async def test_bootstrap_rejects_short_password():
 @pytest.mark.asyncio
 async def test_bootstrap_non_interactive_without_password_fails():
     """SETUP-09: В неинтерактивном режиме без ADMIN_INITIAL_PASSWORD возвращается понятная ошибка и exit code 1."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
     config = SystemConfiguration(id=1, bootstrap_completed=False)
     res_config = MagicMock()
     res_config.scalar_one_or_none.return_value = config
@@ -232,7 +233,7 @@ async def test_bootstrap_non_interactive_without_password_fails():
 @pytest.mark.asyncio
 async def test_bootstrap_open_mode_selection():
     """SETUP-03: Выбор открытого режима регистрации при первичной настройке."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_session.add = MagicMock()
 
     config = SystemConfiguration(id=1, bootstrap_completed=False, registration_mode="closed")
@@ -276,7 +277,7 @@ async def test_bootstrap_open_mode_selection():
 @pytest.mark.asyncio
 async def test_bootstrap_non_interactive_with_env_vars_success():
     """SETUP-03, SETUP-09: В неинтерактивном режиме с корректными env-переменными инициализация успешна."""
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_session.add = MagicMock()
 
     config = SystemConfiguration(id=1, bootstrap_completed=False, registration_mode="closed")

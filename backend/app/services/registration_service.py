@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException, status
-from authlib.jose import JsonWebToken
 import httpx
+import jwt
+from fastapi import HTTPException, status
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.legal import validate_versions
 from app.config import Settings
-from app.core.rbac import ROLE_USER
 from app.core.rate_limit import check_email_request_rate_limit, check_registration_rate_limit
-from app.core.security import hash_password
+from app.core.rbac import ROLE_USER
+from app.core.security import async_hash_password
+from app.legal import validate_versions
 from app.models.audit import AuditEvent
 from app.models.registration import PendingRegistration
 from app.models.user import PasswordCredential, Role, User, UserRole
@@ -52,28 +51,52 @@ async def verify_gmail_bearer(header: str, settings: Settings) -> None:
     token = header[7:]
 
     try:
+        unverified = jwt.get_unverified_header(token)
+        kid = unverified.get("kid")
+        from app.core.key_material import validate_key_id
+
+        if unverified.get("alg") != "RS256" or not isinstance(kid, str):
+            raise ValueError("Invalid Google key header")
+        validate_key_id(kid)
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.get("https://www.googleapis.com/oauth2/v3/certs")
             response.raise_for_status()
             jwks = response.json()
-        verifier = JsonWebToken(["RS256"])
-        claims = verifier.decode(
+        if len(response.content) > 65536 or not isinstance(jwks, dict):
+            raise ValueError("Invalid Google JWKS")
+        keys = jwks.get("keys")
+        if not isinstance(keys, list) or not 1 <= len(keys) <= 16:
+            raise ValueError("Invalid Google JWKS")
+        matches = [key for key in keys if isinstance(key, dict) and key.get("kid") == kid]
+        if len(matches) != 1:
+            raise ValueError("Unknown or duplicate Google key")
+        key = matches[0]
+        if (
+            key.get("kty") != "RSA"
+            or key.get("use", "sig") != "sig"
+            or key.get("alg", "RS256") != "RS256"
+        ):
+            raise ValueError("Invalid Google signing key")
+        public = jwt.PyJWK.from_dict(key, algorithm="RS256").key
+        if public.key_size < 2048:
+            raise ValueError("Invalid Google key size")
+        claims = jwt.decode(
             token,
-            jwks,
-            claims_option={
-                "iss": {
-                    "essential": True,
-                    "values": ["accounts.google.com", "https://accounts.google.com"],
-                },
-                "aud": {"essential": True, "value": "https://alxprgs.tech"},
-                "azp": {"essential": True, "value": "gmail@system.gserviceaccount.com"},
-                "exp": {"essential": True},
-                "iat": {"essential": True},
-            },
+            public,
+            algorithms=["RS256"],
+            issuer=["accounts.google.com", "https://accounts.google.com"],
+            audience="https://alxprgs.tech",
+            options={"require": ["iss", "aud", "azp", "exp", "iat"]},
         )
-        claims.validate()
-    except Exception as error:
-        raise HTTPException(status_code=401, detail={"error": "gmail_auth_invalid"}) from error
+        if (
+            claims["azp"] != "gmail@system.gserviceaccount.com"
+            or type(claims["exp"]) is not int
+            or type(claims["iat"]) is not int
+            or claims["exp"] <= claims["iat"]
+        ):
+            raise ValueError("Invalid Google claims")
+    except Exception:
+        raise HTTPException(status_code=401, detail={"error": "gmail_auth_invalid"}) from None
 
 
 class RegistrationService:
@@ -126,7 +149,7 @@ class RegistrationService:
         now = datetime.now(timezone.utc)
         code = new_code()
         link = new_link()
-        password_digest = await asyncio.to_thread(hash_password, password)
+        password_digest = await async_hash_password(password)
         # The transaction-scoped lock serializes first requests for one email across workers.
         await db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:email))"), {"email": clean_email}

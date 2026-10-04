@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -11,7 +12,7 @@ class TOTPSetupResponse(BaseModel):
 
 class TOTPVerifyRequest(BaseModel):
     code: str = Field(..., pattern=r"^\d{6}$")
-    mfa_token: str | None = None  # Передаётся, если подтверждение происходит на шаге входа
+    mfa_token: str | None = Field(default=None, max_length=16384)
 
 
 class PasskeyRegistrationOptionsResponse(BaseModel):
@@ -20,7 +21,7 @@ class PasskeyRegistrationOptionsResponse(BaseModel):
 
 class PasskeyRegistrationVerifyRequest(BaseModel):
     credential: dict[str, Any]
-    name: str = "Passkey"
+    name: str = Field(default="Passkey", min_length=1, max_length=255)
 
 
 class PasskeyAuthenticationOptionsResponse(BaseModel):
@@ -29,7 +30,7 @@ class PasskeyAuthenticationOptionsResponse(BaseModel):
 
 class PasskeyAuthenticationVerifyRequest(BaseModel):
     credential: dict[str, Any]
-    mfa_token: str | None = None
+    mfa_token: str | None = Field(default=None, max_length=16384)
 
 
 class RecoveryCodesResponse(BaseModel):
@@ -37,8 +38,8 @@ class RecoveryCodesResponse(BaseModel):
 
 
 class RecoveryCodeVerifyRequest(BaseModel):
-    recovery_code: str = Field(..., min_length=8, max_length=32)
-    mfa_token: str | None = None
+    recovery_code: str = Field(..., min_length=8, max_length=128, pattern=r"^[A-Za-z0-9\- ]+$")
+    mfa_token: str | None = Field(default=None, max_length=16384)
 
 
 class EmailVerificationRequest(BaseModel):

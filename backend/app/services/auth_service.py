@@ -2,25 +2,35 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import generate_csrf_token
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException
+from app.core.privacy import short_user_agent
 from app.core.security import (
+    async_hash_password,
+    async_rehash_password,
+    async_verify_password,
     create_jwt,
     decode_jwt,
     generate_random_token,
-    hash_password,
     hash_token,
     needs_rehash,
-    verify_password,
 )
-from app.models.session import Session
+from app.models.authentication import AuthenticationStep
 from app.models.registration import PendingRegistration
+from app.models.session import Session
 from app.models.user import User
 from app.services.audit_service import AuditService
-from app.core.privacy import short_user_agent
+from app.services.security_state import (
+    invalidate_security_state,
+    lock_user,
+    require_account_access,
+    revision,
+)
 
 settings = get_settings()
 
@@ -33,6 +43,8 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
         settings: Settings,
+        expected_revision: int | None = None,
+        mfa_token: str | None = None,
     ) -> tuple[str, Session, str]:
         """
         Создаёт новую серверную сессию в базе данных.
@@ -50,7 +62,40 @@ class AuthService:
         )
         if not user or not user.is_active:
             raise AuthenticationException("Аккаунт недоступен")
+        require_account_access(user, settings, allow_temporary=True)
+        credential = user.password_credential
+        temporary = bool(credential and credential.requires_change)
+        if temporary:
+            if (
+                credential.temporary_consumed_at is not None
+                or credential.temporary_expires_at is None
+                or credential.temporary_expires_at <= now
+            ):
+                raise AuthenticationException("Временный пароль истёк или уже использован")
+            credential.temporary_consumed_at = now
+            expires_at = min(expires_at, now + timedelta(minutes=10))
+        if expected_revision is not None and revision(user) != expected_revision:
+            raise AuthenticationException("Безопасность аккаунта изменилась; повторите вход")
+        if mfa_token is not None:
+            step = await db.scalar(
+                select(AuthenticationStep)
+                .where(
+                    AuthenticationStep.token_hash == hash_token(mfa_token),
+                    AuthenticationStep.user_id == user.id,
+                )
+                .with_for_update()
+            )
+            if (
+                step is None
+                or step.consumed_at is not None
+                or step.expires_at <= now
+                or step.security_revision != revision(user)
+            ):
+                raise AuthenticationException("Шаг MFA недействителен или уже использован")
+            step.consumed_at = now
         purpose = "deletion_management" if user.deletion_scheduled_for else "full"
+        if temporary:
+            purpose = "password_change"
 
         session = Session(
             user_id=user_id,
@@ -60,8 +105,19 @@ class AuthService:
             expires_at=expires_at,
             last_activity_at=now,
             purpose=purpose,
+            security_revision=revision(user),
+            auth_time=now,
         )
         db.add(session)
+        if mfa_token is not None:
+            await AuditService.log_event(
+                db,
+                "mfa_login_success",
+                user_id=user.id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                commit=False,
+            )
         await db.commit()
         await db.refresh(session)
 
@@ -83,14 +139,31 @@ class AuthService:
         """
         if settings is None:
             settings = get_settings()
+        from app.services.privacy_service import RateLimit, consume_rate_limit
+
+        await consume_rate_limit(
+            db, settings, RateLimit("login-identifier", username.strip().casefold(), 5)
+        )
+        if ip_address:
+            await consume_rate_limit(db, settings, RateLimit("login-ip", ip_address, 30))
+        owner = await db.scalar(
+            select(User.id).where((User.username == username) | (User.email == username))
+        )
+        if owner:
+            await consume_rate_limit(db, settings, RateLimit("login-account", str(owner), 5))
         # Поиск пользователя по username или email
-        stmt = select(User).where((User.username == username) | (User.email == username))
+        stmt = (
+            select(User)
+            .where((User.username == username) | (User.email == username))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
 
         if not user or not user.is_active:
             # Защита от timing attacks и перечисления пользователей: выполняем фиктивную проверку
-            verify_password(password, "$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy")
+            await async_verify_password(password, None)
             await AuditService.log_event(
                 db,
                 event_type="login_failed",
@@ -102,9 +175,10 @@ class AuthService:
 
         # Проверка пароля
         if not user.password_credential:
-            raise AuthenticationException("Учётная запись не настроена для входа по паролю")
+            await async_verify_password(password, None)
+            raise AuthenticationException("Неверный логин или пароль")
 
-        if not verify_password(password, user.password_credential.password_hash):
+        if not await async_verify_password(password, user.password_credential.password_hash):
             await AuditService.log_event(
                 db,
                 event_type="login_failed",
@@ -117,8 +191,25 @@ class AuthService:
 
         # Проверка необходимости рехеширования (Argon2id rehash)
         if needs_rehash(user.password_credential.password_hash):
-            user.password_credential.password_hash = hash_password(password)
-            await db.commit()
+            user.password_credential.password_hash = await async_rehash_password(password)
+            await db.flush()
+
+        if settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified:
+            await AuditService.log_event(
+                db,
+                "login_blocked_unverified_email",
+                user_id=user.id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        require_account_access(user, settings, allow_temporary=True)
+        credential = user.password_credential
+        if credential.requires_change and (
+            credential.temporary_consumed_at is not None
+            or credential.temporary_expires_at is None
+            or credential.temporary_expires_at <= datetime.now(timezone.utc)
+        ):
+            raise AuthenticationException("Неверный логин или пароль")
 
         # Проверка MFA политик (SEC-FLAG-03, SEC-FLAG-04)
         has_totp = bool(user.totp_credential and user.totp_credential.is_confirmed)
@@ -155,9 +246,23 @@ class AuthService:
             mfa_payload = {
                 "sub": str(user.id),
                 "purpose": "mfa_step",
+                "token_use": "mfa_step",
+                "aud": "alxprgs:mfa",
+                "jti": str(uuid.uuid4()),
+                "security_revision": revision(user),
                 "methods": available_methods,
             }
             mfa_token = create_jwt(mfa_payload, expires_in_seconds=settings.MFA_STEP_TTL_SECONDS)
+            db.add(
+                AuthenticationStep(
+                    user_id=user.id,
+                    security_revision=revision(user),
+                    token_hash=hash_token(mfa_token),
+                    expires_at=datetime.now(timezone.utc)
+                    + timedelta(seconds=settings.MFA_STEP_TTL_SECONDS),
+                )
+            )
+            await db.commit()
             return user, True, mfa_token, available_methods
 
         # Проверка обязательного подтверждения email (REG-09)
@@ -185,20 +290,43 @@ class AuthService:
         return user, False, None, []
 
     @staticmethod
-    async def verify_mfa_step_token(token: str, db: AsyncSession) -> User:
+    async def verify_mfa_step_token(
+        token: str, db: AsyncSession, *, method: str | None = None, settings: Settings | None = None
+    ) -> User:
         """Проверяет токен шага MFA и возвращает пользователя."""
+        from app.services.privacy_service import RateLimit, consume_rate_limit
+
+        active_settings = settings or get_settings()
+        await consume_rate_limit(db, active_settings, RateLimit("mfa-token", hash_token(token), 5))
         try:
-            payload = decode_jwt(token)
+            payload = decode_jwt(token, audience="alxprgs:mfa", expected_use="mfa_step")
             if payload.get("purpose") != "mfa_step":
                 raise AuthenticationException("Недействительный токен MFA")
             user_id = uuid.UUID(payload["sub"])
+            if method is not None and method not in payload.get("methods", []):
+                raise AuthenticationException("Недопустимый метод MFA")
         except Exception:
             raise AuthenticationException("Срок действия шага MFA истёк или токен недействителен")
 
-        stmt = select(User).where(User.id == user_id, User.is_active.is_(True))
-        user = (await db.execute(stmt)).scalar_one_or_none()
-        if not user:
-            raise AuthenticationException("Пользователь не найден или заблокирован")
+        await consume_rate_limit(db, active_settings, RateLimit("mfa-account", str(user_id), 5))
+        user = await lock_user(db, user_id)
+        require_account_access(user, settings or get_settings(), allow_temporary=True)
+        step = await db.scalar(
+            select(AuthenticationStep)
+            .where(
+                AuthenticationStep.token_hash == hash_token(token),
+                AuthenticationStep.user_id == user.id,
+            )
+            .with_for_update()
+        )
+        if (
+            not step
+            or step.consumed_at is not None
+            or step.expires_at <= datetime.now(timezone.utc)
+            or step.security_revision != revision(user)
+            or payload.get("security_revision") != revision(user)
+        ):
+            raise AuthenticationException("Шаг MFA недействителен или уже использован")
         return user
 
     @staticmethod
@@ -212,7 +340,8 @@ class AuthService:
         user_agent: str | None = None,
     ) -> None:
         """Смена пароля с проверкой текущего доступа и отзывом всех других сессий (USR-01)."""
-        if not user.password_credential or not verify_password(
+        user = await lock_user(db, user.id)
+        if not user.password_credential or not await async_verify_password(
             current_password, user.password_credential.password_hash
         ):
             raise AuthenticationException("Текущий пароль указан неверно")
@@ -220,13 +349,15 @@ class AuthService:
         if current_password == new_password:
             raise AuthenticationException("Новый пароль должен отличаться от текущего")
 
-        user.password_credential.password_hash = hash_password(new_password)
+        user.password_credential.password_hash = await async_hash_password(new_password)
+        forced = user.password_credential.requires_change
+        user.password_credential.requires_change = False
+        user.password_credential.temporary_expires_at = None
+        user.password_credential.temporary_consumed_at = None
 
-        # Отзыв всех остальных сессий пользователя
-        stmt = delete(Session).where(Session.user_id == user.id)
-        if current_session_id:
-            stmt = stmt.where(Session.id != current_session_id)
-        await db.execute(stmt)
+        await invalidate_security_state(
+            db, user, preserve_session_id=None if forced else current_session_id
+        )
 
         await AuditService.log_event(
             db,
@@ -234,6 +365,7 @@ class AuthService:
             user_id=user.id,
             ip_address=ip_address,
             user_agent=user_agent,
+            commit=False,
         )
         await db.commit()
 

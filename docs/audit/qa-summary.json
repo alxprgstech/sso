@@ -1,0 +1,40 @@
+{
+  "checked_at": "2026-10-04T02:14:55.322605+03:00",
+  "sections": 13,
+  "findings": {
+    "HIGH": 8,
+    "MEDIUM": 15,
+    "LOW": 4
+  },
+  "evidence_logs_verified": 32,
+  "probe_results": {
+    "failed": 27,
+    "passed": 9
+  },
+  "local_report_links": "PASS",
+  "UTF8_and_whitespace": "PASS",
+  "production_tracked_source_unchanged": "PASS",
+  "source_commit": [
+    126,
+    133,
+    122,
+    184,
+    3,
+    152,
+    248,
+    8,
+    65,
+    105,
+    238,
+    41,
+    177,
+    65,
+    198,
+    237,
+    198,
+    121,
+    79,
+    232
+  ],
+  "goal_result": "Audit outcome established: NOT READY. Remaining live/external checks isolated with exact resolution actions; product acceptance not complete."
+}

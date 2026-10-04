@@ -123,12 +123,20 @@ if (-not (Test-Path $envFile)) {
     $rng.GetBytes($dbBytes)
     $dbPassword = [System.BitConverter]::ToString($dbBytes).Replace("-", "").ToLower()
 
+    $runtimeBytes = New-Object byte[] 32
+    $migratorBytes = New-Object byte[] 32
+    $rng.GetBytes($runtimeBytes)
+    $rng.GetBytes($migratorBytes)
+    $runtimePassword = [System.BitConverter]::ToString($runtimeBytes).Replace("-", "").ToLower()
+    $migratorPassword = [System.BitConverter]::ToString($migratorBytes).Replace("-", "").ToLower()
+    $rng.Dispose()
+
     if (-not (Test-Path -LiteralPath $envExample)) {
         throw "Не найден обязательный шаблон .env.example. Восстановите его из репозитория."
     }
     $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
     $envContent = [System.IO.File]::ReadAllText($envExample, $utf8)
-    $dbUrl = "postgresql+psycopg://sso_user:${dbPassword}@db:5432/sso_db"
+    $dbUrl = "postgresql+psycopg://sso_runtime:${runtimePassword}@db:5432/sso_db"
     $replacements = [ordered]@{
         DEBUG = "false"
         BASE_URL = "http://localhost:3000"
@@ -137,6 +145,8 @@ if (-not (Test-Path $envFile)) {
         DATABASE_URL_SYNC = $dbUrl
         POSTGRES_USER = "sso_user"
         POSTGRES_PASSWORD = $dbPassword
+        SSO_RUNTIME_PASSWORD = $runtimePassword
+        SSO_MIGRATOR_PASSWORD = $migratorPassword
         POSTGRES_DB = "sso_db"
         SESSION_SECRET_KEY = $sessionSecret
         TOTP_ENCRYPTION_KEY = $totpKey

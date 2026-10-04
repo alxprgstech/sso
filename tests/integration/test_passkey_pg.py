@@ -16,15 +16,19 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-import webauthn
 from app.cli.bootstrap_admin import execute_bootstrap
 from app.config import Settings, get_settings
 from app.main import app
 from app.models.mfa import WebAuthnChallenge, WebAuthnCredential
-from sqlalchemy import text
+from app.models.session import Session
+from app.models.user import User
+from app.services.mfa_service import WebAuthnService
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
+from tests.helpers.reauthentication import authorized_request
+from tests.helpers.webauthn_authenticator import Authenticator
 
 
 @pytest.mark.postgres
@@ -110,413 +114,221 @@ async def test_passkey_default_off_isolation_pg(
         app.dependency_overrides.pop(get_settings, None)
 
 
-@pytest.mark.postgres
-@pytest.mark.asyncio
-async def test_passkey_options_and_challenge_persistence_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
-):
-    """
-    Проверка генерации options и сохранения challenge в PostgreSQL (G4-PASSKEY).
-    """
+@pytest.fixture
+def passkey_profile():
+    cfg = Settings(
+        _env_file=None,
+        FEATURE_PASSKEY_ENABLED=True,
+        WEBAUTHN_RP_ID="localhost",
+        WEBAUTHN_ORIGIN="http://localhost:5173",
+    )
+    app.dependency_overrides[get_settings] = lambda: cfg
+    yield cfg
+    app.dependency_overrides.pop(get_settings, None)
 
-    def _get_enabled_settings() -> Settings:
-        current = get_settings()
-        overridden = copy.copy(current)
-        overridden.FEATURE_PASSKEY_ENABLED = True
-        overridden.REQUIRE_VERIFIED_EMAIL = False
-        return overridden
 
-    app.dependency_overrides[get_settings] = _get_enabled_settings
+PASSWORD = "RealPasskeyRegression2026!"
 
-    try:
-        code, _ = await execute_bootstrap(
-            session=pg_session,
-            username="passkey_flow_user",
-            email="passkey_flow@alxprgs.tech",
-            password="FlowPasswordPasskey2026!",
-            registration_mode="closed",
+
+async def passkey_login(db, client):
+    assert (
+        await execute_bootstrap(db, "real_passkey", "real-passkey@example.test", PASSWORD, "closed")
+    )[0] == 0
+    cfg = app.dependency_overrides.get(get_settings, get_settings)()
+    if cfg.REQUIRE_VERIFIED_EMAIL:
+        # The enabled process profile must actually verify the bootstrap email.
+        # Never switch the policy off merely to obtain a passkey test session.
+        from app.services.mfa_service import sent_emails_sink
+
+        from tests.integration.test_email_verification_pg import MockSMTPServer
+
+        assert cfg.ENVIRONMENT != "production"
+        rejected = await client.post(
+            "/api/v1/auth/login", json={"username": "real_passkey", "password": PASSWORD}
         )
-        assert code == 0
-
-        login_res = await pg_client.post(
-            "/api/v1/auth/login",
-            json={"username": "passkey_flow_user", "password": "FlowPasswordPasskey2026!"},
-        )
-        await accept_current_documents(pg_client, login_res)
-        assert login_res.status_code == 200, (
-            f"Login failed: {login_res.status_code} {login_res.text}"
-        )
-        csrf_token = login_res.json()["csrf_token"]
-
-        # 1. Запрос registration options
-        reg_res = await pg_client.post(
-            "/api/v1/mfa/passkey/register/options",
-            headers={"X-CSRF-Token": csrf_token},
-        )
-        assert reg_res.status_code == 200
-        reg_data = reg_res.json()
-        assert "challenge" in reg_data
-        assert "rp" in reg_data
-        assert reg_data["user"]["name"] == "passkey_flow_user"
-
-        # Проверяем запись challenge в PostgreSQL
-        ch_res = await pg_session.execute(
-            text(
-                "SELECT challenge, purpose, expires_at FROM webauthn_challenges WHERE purpose = 'registration'"
+        assert rejected.status_code == 401
+        smtp = MockSMTPServer(port=0)
+        await smtp.start()
+        cfg.SMTP_HOST, cfg.SMTP_PORT, cfg.SMTP_USE_TLS = "127.0.0.1", smtp.port, False
+        cfg.SMTP_USER, cfg.SMTP_PASSWORD, cfg.EMAIL_PROVIDER = "", "", "smtp"
+        try:
+            sent_emails_sink.clear()
+            requested = await client.post(
+                "/api/v1/mfa/email/request", json={"email": "real-passkey@example.test"}
             )
-        )
-        ch_rows = ch_res.fetchall()
-        assert len(ch_rows) >= 1
-        assert ch_rows[-1][1] == "registration"
-
-        # 2. Запрос authentication options (анонимный для passwordless)
-        auth_res = await pg_client.post("/api/v1/mfa/passkey/auth/options")
-        assert auth_res.status_code == 200
-        auth_data = auth_res.json()
-        assert "challenge" in auth_data
-        assert "rpId" in auth_data
-
-        ch_auth = await pg_session.execute(
-            text(
-                "SELECT challenge, purpose, expires_at FROM webauthn_challenges WHERE purpose = 'authentication'"
+            assert requested.status_code == 200 and len(smtp.received_messages) == 1
+            confirmed = await client.post(
+                "/api/v1/mfa/email/confirm", json={"token": sent_emails_sink[-1]["token"]}
             )
-        )
-        ch_auth_rows = ch_auth.fetchall()
-        assert len(ch_auth_rows) >= 1
-        assert ch_auth_rows[-1][1] == "authentication"
+            assert confirmed.status_code == 200
+        finally:
+            await smtp.stop()
+    login = await client.post(
+        "/api/v1/auth/login", json={"username": "real_passkey", "password": PASSWORD}
+    )
+    assert login.status_code == 200
+    await accept_current_documents(client, login)
+    return {"X-CSRF-Token": login.json()["csrf_token"]}
 
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
 
-
-@pytest.mark.postgres
-@pytest.mark.asyncio
-async def test_passkey_multiple_credentials_and_deletion_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
-):
-    """
-    Проверка поддержки нескольких Passkeys у одного пользователя и удаления:
-    1. Регистрация двух разных ключей в БД.
-    2. Проверка, что GET /credentials возвращает оба ключа.
-    3. Удаление одного ключа.
-    4. Проверка, что удалённый ключ исчез, а оставшийся присутствует.
-    5. Попытка аутентификации с удалённым ключом завершается ошибкой (G4-PASSKEY).
-    """
-
-    def _get_enabled_settings() -> Settings:
-        current = get_settings()
-        overridden = copy.copy(current)
-        overridden.FEATURE_PASSKEY_ENABLED = True
-        overridden.REQUIRE_VERIFIED_EMAIL = False
-        return overridden
-
-    app.dependency_overrides[get_settings] = _get_enabled_settings
-
-    try:
-        code, _ = await execute_bootstrap(
-            session=pg_session,
-            username="multi_passkey_user",
-            email="multi_pk@alxprgs.tech",
-            password="MultiPasskey2026!",
-            registration_mode="closed",
-        )
-        assert code == 0
-
-        # Получаем пользователя
-        u_res = await pg_session.execute(
-            text("SELECT id FROM users WHERE username = 'multi_passkey_user'")
-        )
-        user_id = u_res.scalar_one()
-
-        # 1. Входим в систему до добавления ключей Passkey
-        login_res = await pg_client.post(
-            "/api/v1/auth/login",
-            json={"username": "multi_passkey_user", "password": "MultiPasskey2026!"},
-        )
-        await accept_current_documents(pg_client, login_res)
-        assert login_res.status_code == 200, (
-            f"Login failed: {login_res.status_code} {login_res.text}"
-        )
-        csrf_token = login_res.json()["csrf_token"]
-
-        # 2. Создаем два фиктивных ключа напрямую в PostgreSQL
-        cred1_id = "cred_key_alpha_12345"
-        cred2_id = "cred_key_beta_67890"
-
-        c1 = WebAuthnCredential(
-            user_id=user_id,
-            credential_id=cred1_id,
-            public_key="04" + "aa" * 64,
-            sign_count=1,
-            name="Laptop Key",
-        )
-        c2 = WebAuthnCredential(
-            user_id=user_id,
-            credential_id=cred2_id,
-            public_key="04" + "bb" * 64,
-            sign_count=5,
-            name="Mobile Key",
-        )
-        pg_session.add_all([c1, c2])
-        await pg_session.commit()
-
-        # Получаем список ключей через API
-        list_res = await pg_client.get("/api/v1/mfa/passkey/credentials")
-        assert list_res.status_code == 200
-        creds_list = list_res.json()
-        assert len(creds_list) == 2
-        names = [c["name"] for c in creds_list]
-        assert "Laptop Key" in names
-        assert "Mobile Key" in names
-
-        # Удаляем второй ключ
-        del_res = await pg_client.delete(
-            f"/api/v1/mfa/passkey/credentials/{cred2_id}",
-            headers={"X-CSRF-Token": csrf_token},
-        )
-        assert del_res.status_code == 200
-
-        # Проверяем, что в списке остался только один ключ
-        list_after = await pg_client.get("/api/v1/mfa/passkey/credentials")
-        assert list_after.status_code == 200
-        creds_after = list_after.json()
-        assert len(creds_after) == 1
-        assert creds_after[0]["id"] == cred1_id
-
-        # Попытка аутентификации с удалённым ключом (cred2_id) завершается отказом 401
-        auth_opt_res = await pg_client.post("/api/v1/mfa/passkey/auth/options")
-        assert auth_opt_res.status_code == 200
-
-        auth_attempt = await pg_client.post(
-            "/api/v1/mfa/passkey/auth/verify",
-            json={
-                "credential": {
-                    "id": cred2_id,
-                    "rawId": cred2_id,
-                    "type": "public-key",
-                    "response": {},
-                }
-            },
-        )
-        assert auth_attempt.status_code == 401
-        assert "Passkey не найден или был удалён" in str(auth_attempt.json())
-
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+async def register_key(client, headers, cfg, authenticator, name, factor=None):
+    options = await authorized_request(
+        client,
+        "POST",
+        "/api/v1/mfa/passkey/register/options",
+        password=PASSWORD,
+        headers=headers,
+        factor=factor,
+    )
+    assert options.status_code == 200
+    registered = await authorized_request(
+        client,
+        "POST",
+        "/api/v1/mfa/passkey/register/verify",
+        password=PASSWORD,
+        headers=headers,
+        json_body={
+            "name": name,
+            "credential": authenticator.registration(options.json(), cfg.WEBAUTHN_ORIGIN),
+        },
+        factor=factor,
+    )
+    assert registered.status_code == 200, registered.json()
 
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_passkey_negative_crypto_checks_no_mocks_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
-):
-    """
-    Отрицательные сценарии криптографической проверки py_webauthn без моков:
-    1. Искажённый / поддельный challenge -> отказ.
-    2. Неверный origin -> отказ.
-    3. Истекший срок challenge -> отказ.
-    4. Защита от Replay: повторное использование того же challenge невозможно.
-    """
-
-    def _get_enabled_settings() -> Settings:
-        current = get_settings()
-        overridden = copy.copy(current)
-        overridden.FEATURE_PASSKEY_ENABLED = True
-        overridden.REQUIRE_VERIFIED_EMAIL = False
-        return overridden
-
-    app.dependency_overrides[get_settings] = _get_enabled_settings
-
-    try:
-        code, _ = await execute_bootstrap(
-            session=pg_session,
-            username="passkey_neg_user",
-            email="passkey_neg@alxprgs.tech",
-            password="NegPasskeyPassword2026!",
-            registration_mode="closed",
-        )
-        assert code == 0
-
-        # Входим
-        login_res = await pg_client.post(
-            "/api/v1/auth/login",
-            json={"username": "passkey_neg_user", "password": "NegPasskeyPassword2026!"},
-        )
-        await accept_current_documents(pg_client, login_res)
-        assert login_res.status_code == 200, (
-            f"Login failed: {login_res.status_code} {login_res.text}"
-        )
-        csrf_token = login_res.json()["csrf_token"]
-
-        # 1. Попытка подтверждения регистрации без активного challenge в БД
-        fake_reg = await pg_client.post(
-            "/api/v1/mfa/passkey/register/verify",
-            json={
-                "credential": {
-                    "id": "fake_cred_1",
-                    "rawId": "fake_cred_1",
-                    "type": "public-key",
-                    "response": {
-                        "clientDataJSON": webauthn.helpers.bytes_to_base64url(
-                            b'{"type":"webauthn.create","challenge":"fake"}'
-                        ),
-                        "attestationObject": webauthn.helpers.bytes_to_base64url(
-                            b"fake_attestation"
-                        ),
-                    },
-                },
-                "name": "Fake Key",
-            },
-            headers={"X-CSRF-Token": csrf_token},
-        )
-        assert fake_reg.status_code == 401
-        assert "challenge" in str(fake_reg.json()).lower()
-
-        # 2. Создаем challenge, но с просроченным сроком жизни (expired)
-        u_res = await pg_session.execute(
-            text("SELECT id FROM users WHERE username = 'passkey_neg_user'")
-        )
-        user_id = u_res.scalar_one()
-
-        expired_ch = WebAuthnChallenge(
-            user_id=user_id,
-            challenge="expired_challenge_string_123",
-            purpose="registration",
-            expires_at=datetime.now(timezone.utc) - timedelta(minutes=10),
-        )
-        pg_session.add(expired_ch)
-        await pg_session.commit()
-
-        expired_res = await pg_client.post(
-            "/api/v1/mfa/passkey/register/verify",
-            json={
-                "credential": {
-                    "id": "fake_cred_expired",
-                    "rawId": "fake_cred_expired",
-                    "type": "public-key",
-                    "response": {
-                        "clientDataJSON": webauthn.helpers.bytes_to_base64url(
-                            b'{"type":"webauthn.create","challenge":"expired_challenge_string_123"}'
-                        ),
-                        "attestationObject": webauthn.helpers.bytes_to_base64url(
-                            b"fake_attestation"
-                        ),
-                    },
-                },
-                "name": "Expired Key",
-            },
-            headers={"X-CSRF-Token": csrf_token},
-        )
-        assert expired_res.status_code == 401
-        assert (
-            "истёк" in str(expired_res.json()).lower()
-            or "challenge" in str(expired_res.json()).lower()
-        )
-
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+async def test_passkey_options_and_challenge_persistence_pg(pg_session, pg_client, passkey_profile):
+    headers = await passkey_login(pg_session, pg_client)
+    options = await authorized_request(
+        pg_client,
+        "POST",
+        "/api/v1/mfa/passkey/register/options",
+        password=PASSWORD,
+        headers=headers,
+    )
+    assert options.status_code == 200
+    assert options.json()["authenticatorSelection"]["userVerification"] == "required"
+    row = await pg_session.scalar(
+        select(WebAuthnChallenge).where(WebAuthnChallenge.purpose == "registration")
+    )
+    assert row.challenge == options.json()["challenge"] and row.session_id is not None
+    authentication = await pg_client.post("/api/v1/mfa/passkey/auth/options")
+    assert (
+        authentication.status_code == 200
+        and authentication.json()["userVerification"] == "required"
+    )
 
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_passkey_strict_security_invariants_pg(
-    pg_session: AsyncSession, pg_client: httpx.AsyncClient
-):
-    """
-    Проверка строгих инвариантов безопасности WebAuthn (SEC-FLAG-06, G6-WEBAUTHN):
-    1. Опции регистрации и аутентификации требуют userVerification='required'.
-    2. Попытка верификации с некорректным origin отвергается без моков.
-    3. Попытка верификации с некорректным RP ID отвергается без fallback на альтернативный домен.
-    4. Отсутствие User Verification приводит к отказу (require_user_verification=True).
-    """
-    from app.core.exceptions import AuthenticationException
-    from app.models.user import User
-    from app.services.mfa_service import WebAuthnService
-    from sqlalchemy import select
+async def test_passkey_multiple_credentials_and_deletion_pg(pg_session, pg_client, passkey_profile):
+    cfg = passkey_profile
+    headers = await passkey_login(pg_session, pg_client)
+    first, second = Authenticator(), Authenticator()
+    await register_key(pg_client, headers, cfg, first, "Laptop Key")
 
-    def _get_enabled_settings() -> Settings:
-        current = get_settings()
-        overridden = copy.copy(current)
-        overridden.FEATURE_PASSKEY_ENABLED = True
-        overridden.REQUIRE_VERIFIED_EMAIL = False
-        overridden.WEBAUTHN_RP_ID = "auth.alxprgs.tech"
-        overridden.WEBAUTHN_ORIGIN = "https://auth.alxprgs.tech"
-        return overridden
-
-    app.dependency_overrides[get_settings] = _get_enabled_settings
-    settings = _get_enabled_settings()
-
-    try:
-        code, _ = await execute_bootstrap(
-            session=pg_session,
-            username="passkey_strict_user",
-            email="passkey_strict@alxprgs.tech",
-            password="StrictPasskeyPassword2026!",
-            registration_mode="closed",
-        )
-        assert code == 0
-
-        user_stmt = select(User).where(User.username == "passkey_strict_user")
-        user = (await pg_session.execute(user_stmt)).scalar_one()
-
-        # 1. Проверяем userVerification='required' в registration options
-        reg_opts = await WebAuthnService.get_registration_options(
-            db=pg_session, user=user, settings=settings
-        )
-        assert reg_opts.get("authenticatorSelection", {}).get("userVerification") == "required"
-
-        # 2. Проверяем userVerification='required' в authentication options
-        auth_opts = await WebAuthnService.get_authentication_options(
-            db=pg_session, user=user, settings=settings
-        )
-        assert auth_opts.get("userVerification") == "required"
-
-        # 3. Проверяем отказ при неверном origin при верификации регистрации
-        # Создаем активный challenge в БД
-        now = datetime.now(timezone.utc)
-        ch_rec = WebAuthnChallenge(
-            user_id=user.id,
-            challenge="test_strict_challenge_123",
-            purpose="registration",
-            expires_at=now + timedelta(minutes=5),
-        )
-        pg_session.add(ch_rec)
-        await pg_session.commit()
-
-        # Попытка верификации с фиктивным credential на несовпадающем origin
-        fake_credential = {
-            "id": "test_cred_id",
-            "rawId": "test_cred_id",
-            "type": "public-key",
-            "response": {
-                "clientDataJSON": webauthn.helpers.bytes_to_base64url(
-                    b'{"type":"webauthn.create","challenge":"test_strict_challenge_123","origin":"https://attacker-phishing.com"}'
-                ),
-                "attestationObject": webauthn.helpers.bytes_to_base64url(b"fake_attestation"),
-            },
+    def factor(data):
+        return {
+            "method": "passkey",
+            "credential": first.assertion(data["passkey_options"], cfg.WEBAUTHN_ORIGIN),
         }
 
-        with pytest.raises(AuthenticationException) as exc_info:
-            await WebAuthnService.verify_registration(
-                db=pg_session,
-                user=user,
-                credential_json=fake_credential,
-                name="Strict Key",
-                settings=settings,
-            )
-        assert "Ошибка проверки регистрации WebAuthn" in str(exc_info.value)
+    await register_key(pg_client, headers, cfg, second, "Mobile Key", factor)
+    listed = await pg_client.get("/api/v1/mfa/passkey/credentials")
+    assert {row["name"] for row in listed.json()} == {"Laptop Key", "Mobile Key"}
+    deleted = await authorized_request(
+        pg_client,
+        "DELETE",
+        f"/api/v1/mfa/passkey/credentials/{second.id}",
+        password=PASSWORD,
+        headers=headers,
+        factor=factor,
+    )
+    assert deleted.status_code == 200
+    remaining = await pg_client.get("/api/v1/mfa/passkey/credentials")
+    assert [row["id"] for row in remaining.json()] == [first.id]
+    options = await pg_client.post("/api/v1/mfa/passkey/auth/options")
+    rejected = await pg_client.post(
+        "/api/v1/mfa/passkey/auth/verify",
+        json={"credential": second.assertion(options.json(), cfg.WEBAUTHN_ORIGIN)},
+    )
+    assert rejected.status_code == 401
+    options = await pg_client.post("/api/v1/mfa/passkey/auth/options")
+    success = await pg_client.post(
+        "/api/v1/mfa/passkey/auth/verify",
+        json={"credential": first.assertion(options.json(), cfg.WEBAUTHN_ORIGIN)},
+    )
+    assert success.status_code == 200
 
-        # 4. Проверяем отказ при неверном RP ID (без fallback на localhost)
-        with pytest.raises(AuthenticationException) as exc_info_rp:
-            await WebAuthnService.verify_registration(
-                db=pg_session,
-                user=user,
-                credential_json=fake_credential,
-                name="Strict Key",
-                rp_id="invalid.phishing.domain",
-                settings=settings,
-            )
-        assert "Ошибка проверки регистрации WebAuthn" in str(exc_info_rp.value)
 
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_passkey_negative_crypto_checks_no_mocks_pg(pg_session, pg_client, passkey_profile):
+    cfg = passkey_profile
+    headers = await passkey_login(pg_session, pg_client)
+    key = Authenticator()
+    options = await authorized_request(
+        pg_client,
+        "POST",
+        "/api/v1/mfa/passkey/register/options",
+        password=PASSWORD,
+        headers=headers,
+    )
+    registration = key.registration(options.json(), cfg.WEBAUTHN_ORIGIN)
+    # Registration UV and origin/RP/challenge negatives execute the real library.
+    for credential in [
+        key.registration(options.json(), "https://evil.example"),
+        key.registration(options.json(), cfg.WEBAUTHN_ORIGIN, rp_id="evil.example"),
+        key.registration(options.json(), cfg.WEBAUTHN_ORIGIN, uv=False),
+    ]:
+        rejected = await authorized_request(
+            pg_client,
+            "POST",
+            "/api/v1/mfa/passkey/register/verify",
+            password=PASSWORD,
+            headers=headers,
+            json_body={"credential": credential},
+        )
+        assert rejected.status_code == 401
+        assert await pg_session.scalar(select(func.count()).select_from(WebAuthnCredential)) == 0
+    # The quota persists; confirmation is not retried with weaker origins or UV.
+    user = await pg_session.scalar(select(User).where(User.username == "real_passkey"))
+    session_id = await pg_session.scalar(select(Session.id).where(Session.user_id == user.id))
+    assert await WebAuthnService.verify_registration(
+        pg_session, user, registration, settings=cfg, session_id=session_id
+    )
+    for kwargs in [
+        {"origin": "https://evil.example"},
+        {"rp_id": "evil.example"},
+        {"uv": False},
+        {"signature_valid": False},
+    ]:
+        options = await pg_client.post("/api/v1/mfa/passkey/auth/options")
+        args = {"origin": cfg.WEBAUTHN_ORIGIN, **kwargs}
+        rejected = await pg_client.post(
+            "/api/v1/mfa/passkey/auth/verify",
+            json={"credential": key.assertion(options.json(), **args)},
+        )
+        assert rejected.status_code == 401
+    options = await pg_client.post("/api/v1/mfa/passkey/auth/options")
+    credential = key.assertion(options.json(), cfg.WEBAUTHN_ORIGIN)
+    assert (
+        await pg_client.post("/api/v1/mfa/passkey/auth/verify", json={"credential": credential})
+    ).status_code == 200
+    assert (
+        await pg_client.post("/api/v1/mfa/passkey/auth/verify", json={"credential": credential})
+    ).status_code == 401
+    expired = await pg_client.post("/api/v1/mfa/passkey/auth/options")
+    await pg_session.execute(
+        update(WebAuthnChallenge)
+        .where(WebAuthnChallenge.challenge == expired.json()["challenge"])
+        .values(expires_at=datetime.now(timezone.utc) - timedelta(seconds=1))
+    )
+    await pg_session.commit()
+    assert (
+        await pg_client.post(
+            "/api/v1/mfa/passkey/auth/verify",
+            json={"credential": key.assertion(expired.json(), cfg.WEBAUTHN_ORIGIN)},
+        )
+    ).status_code == 401

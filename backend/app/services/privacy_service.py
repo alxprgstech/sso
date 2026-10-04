@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.core.security import generate_random_token, hash_token, verify_password
+from app.core.security import async_verify_password, generate_random_token, hash_token
 from app.legal import REQUIRED_DOCUMENTS, validate_versions
 from app.models.audit import AuditEvent
 from app.models.mfa import EmailVerificationToken, RecoveryCode, WebAuthnChallenge
@@ -239,7 +239,7 @@ async def verify_deletion_password(user: User, password: str, settings: Settings
     credential = user.password_credential
     if credential is None:
         raise rejection("invalid_credentials", "Неверный пароль.", 401)
-    if not await asyncio.to_thread(verify_password, password, credential.password_hash):
+    if not await async_verify_password(password, credential.password_hash):
         raise rejection("invalid_credentials", "Неверный пароль.", 401)
 
 
@@ -437,16 +437,15 @@ async def request_deletion(
     await ensure_not_last_admin(db, user.id)
     locked.deletion_requested_at = now
     locked.deletion_scheduled_for = now + GRACE
-    await db.execute(delete(AuthorizationCode).where(AuthorizationCode.user_id == user.id))
-    await db.execute(
-        update(RefreshToken).where(RefreshToken.user_id == user.id).values(is_revoked=True)
-    )
-    await db.execute(delete(Session).where(Session.user_id == user.id))
+    from app.services.security_state import invalidate_security_state, revision
+
+    await invalidate_security_state(db, locked)
     restricted_raw = generate_random_token(32)
     restricted = Session(
         user_id=user.id,
         session_token_hash=hash_token(restricted_raw),
         purpose="deletion_management",
+        security_revision=revision(locked),
         expires_at=now + timedelta(hours=1),
         last_activity_at=now,
     )
@@ -473,7 +472,9 @@ async def cancel_deletion(
     locked.deletion_scheduled_for = None
     locked.deletion_request_allowed_at = now + COOLDOWN
     # Force a new login; never promote a restricted session or revive old tokens.
-    await db.execute(delete(Session).where(Session.user_id == user.id))
+    from app.services.security_state import invalidate_security_state
+
+    await invalidate_security_state(db, locked)
     db.add(AuditEvent(event_type="account_deletion_cancelled", user_id=user.id, details={}))
     result = deletion_status(locked)
     await db.commit()
@@ -558,7 +559,11 @@ async def maintenance(db: AsyncSession, settings: Settings) -> int:
             PendingRegistration.expires_at <= now - timedelta(hours=1)
         )
     )
+    from app.models.authentication import AuthenticationStep, SecurityAuthorization
+
     for model in (
+        AuthenticationStep,
+        SecurityAuthorization,
         DeletionAuthorization,
         PrivacyRateWindow,
         WebAuthnChallenge,
@@ -603,5 +608,7 @@ async def maintenance_loop(settings: Settings) -> None:
             raise
         except Exception:
             # No payloads, exception text or identifiers. Retry the next scheduled tick.
-            logger.error("privacy_maintenance_failed")
+            from app.core.diagnostics import diagnostic
+
+            diagnostic("privacy_maintenance", "database_unavailable", failed=True)
         await asyncio.sleep(60)

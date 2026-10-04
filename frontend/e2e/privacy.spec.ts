@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { confirmSensitiveAction } from "./helpers/reauthentication";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createHash, randomBytes } from "node:crypto";
@@ -65,6 +66,7 @@ test("account deletion: real default/enabled policy, limited access and keyboard
   if (enabled) {
     await type(page,page.locator('[data-testid="passkey-name-input"]'),"Synthetic privacy key");
     await activate(page,page.locator('[data-testid="register-passkey-button"]'));
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible();
   }
   const verifier=randomBytes(32).toString("base64url"); const challenge=createHash("sha256").update(verifier).digest("base64url");

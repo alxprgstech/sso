@@ -162,6 +162,22 @@ def test_preexisting_database_rejected_before_create() -> None:
     assert all("CREATE DATABASE" not in str(call) for call in admin.execute.call_args_list)
 
 
+@pytest.mark.parametrize("name", ["", "_", "x" * 64, "ops_тест", "ops-test", "ops test"])
+def test_generated_database_identifier_rejected_before_sql(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = MagicMock()
+    connection = MagicMock(side_effect=AssertionError("Unexpected SQL connection"))
+    monkeypatch.setattr("tests.test_ops_backup_restore_totp.psycopg.connect", connection)
+    base = parse_test_url("postgresql+psycopg://user:secret@localhost:5432/ops_test")
+    created: set[str] = set()
+    with pytest.raises(OpsSafetyError, match="identifier"):
+        create_owned(admin, base, name, "ops_source_owner", "run-id", created, ())
+    admin.execute.assert_not_called()
+    connection.assert_not_called()
+    assert created == set()
+
+
 def test_partial_create_tracks_own_database_and_never_drops_it_implicitly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

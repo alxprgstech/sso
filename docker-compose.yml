@@ -1,24 +1,39 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     container_name: alxprgs-sso-db
     restart: unless-stopped
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 2
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sso_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sso_secure_password}
       POSTGRES_DB: ${POSTGRES_DB:-sso_db}
+      SSO_RUNTIME_PASSWORD: ${SSO_RUNTIME_PASSWORD:?Set a separate runtime password}
+      SSO_MIGRATOR_PASSWORD: ${SSO_MIGRATOR_PASSWORD:?Set a separate migration password}
     volumes:
       - sso_db_data:/var/lib/postgresql/data
+      - ./deploy/postgres/010-init-roles.sh:/docker-entrypoint-initdb.d/010-init-roles.sh:ro
+      - ./deploy/postgres/init-roles.sql:/opt/sso-init-roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sso_user} -d ${POSTGRES_DB:-sso_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - sso_network
+      - db_network
     # Порт БД не публикуется на хосте для защиты данных (SETUP-08)
 
   backend:
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 2
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -27,10 +42,10 @@ services:
     container_name: alxprgs-sso-backend
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sso_user}:${POSTGRES_PASSWORD:-sso_secure_password}@db:5432/${POSTGRES_DB:-sso_db}
+      migrate:
+        condition: service_completed_successfully
+    environment: &backend_environment
+      DATABASE_URL: postgresql+psycopg://sso_runtime:${SSO_RUNTIME_PASSWORD:?Set a separate runtime password}@db:5432/${POSTGRES_DB:-sso_db}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       SENTRY_ENABLED: "${SENTRY_ENABLED:-false}"
       SENTRY_DSN: "${SENTRY_DSN:-}"
@@ -42,11 +57,15 @@ services:
       SENTRY_REPLAY_ENABLED: "${SENTRY_REPLAY_ENABLED:-false}"
       SENTRY_REPLAYS_SESSION_SAMPLE_RATE: "${SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0}"
       SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: "${SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE:-0}"
-      DATABASE_URL_SYNC: postgresql+psycopg://${POSTGRES_USER:-sso_user}:${POSTGRES_PASSWORD:-sso_secure_password}@db:5432/${POSTGRES_DB:-sso_db}
+      DATABASE_URL_SYNC: postgresql+psycopg://sso_runtime:${SSO_RUNTIME_PASSWORD:?Set a separate runtime password}@db:5432/${POSTGRES_DB:-sso_db}
+      TRUSTED_PROXIES: '["172.29.40.10"]'
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:-MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=}
       JWT_PRIVATE_KEY_PEM: ${JWT_PRIVATE_KEY_PEM:-}
       JWT_KEY_ID: ${JWT_KEY_ID:-default-rsa-key-1}
+      JWT_PREVIOUS_PUBLIC_KEY_PEM: ${JWT_PREVIOUS_PUBLIC_KEY_PEM:-}
+      JWT_PREVIOUS_KEY_ID: ${JWT_PREVIOUS_KEY_ID:-}
+      JWT_PREVIOUS_KEY_VALID_UNTIL: ${JWT_PREVIOUS_KEY_VALID_UNTIL:-}
       BASE_URL: ${BASE_URL:-http://localhost:3000}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       OIDC_ISSUER: ${OIDC_ISSUER:-https://auth.alxprgs.tech}
@@ -67,19 +86,50 @@ services:
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
       SMTP_FROM_EMAIL: "${SMTP_FROM_EMAIL:-no-reply@alxprgs.tech}"
       SMTP_USE_TLS: "${SMTP_USE_TLS:-false}"
+      SMTP_CA_FILE: "${SMTP_CA_FILE:-}"
       WEBAUTHN_RP_ID: "${WEBAUTHN_RP_ID:-auth.alxprgs.tech}"
       WEBAUTHN_RP_NAME: "${WEBAUTHN_RP_NAME:-ALXPRGS SSO}"
       WEBAUTHN_ORIGIN: "${WEBAUTHN_ORIGIN:-https://auth.alxprgs.tech}"
       LOG_LEVEL: INFO
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
-      interval: 5s
-      timeout: 5s
-      retries: 6
+    # Use the image probe: it sends the configured Host required by production.
     networks:
-      - sso_network
+      db_network: {}
+      proxy_network:
+        ipv4_address: 172.29.40.20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        ALX_BUILD_SHA: ${ALX_BUILD_SHA:?Generate verified build identity before Compose build}
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *backend_environment
+      DATABASE_URL: postgresql+psycopg://sso_migrator:${SSO_MIGRATOR_PASSWORD:?Set a separate migration password}@db:5432/${POSTGRES_DB:-sso_db}
+      DATABASE_URL_SYNC: postgresql+psycopg://sso_migrator:${SSO_MIGRATOR_PASSWORD:?Set a separate migration password}@db:5432/${POSTGRES_DB:-sso_db}
+    command: ["alembic", "upgrade", "head"]
+    read_only: true
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1
+    networks: [db_network]
 
   frontend:
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 1
     build:
       context: .
       dockerfile: frontend/Dockerfile
@@ -92,18 +142,25 @@ services:
         condition: service_healthy
     ports:
       # Публикация строго на loopback (SETUP-08)
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:3000:8080"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - sso_network
+      proxy_network:
+        ipv4_address: 172.29.40.10
 
 volumes:
   sso_db_data:
 
 networks:
-  sso_network:
+  db_network:
+    internal: true
     driver: bridge
+  proxy_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.40.0/24

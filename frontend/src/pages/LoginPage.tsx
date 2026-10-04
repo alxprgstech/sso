@@ -39,7 +39,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
         setMfaToken(res.mfa_token);
         setMfaMethods(res.available_methods || []);
       } else {
-        if (returnTo) {
+        if (returnTo && !("user" in res && res.user.session_purpose === "password_change")) {
           window.location.href = returnTo;
         }
       }

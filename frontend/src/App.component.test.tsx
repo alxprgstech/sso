@@ -8,6 +8,9 @@ vi.mock("qrcode.react", () => ({
 }));
 
 const apiMock = vi.hoisted(() => ({
+  setReauthenticationHandler: vi.fn(),
+  startReauthentication: vi.fn(),
+  confirmReauthentication: vi.fn(),
   getCapabilities: vi.fn(),
   getLegalDocuments: vi.fn(),
   getMe: vi.fn(),
@@ -199,11 +202,11 @@ describe("server capabilities and account flows", () => {
     const inputs = dialog.querySelectorAll<HTMLInputElement>('input[type="password"]');
     expect(inputs).toHaveLength(3);
     fireEvent.change(inputs[0], { target: { value: "CurrentPassword123!" } });
-    fireEvent.change(inputs[1], { target: { value: "NewPassword123!" } });
-    fireEvent.change(inputs[2], { target: { value: "NewPassword123!" } });
+    fireEvent.change(inputs[1], { target: { value: "NewPasswordRegression2026!" } });
+    fireEvent.change(inputs[2], { target: { value: "NewPasswordRegression2026!" } });
     fireEvent.click(screen.getByRole("button", { name: "Сохранить новый пароль" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Смена пароля" })).toBeNull());
-    expect(apiMock.changePassword).toHaveBeenCalledWith("CurrentPassword123!", "NewPassword123!");
+    expect(apiMock.changePassword).toHaveBeenCalledWith("CurrentPassword123!", "NewPasswordRegression2026!");
     expect(screen.getByText("Пароль обновлён")).toBeTruthy();
   });
 

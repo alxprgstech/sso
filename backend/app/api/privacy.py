@@ -1,9 +1,11 @@
 """Public legal documents and authenticated privacy controls."""
 
 from typing import Any, Literal
+
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.deps import (
     generate_csrf_token,
     get_cookie_name,
@@ -144,6 +146,7 @@ async def request_deletion(
     )
     # Re-read the new limited session to bind the next CSRF proof to its ID.
     from sqlalchemy import select
+
     from app.core.security import hash_token
 
     replacement = await db.scalar(

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
 
 if TYPE_CHECKING:
@@ -22,6 +24,9 @@ class OIDCClient(Base):
         String(32), default="confidential", nullable=False
     )  # confidential | public
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    allowed_scopes: Mapped[str] = mapped_column(
+        String(255), default="openid profile email", server_default="openid profile email"
+    )
 
     redirect_uris: Mapped[list[OIDCRedirectUri]] = relationship(
         "OIDCRedirectUri",
@@ -57,6 +62,12 @@ class OIDCRedirectUri(Base):
 
 class AuthorizationCode(Base):
     __tablename__ = "authorization_codes"
+    auth_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    security_revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     client_id: Mapped[uuid.UUID] = mapped_column(
@@ -87,6 +98,12 @@ class AuthorizationCode(Base):
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
+    auth_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    security_revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     family_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), index=True, nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.audit import AuditEvent
+
 from app.core.privacy import short_user_agent
+from app.models.audit import AuditEvent
 
 
 class AuditService:
@@ -50,7 +52,11 @@ class AuditService:
                 }:
                     continue
                 else:
-                    safe_details[k] = v
+                    safe_details[k] = scrub_detail(v)
+        from app.core.diagnostics import request_id
+
+        if request_id.get():
+            safe_details["request_id"] = request_id.get()
 
         event = AuditEvent(
             event_type=event_type,
@@ -64,3 +70,74 @@ class AuditService:
         if commit:
             await db.commit()
         return event
+
+
+def scrub_detail(value: Any, depth: int = 0) -> Any:
+    if depth > 4:
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {
+            key: (
+                "[REDACTED]"
+                if any(
+                    term in key.lower()
+                    for term in (
+                        "password",
+                        "secret",
+                        "token",
+                        "code",
+                        "key",
+                        "cookie",
+                        "email",
+                        "name",
+                        "identifier",
+                        "credential",
+                        "address",
+                        "header",
+                        "query",
+                        "body",
+                    )
+                )
+                else scrub_detail(item, depth + 1)
+            )
+            for key, item in list(value.items())[:32]
+            if isinstance(key, str) and len(key) <= 64
+        }
+    if isinstance(value, list):
+        return [scrub_detail(item, depth + 1) for item in value[:32]]
+    if isinstance(value, str):
+        # Only finite server-selected labels or UUID references reach audit details.
+        labels = {
+            "smtp",
+            "ses",
+            "open",
+            "closed",
+            "registration",
+            "verified_email",
+            "update_registration_mode",
+            "user_not_found_or_inactive",
+            "invalid_password",
+            "credentials_unavailable",
+            "temporary_unavailable",
+            "sdk_error",
+            "invalid_response",
+            "smtp_unconfigured",
+            "smtp_connection_failed",
+            "message_rejected",
+            "access_denied",
+            "identity_not_verified",
+            "quota_exceeded",
+            "openid",
+            "openid profile",
+            "openid email",
+            "openid profile email",
+        }
+        if value in labels:
+            return value
+        try:
+            if str(uuid.UUID(value)) == value:
+                return value
+        except (ValueError, TypeError):
+            pass
+        return "[REDACTED]"
+    return value if type(value) in {int, bool} or value is None else "[REDACTED]"

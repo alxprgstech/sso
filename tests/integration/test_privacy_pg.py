@@ -477,7 +477,7 @@ async def test_stale_documents_block_direct_oidc_and_userinfo(pg_session, pg_cli
     ).status_code == 401
     with pytest.raises(HTTPException) as error:
         await OIDCService.create_authorization_code(
-            pg_session, client, user, "http://localhost/callback", "synthetic-challenge"
+            pg_session, client, user, "http://localhost/callback", "A" * 43
         )
     assert error.value.status_code == 403
     with pytest.raises(OAuthErrorException):

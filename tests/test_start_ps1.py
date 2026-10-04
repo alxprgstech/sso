@@ -28,7 +28,7 @@ $logPath = '{str(log).replace("'", "''")}'
 function git {{ $global:LASTEXITCODE = 0; '{revision}' }}
 function docker {{
     $commandLine = 'docker ' + ($args -join ' ')
-    Add-Content -LiteralPath $logPath -Value $commandLine
+    Add-Content -LiteralPath $logPath -Value $commandLine -Encoding UTF8
     if ($args[0] -eq 'compose' -and $args[1] -eq 'version' -and ${str(fallback).lower()}) {{
         $global:LASTEXITCODE = 1
     }} elseif ($args[0] -eq 'compose' -and $args[1] -eq 'up') {{
@@ -39,7 +39,7 @@ function docker {{
     }}
 }}
 function docker-compose {{
-    Add-Content -LiteralPath $logPath -Value ('docker-compose ' + ($args -join ' '))
+    Add-Content -LiteralPath $logPath -Value ('docker-compose ' + ($args -join ' ')) -Encoding UTF8
     if ($args[0] -eq 'up') {{ $global:LASTEXITCODE = 17 }}
     else {{ $global:LASTEXITCODE = 0; if ($args[0] -eq 'ps') {{ 'owned-frontend' }} }}
 }}
@@ -99,9 +99,20 @@ function docker-compose {{
             values = dict(re.findall(r"^([A-Z_]+)=(.*)$", generated, flags=re.MULTILINE))
             db_password = values["POSTGRES_PASSWORD"]
             self.assertRegex(db_password, r"^[0-9a-f]{48}$")
-            url = f"postgresql+psycopg://sso_user:{db_password}@db:5432/sso_db"
-            self.assertEqual(values["DATABASE_URL"], url)
-            self.assertEqual(values["DATABASE_URL_SYNC"], url)
+            passwords = [
+                values[name]
+                for name in ("POSTGRES_PASSWORD", "SSO_RUNTIME_PASSWORD", "SSO_MIGRATOR_PASSWORD")
+            ]
+            self.assertEqual(len(set(passwords)), 3)
+            self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in passwords[1:]))
+            url = (
+                f"postgresql+psycopg://sso_runtime:{values['SSO_RUNTIME_PASSWORD']}@db:5432/sso_db"
+            )
+            self.assertTrue(
+                values["DATABASE_URL"] == url,
+                "Runtime URL must use the limited role and its independent password",
+            )
+            self.assertTrue(values["DATABASE_URL_SYNC"] == url)
             self.assertEqual(values["BASE_URL"], "http://localhost:3000")
             self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
             self.assertEqual(values["WEBAUTHN_RP_ID"], "localhost")
@@ -116,7 +127,7 @@ function docker-compose {{
                 "REQUIRE_VERIFIED_EMAIL",
             ):
                 self.assertEqual(values[name], "false")
-            self.assertNotIn(db_password, result.stdout + result.stderr)
+            self.assertTrue(all(value not in result.stdout + result.stderr for value in passwords))
 
     def test_invalid_build_revision_refuses_compose_up(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

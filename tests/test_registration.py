@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from app.legal import REQUIRED_DOCUMENTS
+from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath("backend"))
 
@@ -27,7 +28,7 @@ settings = get_settings()
 
 def test_registration_when_closed_rejected():
     """REG-02, REG-03: При closed-режиме прямой запрос регистрации запрещен сервером (403)."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="closed")
     mock_result.scalar_one_or_none.return_value = config
@@ -58,7 +59,7 @@ def test_registration_when_closed_rejected():
 
 def test_registration_when_bootstrap_incomplete_rejected():
     """REG-03: До завершения первичной инициализации регистрация закрыта независимо от режима."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
     # bootstrap_completed = False!
     config = SystemConfiguration(id=1, bootstrap_completed=False, registration_mode="open")
@@ -89,7 +90,7 @@ def test_registration_when_bootstrap_incomplete_rejected():
 
 def test_registration_success_open_mode(monkeypatch: pytest.MonkeyPatch):
     """REG-01, REG-04: API возвращает заявку без user_id и без сессии."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     pending = MagicMock(
         id=uuid.uuid4(),
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
@@ -167,8 +168,8 @@ def test_registration_rejects_privileged_fields():
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "hacker",
             "email": "hacker@alxprgs.tech",
-            "password": "Password123!",
-            "confirm_password": "Password123!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
             **forbidden_field,
         }
         res = client.post("/api/v1/auth/register", json=body)
@@ -186,7 +187,7 @@ def test_registration_validation_errors():
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "user1",
             "email": "u1@alxprgs.tech",
-            "password": "Password123!",
+            "password": "RegistrationPassword2026!",
             "confirm_password": "DifferentPassword123!",
         },
     )
@@ -216,8 +217,8 @@ def test_registration_validation_errors():
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "user3",
             "email": "not-an-email",
-            "password": "Password123!",
-            "confirm_password": "Password123!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
         },
     )
     assert r3.status_code == 422
@@ -225,7 +226,7 @@ def test_registration_validation_errors():
 
 def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
     """REG-06: При совпадении логина или email возвращается единая ошибка 409 без раскрытия поля."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="open")
     existing_user = User(username="existing", email="existing@alxprgs.tech")
 
@@ -260,8 +261,8 @@ def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
                 "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "existing",
                 "email": "existing@alxprgs.tech",
-                "password": "Password123!",
-                "confirm_password": "Password123!",
+                "password": "RegistrationPassword2026!",
+                "confirm_password": "RegistrationPassword2026!",
             },
         )
         assert res.status_code == 409
@@ -283,8 +284,8 @@ def test_registration_invalid_origin_rejected():
             "legal_versions": REQUIRED_DOCUMENTS,
             "username": "origin_test",
             "email": "origin@alxprgs.tech",
-            "password": "Password123!",
-            "confirm_password": "Password123!",
+            "password": "RegistrationPassword2026!",
+            "confirm_password": "RegistrationPassword2026!",
         },
         headers={"Origin": "https://malicious-phishing-site.com"},
     )
@@ -294,7 +295,7 @@ def test_registration_invalid_origin_rejected():
 
 def test_registration_rate_limiting():
     """REG-07: Межпроцессное ограничение частоты запросов возвращает 429."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="open")
 
     res_cfg = MagicMock(scalar_one_or_none=MagicMock(return_value=config))
@@ -319,8 +320,8 @@ def test_registration_rate_limiting():
                 "legal_versions": REQUIRED_DOCUMENTS,
                 "username": "flooder",
                 "email": "flood@alxprgs.tech",
-                "password": "Password123!",
-                "confirm_password": "Password123!",
+                "password": "RegistrationPassword2026!",
+                "confirm_password": "RegistrationPassword2026!",
             },
         )
         assert res.status_code == 429
@@ -332,7 +333,7 @@ def test_registration_rate_limiting():
 @pytest.mark.asyncio
 async def test_admin_system_status_and_mode_toggle():
     """REG-02: Администратор проверяет статус и переключает registration_mode с проверкой пароля."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     admin_user = User(
         id=uuid.uuid4(),
         username="admin",
@@ -373,7 +374,7 @@ async def test_admin_system_status_and_mode_toggle():
 
 def test_capabilities_returns_registration_mode():
     """REG-03: GET /api/v1/auth/capabilities возвращает актуальный registration_mode."""
-    mock_db = AsyncMock()
+    mock_db = AsyncMock(spec=AsyncSession)
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="closed")
     mock_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=config))
 
@@ -409,31 +410,24 @@ def test_regular_user_cannot_access_system_status():
         app.dependency_overrides.pop(get_current_user, None)
 
 
+@pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_unverified_email_blocks_login_when_required():
-    """REG-09, TEST-REG-04: При REQUIRE_VERIFIED_EMAIL=true неподтвержденный email блокирует аутентификацию."""
-    from unittest.mock import patch
+async def test_unverified_email_blocks_login_when_required(pg_session):
+    """Actual password verification must not issue a session before required email."""
+    from app.config import Settings
+    from app.core.exceptions import AuthenticationException
 
-    mock_db = AsyncMock()
-    user = User(
-        id=uuid.uuid4(),
-        username="unverified_user",
-        email="unverified@alxprgs.tech",
-        is_active=True,
-        email_verified=False,
-    )
+    user = User(username="unverified_user", email="unverified@example.test", email_verified=False)
     user.password_credential = PasswordCredential(
-        user_id=user.id,
-        password_hash=hash_password("UserPass123!"),
+        password_hash=hash_password("RegistrationPassword2026!")
     )
-
-    mock_db.execute.return_value = MagicMock(scalar_one_or_none=MagicMock(return_value=user))
-
-    with patch("app.services.auth_service.settings.REQUIRE_VERIFIED_EMAIL", True):
-        with pytest.raises(Exception) as exc_info:
-            await AuthService.authenticate_user(
-                db=mock_db,
-                username="unverified_user",
-                password="UserPass123!",
-            )
-    assert "Вход заблокирован: требуется подтверждение" in str(exc_info.value)
+    pg_session.add(user)
+    await pg_session.commit()
+    with pytest.raises(AuthenticationException) as exc:
+        await AuthService.authenticate_user(
+            pg_session,
+            user.username,
+            "RegistrationPassword2026!",
+            settings=Settings(_env_file=None, REQUIRE_VERIFIED_EMAIL=True),
+        )
+    assert exc.value.detail["error"] == "email_verification_required"

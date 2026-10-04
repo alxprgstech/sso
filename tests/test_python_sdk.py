@@ -47,6 +47,8 @@ def _create_signed_jwt(
 ) -> str:
     now = int(time.time())
     p = payload.copy()
+    if p.get("token_use") == "access_token":
+        p.setdefault("scope", "openid profile email")
     p["iat"] = now
     p["exp"] = now + expires_in_seconds
     p["iss"] = "https://auth.alxprgs.tech"
@@ -166,7 +168,7 @@ def test_sdk_token_validation_with_jwks():
         )
         with pytest.raises(InvalidTokenError) as exc_info:
             client.verify_access_token(id_token)
-        assert "ID Token" in str(exc_info.value)
+        assert str(exc_info.value) == "Недопустимо использовать ID Token в качестве Access Token"
 
 
 def test_sdk_fastapi_security_dependency():
@@ -300,7 +302,7 @@ def test_sdk_web_flow_and_id_token_verification():
         )
         with pytest.raises(InvalidTokenError) as exc_tu:
             client.verify_id_token(wrong_token_use, expected_nonce=nonce)
-        assert "id_token" in str(exc_tu.value).lower()
+        assert str(exc_tu.value) == "Недействительный ID токен"
 
 
 @pytest.mark.asyncio
@@ -410,7 +412,7 @@ async def test_callback_rejects_missing_nonce_or_id_token_before_session():
         exchange.return_value = TokenResponse(
             access_token="invalid", expires_in=300, token_type="Bearer"
         )
-        with pytest.raises(InvalidTokenError, match="ID Token"):
+        with pytest.raises(InvalidTokenError, match="обязательный ID Token"):
             await client.handle_web_callback(
                 "code", "state", "state", "verifier", "http://localhost:8001/callback", "nonce"
             )

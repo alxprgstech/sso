@@ -60,9 +60,19 @@ class StartBashTests(unittest.TestCase):
             values = dict(re.findall(r"^([A-Z_]+)=(.*)$", generated, flags=re.MULTILINE))
             password = values["POSTGRES_PASSWORD"]
             self.assertRegex(password, r"^[0-9a-f]{48}$")
-            expected = f"postgresql+psycopg://sso_user:{password}@db:5432/sso_db"
-            self.assertEqual(values["DATABASE_URL"], expected)
-            self.assertEqual(values["DATABASE_URL_SYNC"], expected)
+            passwords = [
+                values[name]
+                for name in ("POSTGRES_PASSWORD", "SSO_RUNTIME_PASSWORD", "SSO_MIGRATOR_PASSWORD")
+            ]
+            self.assertEqual(len(set(passwords)), 3)
+            self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in passwords[1:]))
+            expected = (
+                f"postgresql+psycopg://sso_runtime:{values['SSO_RUNTIME_PASSWORD']}@db:5432/sso_db"
+            )
+            self.assertTrue(
+                values["DATABASE_URL"] == expected, "Runtime must not use the bootstrap owner"
+            )
+            self.assertTrue(values["DATABASE_URL_SYNC"] == expected)
             self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
             self.assertEqual(values["BASE_URL"], "http://localhost:3000")
             self.assertEqual(values["WEBAUTHN_RP_ID"], "localhost")
@@ -74,7 +84,7 @@ class StartBashTests(unittest.TestCase):
                 "FEATURE_RECOVERY_CODES_ENABLED",
             ):
                 self.assertEqual(values[name], "false")
-            self.assertNotIn(password, result.stdout + result.stderr)
+            self.assertTrue(all(value not in result.stdout + result.stderr for value in passwords))
             self.assertNotIn("ALX_BUILD_SHA", generated)
             git.write_text("#!/bin/sh\necho invalid\n", encoding="ascii")
             invalid = subprocess.run(

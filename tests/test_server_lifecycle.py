@@ -403,7 +403,7 @@ def test_real_frontend_lifecycle_and_port_release():
         npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
         bld = subprocess.run([npm_cmd, "run", "build"], cwd=root_fe)
         if bld.returncode != 0:
-            pytest.skip("frontend/dist не собран и npm run build не удался")
+            pytest.fail("frontend/dist не собран и обязательный npm run build не удался")
 
     port = get_free_port()
     pidfile = os.path.join(tempfile.gettempdir(), f"sso_fe_{port}.pid")

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -118,45 +119,38 @@ def check_secrets_in_code() -> list[str]:
         (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS Access Key"),
     ]
 
-    EXCLUDED_DIRS = {
-        ".git",
-        ".venv",
-        ".venv-sentry",  # Ignored local dependency environment; tracked source still scanned.
-        "node_modules",
-        "dist",
-        "build",
-        ".pytest_cache",
-        ".ruff_cache",
-    }
-    # Файлы, где шаблон ключа допустим для проверок парсинга/тестов
-    ALLOWED_FILES = {
-        "tests/test_g8_sso_regression.py",
-        "tests/test_security_and_negative_scenarios.py",
-    }
+    # Scan exactly the source that can enter a commit, including untracked new
+    # files and already tracked paths covered by ignore rules. Private runtime
+    # captures/dependency environments are not repository source.
+    result = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        check=True,
+    )
+    for rel_path in sorted(set(result.stdout.decode("utf-8").split("\0")) - {""}):
+        ext = os.path.splitext(rel_path)[1].lower()
+        if ext not in (".py", ".ts", ".tsx", ".js", ".json", ".yml", ".yaml", ".env"):
+            continue
 
-    for root, dirs, files in os.walk(ROOT_DIR):
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
-        for file in files:
-            ext = os.path.splitext(file)[1].lower()
-            if ext not in (".py", ".ts", ".tsx", ".js", ".json", ".yml", ".yaml", ".env"):
-                continue
-
-            rel_path = os.path.relpath(os.path.join(root, file), ROOT_DIR).replace("\\", "/")
-            if rel_path in ALLOWED_FILES:
-                continue
-
-            filepath = os.path.join(root, file)
-            try:
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    for line_no, line in enumerate(f, 1):
-                        for pattern, desc in SECRET_PATTERNS:
-                            if pattern.search(line):
-                                # Проверяем, не является ли это пустой строкой или тестом
-                                if '""' in line or "''" in line:
-                                    continue
-                                errors.append(f"Possible {desc} in {rel_path}:{line_no}")
-            except Exception as e:
-                errors.append(f"Failed to read {rel_path}: {e}")
+        filepath = os.path.join(ROOT_DIR, rel_path)
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                for line_no, line in enumerate(f, 1):
+                    for pattern, desc in SECRET_PATTERNS:
+                        if pattern.search(line):
+                            non_key_fixture = '"-----BEGIN ' + 'PRIVATE KEY-----\\nmalformed"'
+                            if (
+                                desc == "Raw Private Key PEM (non-empty)"
+                                and non_key_fixture in line
+                            ):
+                                continue  # Exact non-key parser rejection fixture, never valid PEM.
+                            # Проверяем, не является ли это пустой строкой или тестом
+                            if '""' in line or "''" in line:
+                                continue
+                            errors.append(f"Possible {desc} in {rel_path}:{line_no}")
+        except Exception as e:
+            errors.append(f"Failed to read {rel_path}: {e}")
 
     return errors
 

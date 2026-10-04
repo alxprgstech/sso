@@ -13,7 +13,7 @@ class ResetLocalPowerShellTests(unittest.TestCase):
     def run_reset(
         self, answer: str, down_exit: int, volume: str = "sso_db_data"
     ) -> tuple[subprocess.CompletedProcess[str], list[str], bool]:
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix="sso-проверка-") as directory:
             root = Path(directory)
             shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "reset-local.ps1", root / "reset-local.ps1"
@@ -22,12 +22,12 @@ class ResetLocalPowerShellTests(unittest.TestCase):
             env_file = root / ".env"
             env_file.write_text("keep-me\n", encoding="utf-8")
             call_log = root / "calls.txt"
-            shell = shutil.which("powershell.exe")
+            shell = shutil.which(getattr(self, "shell_executable", "powershell.exe"))
             self.assertIsNotNone(shell)
             script = f"""
 $callLog = '{str(call_log).replace("'", "''")}'
 function docker {{
-    Add-Content -LiteralPath $callLog -Value ($args -join ' ')
+    Add-Content -LiteralPath $callLog -Value ($args -join ' ') -Encoding UTF8
     if ($args[0] -eq 'context') {{ $global:LASTEXITCODE = 0; return 'default' }}
     if ($args[-2] -eq 'config') {{ $global:LASTEXITCODE = 0; return '{volume}' }}
     if ($args[-2] -eq 'down') {{ $global:LASTEXITCODE = {down_exit}; return }}
@@ -71,6 +71,10 @@ function Read-Host {{ return '{answer}' }}
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(env_exists)
         self.assertTrue(any(" -p sso down --volumes" in call for call in calls))
+
+
+class ResetLocalPwshTests(ResetLocalPowerShellTests):
+    shell_executable = "pwsh.exe"
 
 
 if __name__ == "__main__":

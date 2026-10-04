@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
+from tests.helpers.reauthentication import authorized_request
 
 
 @pytest.mark.postgres
@@ -149,10 +150,13 @@ async def test_change_password_revokes_other_sessions_pg(
         assert cnt_res.scalar_one() == 2
 
         # 4. В Сессии 1 меняем пароль
-        r_chg = await pg_client.post(
+        r_chg = await authorized_request(
+            pg_client,
+            "POST",
             "/api/v1/auth/change-password",
+            password="OriginalPassword123!",
             headers={"X-CSRF-Token": token1},
-            json={
+            json_body={
                 "current_password": "OriginalPassword123!",
                 "new_password": "NewSecretPassword2026!",
             },
@@ -218,10 +222,13 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     assert len(r_users.json()) >= 1
 
     # 4. Администратор создает обычного пользователя
-    r_create = await pg_client.post(
+    r_create = await authorized_request(
+        pg_client,
+        "POST",
         "/api/v1/admin/users",
+        password="AdminPassword123!",
         headers={"X-CSRF-Token": adm_csrf},
-        json={
+        json_body={
             "username": "regular_user_1",
             "email": "regular1@alxprgs.tech",
             "password": "UserPassword123!",
@@ -233,37 +240,49 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     normal_id = r_create.json()["id"]
 
     # 5. Защита USR-08: Попытка заблокировать последнего администратора отклоняется
-    r_block_admin = await pg_client.patch(
+    r_block_admin = await authorized_request(
+        pg_client,
+        "PATCH",
         f"/api/v1/admin/users/{admin_id}",
+        password="AdminPassword123!",
         headers={"X-CSRF-Token": adm_csrf},
-        json={"is_active": False},
+        json_body={"is_active": False},
     )
     assert r_block_admin.status_code == 403
     assert "последнего" in str(r_block_admin.json())
 
     # Попытка снять права суперпользователя с последнего администратора
-    r_demote_admin = await pg_client.patch(
+    r_demote_admin = await authorized_request(
+        pg_client,
+        "PATCH",
         f"/api/v1/admin/users/{admin_id}",
+        password="AdminPassword123!",
         headers={"X-CSRF-Token": adm_csrf},
-        json={"is_superuser": False},
+        json_body={"is_superuser": False},
     )
     assert r_demote_admin.status_code == 403
 
     # 6. Блокировка обычного пользователя разрешена
-    r_block_user = await pg_client.patch(
+    r_block_user = await authorized_request(
+        pg_client,
+        "PATCH",
         f"/api/v1/admin/users/{normal_id}",
+        password="AdminPassword123!",
         headers={"X-CSRF-Token": adm_csrf},
-        json={"is_active": False},
+        json_body={"is_active": False},
     )
     assert r_block_user.status_code == 200
     assert r_block_user.json()["is_active"] is False
 
     # 7. Обычный пользователь не может получить доступ к эндпоинтам админки (серверный RBAC)
     # Входим обычным пользователем (предварительно активируем его)
-    await pg_client.patch(
+    await authorized_request(
+        pg_client,
+        "PATCH",
         f"/api/v1/admin/users/{normal_id}",
+        password="AdminPassword123!",
         headers={"X-CSRF-Token": adm_csrf},
-        json={"is_active": True},
+        json_body={"is_active": True},
     )
 
     transport = httpx.ASGITransport(app=pg_client._transport.app)
@@ -271,6 +290,24 @@ async def test_admin_rbac_and_last_admin_protection_pg(
         r_user_login = await user_client.post(
             "/api/v1/auth/login",
             json={"username": "regular_user_1", "password": "UserPassword123!"},
+        )
+        assert r_user_login.status_code == 200
+        assert r_user_login.json()["user"]["session_purpose"] == "password_change"
+        changed = await authorized_request(
+            user_client,
+            "POST",
+            "/api/v1/auth/change-password",
+            password="UserPassword123!",
+            headers={"X-CSRF-Token": r_user_login.json()["csrf_token"]},
+            json_body={
+                "current_password": "UserPassword123!",
+                "new_password": "PermanentUserPassword2026!",
+            },
+        )
+        assert changed.status_code == 200 and changed.json()["requires_login"]
+        r_user_login = await user_client.post(
+            "/api/v1/auth/login",
+            json={"username": "regular_user_1", "password": "PermanentUserPassword2026!"},
         )
         await accept_current_documents(user_client, r_user_login)
         assert r_user_login.status_code == 200

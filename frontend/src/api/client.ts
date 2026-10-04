@@ -16,6 +16,14 @@ import {
 import type { EncodedCreationOptions, EncodedRequestOptions } from "../utils/webauthn";
 import { captureContractFailure } from "../telemetry/sentry";
 import { canonicalRoute } from "../telemetry/privacy";
+import { requestDigest } from "../utils/reauthentication";
+
+export interface SecurityAuthorization {
+  authorization: string;
+  factor_required: boolean;
+  methods?: string[];
+  passkey_options?: EncodedRequestOptions | null;
+}
 
 export class ApiError extends Error {
   readonly name = "ApiError";
@@ -26,6 +34,19 @@ export class ApiError extends Error {
 
 class ApiClient {
   private csrfToken: string | null = null;
+  private reauthenticationHandler: ((action: string, digest: string) => Promise<string>) | null = null;
+
+  setReauthenticationHandler(handler: ((action: string, digest: string) => Promise<string>) | null) {
+    this.reauthenticationHandler = handler;
+  }
+
+  async startReauthentication(action: string, payload_hash: string, current_password: string): Promise<SecurityAuthorization> {
+    return this.request("/api/v1/auth/reauthentication", { method: "POST", body: JSON.stringify({ action, payload_hash, current_password }) }, false);
+  }
+
+  async confirmReauthentication(authorization: string, method: string, code?: string, credential?: object): Promise<SecurityAuthorization> {
+    return this.request("/api/v1/auth/reauthentication/factor", { method: "POST", body: JSON.stringify({ authorization, method, code, credential }) }, false);
+  }
 
   setCsrfToken(token: string | null) {
     this.csrfToken = token;
@@ -54,7 +75,7 @@ class ApiClient {
     return this.request("/api/v1/auth/account-deletion", { method: action === "request" ? "POST" : "DELETE", body: JSON.stringify({ authorization }) });
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}, allowReauthentication = true): Promise<T> {
     const headers = new Headers(options.headers || {});
     headers.set("Accept", "application/json");
 
@@ -82,14 +103,22 @@ class ApiClient {
 
     if (!response.ok) {
       let errorMessage = `Ошибка HTTP ${response.status}`;
+      let errorCode = response.status < 500 ? "request_rejected" : "server_unavailable";
       try {
         const errorData = await response.json();
+        errorCode = errorData.error || errorData.detail?.error || errorCode;
         errorMessage = errorData.detail?.detail || errorData.detail || errorData.error_description || errorData.error || errorMessage;
       } catch {
         // Игнорируем ошибку парсинга JSON
       }
+      if (errorCode === "reauthentication_required" && allowReauthentication && this.reauthenticationHandler) {
+        const digest = await requestDigest(typeof options.body === "string" ? options.body : "");
+        const authorization = await this.reauthenticationHandler(`${method} ${endpoint}`, digest);
+        headers.set("X-Reauthentication", authorization);
+        return this.request<T>(endpoint, { ...options, headers }, false);
+      }
       throw new ApiError(typeof errorMessage === "string" ? errorMessage : `Ошибка HTTP ${response.status}`,
-        response.status, response.status < 500 ? "request_rejected" : "server_unavailable", canonicalRoute(endpoint));
+        response.status, errorCode, canonicalRoute(endpoint));
     }
 
     // Если 204 No Content
@@ -132,7 +161,7 @@ class ApiClient {
     return this.request<UserProfile>("/api/v1/auth/me");
   }
 
-  async changePassword(currentPassword: string, newPassword: string): Promise<{ status: string; message: string }> {
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ status: string; message: string; requires_login: boolean }> {
     return this.request("/api/v1/auth/change-password", {
       method: "POST",
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
@@ -180,7 +209,7 @@ class ApiClient {
     return this.request<AdminClient[]>("/api/v1/admin/clients");
   }
 
-  async createAdminClient(data: { client_name: string; client_type: string; redirect_uris: string[] }): Promise<AdminClient> {
+  async createAdminClient(data: { client_name: string; client_type: string; redirect_uris: string[]; allowed_scopes?: string[] }): Promise<AdminClient> {
     return this.request<AdminClient>("/api/v1/admin/clients", {
       method: "POST",
       body: JSON.stringify(data),

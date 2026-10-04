@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import base64
+import re
+from datetime import datetime
 from functools import lru_cache
 from typing import Any, Literal
+from urllib.parse import urlsplit
+
+from cryptography.fernet import Fernet
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,6 +17,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     # Окружение
@@ -41,8 +48,8 @@ class Settings(BaseSettings):
     @field_validator("SENTRY_DSN", "SENTRY_FRONTEND_DSN")
     @classmethod
     def validate_sentry_dsn(cls, value: str) -> str:
-        from urllib.parse import urlsplit
         import re
+        from urllib.parse import urlsplit
 
         if not value:
             return value
@@ -75,6 +82,12 @@ class Settings(BaseSettings):
     JWT_KEY_ID: str = "default-rsa-key-1"
     JWT_PREVIOUS_PUBLIC_KEY_PEM: str = ""
     JWT_PREVIOUS_KEY_ID: str = ""
+    JWT_PREVIOUS_KEY_VALID_UNTIL: datetime | None = None
+
+    @field_validator("JWT_PREVIOUS_KEY_VALID_UNTIL", mode="before")
+    @classmethod
+    def empty_retirement_deadline(cls, value: Any) -> Any:
+        return None if value == "" else value
 
     # База данных
     DATABASE_URL: str = "postgresql+psycopg://sso_user:sso_password@localhost:5432/alxprgs_sso"
@@ -124,6 +137,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "no-reply@alxprgs.tech"
     SMTP_USE_TLS: bool = False
+    SMTP_CA_FILE: str = ""  # Optional trusted local/enterprise CA; normal system trust by default.
 
     @field_validator("SES_REGION", "SES_FROM_EMAIL", "SES_FROM_NAME")
     @classmethod
@@ -149,18 +163,27 @@ class Settings(BaseSettings):
     @field_validator("TRUSTED_PROXIES", mode="after")
     @classmethod
     def parse_trusted_proxies(cls, val: Any) -> list[str]:
+        import ipaddress
+
         if isinstance(val, str):
             if val.startswith("[") and val.endswith("]"):
                 import json
 
                 try:
-                    return json.loads(val)
+                    val = json.loads(val)
                 except Exception:
-                    pass
-            return [x.strip() for x in val.split(",") if x.strip()]
-        if isinstance(val, list):
-            return val
-        return ["127.0.0.1", "::1"]
+                    raise ValueError("Invalid trusted proxy list") from None
+            else:
+                val = [x.strip() for x in val.split(",") if x.strip()]
+        if not isinstance(val, list) or len(val) > 16:
+            raise ValueError("Invalid trusted proxy list")
+        for item in val:
+            if not isinstance(item, str):
+                raise ValueError("Invalid trusted proxy address")
+            network = ipaddress.ip_network(item, strict=True)
+            if network.prefixlen == 0:
+                raise ValueError("Wildcard proxy trust is forbidden")
+        return val
 
     @model_validator(mode="after")
     def validate_feature_invariants(self) -> Settings:
@@ -174,7 +197,93 @@ class Settings(BaseSettings):
                 "Конфигурационная ошибка: FEATURE_RECOVERY_CODES_ENABLED не может быть включен "
                 "без включения FEATURE_TOTP_ENABLED."
             )
+        self.validate_key_configuration()
+        if self.ENVIRONMENT == "production":
+            self.validate_production_configuration()
         return self
+
+    def validate_key_configuration(self) -> None:
+        from app.core.key_material import load_private_key, load_public_key, validate_key_id
+
+        validate_key_id(self.JWT_KEY_ID)
+        if self.JWT_PRIVATE_KEY_PEM:
+            load_private_key(self.JWT_PRIVATE_KEY_PEM)
+        previous = bool(self.JWT_PREVIOUS_PUBLIC_KEY_PEM)
+        if previous != bool(self.JWT_PREVIOUS_KEY_ID):
+            raise ValueError("Previous RSA key and identifier must be configured together")
+        if previous:
+            validate_key_id(self.JWT_PREVIOUS_KEY_ID)
+            if self.JWT_PREVIOUS_KEY_ID == self.JWT_KEY_ID:
+                raise ValueError("Active and previous RSA identifiers must differ")
+            load_public_key(self.JWT_PREVIOUS_PUBLIC_KEY_PEM)
+        if self.JWT_PREVIOUS_KEY_VALID_UNTIL is not None:
+            if not previous or self.JWT_PREVIOUS_KEY_VALID_UNTIL.utcoffset() is None:
+                raise ValueError(
+                    "Previous key retirement requires a key and timezone-aware deadline"
+                )
+
+    def validate_production_configuration(self) -> None:
+        session = self.SESSION_SECRET_KEY
+        if (
+            len(session) < 64
+            or len(set(session)) < 16
+            or re.search(r"default|dev-only|change-me|example|placeholder", session, re.I)
+        ):
+            raise ValueError(
+                "Production requires a non-default random SESSION_SECRET_KEY (64+ characters)"
+            )
+        try:
+            Fernet(self.TOTP_ENCRYPTION_KEY.encode("ascii"))
+        except (ValueError, UnicodeError):
+            raise ValueError("Production requires a valid TOTP_ENCRYPTION_KEY") from None
+        if self.TOTP_ENCRYPTION_KEY == type(self).model_fields["TOTP_ENCRYPTION_KEY"].default:
+            raise ValueError("Production rejects the development TOTP_ENCRYPTION_KEY")
+        if len(set(base64.urlsafe_b64decode(self.TOTP_ENCRYPTION_KEY))) < 16:
+            raise ValueError("Production requires a random TOTP_ENCRYPTION_KEY")
+        if not self.JWT_PRIVATE_KEY_PEM.strip() or self.JWT_KEY_ID == "default-rsa-key-1":
+            raise ValueError(
+                "Production requires persistent RSA material and an explicit JWT_KEY_ID"
+            )
+        if self.JWT_PREVIOUS_PUBLIC_KEY_PEM and self.JWT_PREVIOUS_KEY_VALID_UNTIL is None:
+            raise ValueError("Production previous RSA key requires an explicit retirement deadline")
+        for value in (self.OIDC_ISSUER, self.BASE_URL, self.FRONTEND_URL, self.WEBAUTHN_ORIGIN):
+            parsed = urlsplit(value)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+                or parsed.path
+                or parsed.port == 0
+                or value != self.OIDC_ISSUER
+            ):
+                raise ValueError(
+                    "Production issuer and external URLs must share one exact HTTPS origin"
+                )
+        if self.WEBAUTHN_RP_ID != urlsplit(self.OIDC_ISSUER).hostname:
+            raise ValueError("Production WebAuthn RP ID must match the issuer host")
+        bounds = {
+            "AUTH_CODE_TTL_SECONDS": 60,
+            "ACCESS_TOKEN_TTL_SECONDS": 300,
+            "REFRESH_TOKEN_TTL_SECONDS": 604800,
+            "REFRESH_FAMILY_MAX_LIFETIME_SECONDS": 2592000,
+            "SESSION_IDLE_TIMEOUT_SECONDS": 43200,
+            "SESSION_ABSOLUTE_TIMEOUT_SECONDS": 604800,
+            "MFA_STEP_TTL_SECONDS": 300,
+        }
+        if any(not 1 <= getattr(self, name) <= limit for name, limit in bounds.items()):
+            raise ValueError("Production token/session lifetimes exceed the supported bounds")
+        if self.SESSION_IDLE_TIMEOUT_SECONDS > self.SESSION_ABSOLUTE_TIMEOUT_SECONDS:
+            raise ValueError("Idle session timeout cannot exceed the absolute timeout")
+        if self.DEBUG:
+            raise ValueError("Production DEBUG must be disabled")
+        if not re.fullmatch(r"__Host-[A-Za-z0-9_-]+", self.SESSION_COOKIE_NAME):
+            raise ValueError("Production requires a __Host- session cookie name")
+        if self.EMAIL_PROVIDER == "smtp" and not self.SMTP_USE_TLS:
+            raise ValueError("Production SMTP requires verified STARTTLS")
 
 
 @lru_cache

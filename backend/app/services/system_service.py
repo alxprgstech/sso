@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.exceptions import AuthenticationException
-from app.core.security import verify_password
+from app.core.security import async_verify_password
 from app.models.system import SystemConfiguration
 from app.models.user import User
 from app.services.audit_service import AuditService
@@ -56,7 +58,7 @@ class SystemService:
         """
         Переключение режима регистрации администратором после повторной аутентификации (REG-02).
         """
-        if not admin_user.password_credential or not verify_password(
+        if not admin_user.password_credential or not await async_verify_password(
             admin_password, admin_user.password_credential.password_hash
         ):
             await AuditService.log_event(

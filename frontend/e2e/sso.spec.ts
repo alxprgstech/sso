@@ -1,4 +1,5 @@
 import { acceptDocumentsAfterLogin } from "./helpers/legal";
+import { confirmSensitiveAction } from "./helpers/reauthentication";
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
@@ -100,6 +101,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
 
     // Сохраняем
     await page.click('button:has-text("Применить режим регистрации")');
+    await confirmSensitiveAction(page, "ComposeAdminPass2026!");
 
     // Проверяем сообщение об успешном изменении
     await expect(
@@ -198,6 +200,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await page.locator('input[value="closed"]').check();
     await page.fill('input[placeholder*="Введите ваш пароль"]', "ComposeAdminPass2026!");
     await page.click('button:has-text("Применить режим регистрации")');
+    await confirmSensitiveAction(page, "ComposeAdminPass2026!");
 
     await expect(
       page.getByText('Режим регистрации успешно изменён на "closed"')

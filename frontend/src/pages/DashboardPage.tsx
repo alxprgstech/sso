@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { SessionInfo, TOTPSetupResponse } from "../types/api";
 import { prepareCreationOptions, serializeCreationResponse } from "../utils/webauthn";
 import { QRCodeSVG } from "qrcode.react";
+import { AccessibleDialog } from "../components/AccessibleDialog";
 
 export const DashboardPage: React.FC = () => {
   const { user, capabilities, refreshUser } = useAuth();
@@ -19,7 +20,6 @@ export const DashboardPage: React.FC = () => {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const passwordTriggerRef = useRef<HTMLButtonElement>(null);
   const currentPasswordRef = useRef<HTMLInputElement>(null);
-  const passwordDialogRef = useRef<HTMLDivElement>(null);
 
   const closePasswordModal = () => {
     if (passwordLoading) return;
@@ -31,23 +31,6 @@ export const DashboardPage: React.FC = () => {
     window.setTimeout(() => passwordTriggerRef.current?.focus(), 0);
   };
 
-  useEffect(() => {
-    if (!showPasswordModal) return;
-    currentPasswordRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closePasswordModal();
-      if (event.key === "Tab") {
-        const focusable = Array.from(passwordDialogRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)") || []);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [showPasswordModal, passwordLoading]);
 
   // Состояние сессий
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -263,8 +246,8 @@ export const DashboardPage: React.FC = () => {
       setPasswordError("Новые пароли не совпадают");
       return;
     }
-    if (newPassword.length < 8) {
-      setPasswordError("Пароль должен содержать минимум 8 символов");
+    if (newPassword.length < 15) {
+      setPasswordError("Пароль должен содержать минимум 15 символов");
       return;
     }
 
@@ -359,7 +342,7 @@ export const DashboardPage: React.FC = () => {
 
       {showPasswordModal && (
       <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) closePasswordModal(); }}>
-      <div ref={passwordDialogRef} role="dialog" aria-modal="true" aria-labelledby="change-password-title" className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+      <AccessibleDialog label="Смена пароля" onClose={closePasswordModal} busy={passwordLoading} initialFocus={currentPasswordRef} className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between mb-4"><h2 id="change-password-title" className="text-xl font-bold">Смена пароля</h2><button type="button" onClick={closePasswordModal} disabled={passwordLoading} aria-label="Закрыть окно смены пароля">✕</button></div>
         {passwordError && (
           <div role="alert" className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
@@ -379,7 +362,7 @@ export const DashboardPage: React.FC = () => {
             />
           </div>
           <div>
-            <label htmlFor="dashboardpage-field-2" className="block text-sm font-medium text-gray-700">Новый пароль (мин. 8 символов)</label>
+            <label htmlFor="dashboardpage-field-2" className="block text-sm font-medium text-gray-700">Новый пароль (мин. 15 символов)</label>
             <input id="dashboardpage-field-2"
               type="password"
               required
@@ -400,7 +383,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="flex gap-3"><button type="submit" disabled={passwordLoading} className="py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50">{passwordLoading ? "Обновление..." : "Сохранить новый пароль"}</button><button type="button" onClick={closePasswordModal} disabled={passwordLoading} className="py-2 px-4 rounded-lg text-sm bg-gray-100">Отмена</button></div>
         </form>
-      </div>
+      </AccessibleDialog>
       </div>
       )}
 

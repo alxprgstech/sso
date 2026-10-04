@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import ipaddress
 import time
-from collections import defaultdict
+from collections import OrderedDict
 from typing import Dict, List, Sequence
+
 from fastapi import HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_settings
 
 # Внутрипроцессный фильтр скользящего окна (защита от исчерпания CPU быстрым флудом)
-_IN_MEMORY_REQUESTS: Dict[str, List[float]] = defaultdict(list)
+_IN_MEMORY_REQUESTS: Dict[str, List[float]] = OrderedDict()
 IN_MEMORY_MAX_REQUESTS = 10
 IN_MEMORY_WINDOW_SECONDS = 10
 
@@ -55,7 +57,7 @@ def get_client_ip(request: Request, trusted_proxies: Sequence[str] | None = None
         try:
             trusted_proxies = get_settings().TRUSTED_PROXIES
         except Exception:
-            trusted_proxies = ["127.0.0.1", "::1"]
+            trusted_proxies = []
 
     peer_ip = request.client.host if request.client else "127.0.0.1"
 
@@ -66,14 +68,18 @@ def get_client_ip(request: Request, trusted_proxies: Sequence[str] | None = None
     # Если отправитель доверен, извлекаем реальный клиентский IP из X-Forwarded-For
     xff = request.headers.get("X-Forwarded-For")
     if xff:
-        # X-Forwarded-For содержит цепочку: client, proxy1, proxy2
-        # Берём первый IP (клиентский)
-        client_candidate = xff.split(",")[0].strip()
+        # Walk from the trusted peer towards the client; never trust a prefix
+        # supplied before the first untrusted hop.
         try:
-            ipaddress.ip_address(client_candidate)
-            return client_candidate
+            chain = [str(ipaddress.ip_address(value.strip())) for value in xff.split(",")]
+            if not 1 <= len(chain) <= 16:
+                return peer_ip
+            for candidate in reversed(chain):
+                if not is_trusted_proxy(candidate, trusted_proxies):
+                    return candidate
+            return chain[0]
         except ValueError:
-            pass
+            return peer_ip
 
     x_real = request.headers.get("X-Real-IP")
     if x_real:
@@ -89,7 +95,9 @@ def get_client_ip(request: Request, trusted_proxies: Sequence[str] | None = None
 
 def check_in_memory_rate_limit(ip: str) -> None:
     now = time.time()
-    timestamps = _IN_MEMORY_REQUESTS[ip]
+    timestamps = _IN_MEMORY_REQUESTS.get(ip, [])
+    if ip not in _IN_MEMORY_REQUESTS and len(_IN_MEMORY_REQUESTS) >= 10000:
+        _IN_MEMORY_REQUESTS.pop(next(iter(_IN_MEMORY_REQUESTS)))
     # Очищаем устаревшие метки
     _IN_MEMORY_REQUESTS[ip] = [ts for ts in timestamps if now - ts < IN_MEMORY_WINDOW_SECONDS]
     if len(_IN_MEMORY_REQUESTS[ip]) >= IN_MEMORY_MAX_REQUESTS:

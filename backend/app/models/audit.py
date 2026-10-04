@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import uuid
 from typing import TYPE_CHECKING, Any
-from sqlalchemy import JSON, ForeignKey, String
+
+from sqlalchemy import JSON, ForeignKey, Index, String
 
 if TYPE_CHECKING:
     from app.models.user import User
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
 
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
+    __table_args__ = (Index("ix_audit_events_created_at", "created_at"),)
 
     event_type: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     user_id: Mapped[uuid.UUID | None] = mapped_column(

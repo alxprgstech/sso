@@ -41,6 +41,20 @@ from tests.db_guard import (
 
 SYNTHETIC_USERS = [
     {
+        "username": "e2e_totp_user",
+        "email": "e2e_totp@example.test",
+        "password": "TOTPBrowserSynthetic2026!",
+        "is_superuser": False,
+        "roles": [ROLE_USER],
+    },
+    {
+        "username": "e2e_protocol_user",
+        "email": "e2e_protocol@example.test",
+        "password": "ProtocolBrowserSynthetic2026!",
+        "is_superuser": False,
+        "roles": [ROLE_USER],
+    },
+    {
         "username": "compose_admin",
         "email": "compose_admin@alxprgs.tech",
         "password": "ComposeAdminPass2026!",
@@ -225,6 +239,13 @@ async def prepare_e2e_data() -> None:
                         session.add(OIDCRedirectUri(client_id=c_obj.id, uri=uri))
                 print(f"[OK] Обновлен OIDC клиент {c_data['client_id']}")
 
+        # Reset only these owned, synthetic factor fixtures on the guarded test DB.
+        for table in ("totp_credentials", "recovery_codes"):
+            await session.execute(
+                text(
+                    f"DELETE FROM {table} WHERE user_id IN (SELECT id FROM users WHERE username='e2e_totp_user')"
+                )
+            )
         # 4. Очищаем устаревшие webauthn credentials для синтетических passkey пользователей
         await session.execute(
             text(

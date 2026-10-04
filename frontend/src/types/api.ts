@@ -64,7 +64,7 @@ export interface UserProfile {
   legal_acceptance_required?: boolean;
   deletion_pending?: boolean;
   deletion_scheduled_for?: string | null;
-  session_purpose?: "full" | "deletion_management";
+  session_purpose?: "full" | "deletion_management" | "password_change";
 }
 
 export interface LegalDocument {
@@ -116,6 +116,7 @@ export interface AdminUser {
 }
 
 export interface AdminClient {
+  allowed_scopes: string[];
   id: string;
   client_id: string;
   client_name: string;

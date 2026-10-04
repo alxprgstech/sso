@@ -210,9 +210,17 @@ def build_message(
 
 
 def _send_smtp(message: EmailMessage, settings: Settings) -> None:
+    import ssl
+
+    if settings.ENVIRONMENT == "production" and not settings.SMTP_USE_TLS:
+        raise ValueError("Production SMTP requires verified STARTTLS")
+    if (settings.SMTP_USER or settings.SMTP_PASSWORD) and not settings.SMTP_USE_TLS:
+        raise ValueError("SMTP credentials require verified STARTTLS")
+    context = ssl.create_default_context(cafile=settings.SMTP_CA_FILE or None)
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5) as server:
         if settings.SMTP_USE_TLS:
-            server.starttls()
+            server.starttls(context=context)
+            server.ehlo()
         if settings.SMTP_USER and settings.SMTP_PASSWORD:
             server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
         server.send_message(message)

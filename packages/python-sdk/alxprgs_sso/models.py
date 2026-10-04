@@ -11,10 +11,15 @@ class UserClaims(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     sub: str
-    preferred_username: str
+    preferred_username: str | None = None
     email: str | None = None
     email_verified: bool = False
     roles: list[str] = Field(default_factory=list)
+    scope: str = ""
+
+    @property
+    def scopes(self) -> frozenset[str]:
+        return frozenset(self.scope.split())
 
 
 class TokenResponse(BaseModel):

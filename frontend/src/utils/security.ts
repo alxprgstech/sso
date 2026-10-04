@@ -11,10 +11,10 @@
  * - Запрещает псевдопротоколы (javascript:, data:, vbscript:)
  * - Разрешает только:
  *   1) Относительные пути на текущем домене, начинающиеся с '/', кроме '//' и '/\\'
- *   2) Доверенные URL на целевом SSO домене (auth.alxprgs.tech, alxprgs.tech, localhost:8000, 127.0.0.1:8000)
+ *   2) Абсолютные URL с точным текущим origin (scheme, host и port).
  */
 export function sanitizeReturnTo(returnTo: string | null | undefined): string | null {
-  if (!returnTo || typeof returnTo !== "string") {
+  if (!returnTo || typeof returnTo !== "string" || returnTo.length > 4096) {
     return null;
   }
 
@@ -64,20 +64,7 @@ export function sanitizeReturnTo(returnTo: string | null | undefined): string | 
       return null;
     }
 
-    const currentHost = (window?.location?.host || window?.location?.hostname || "").toLowerCase();
-    const targetHost = parsed.host.toLowerCase();
-
-    const trustedHosts = new Set([
-      currentHost,
-      "localhost:8000",
-      "localhost:5173",
-      "127.0.0.1:8000",
-      "127.0.0.1:5173",
-      "auth.alxprgs.tech",
-      "alxprgs.tech",
-    ]);
-
-    if (trustedHosts.has(targetHost)) {
+    if (parsed.origin === window.location.origin && !parsed.username && !parsed.password) {
       return parsed.toString();
     }
 

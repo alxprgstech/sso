@@ -8,7 +8,7 @@
 
 ## 1. Общее описание эксплуатационного контура
 
-Эксплуатационный контур ALXPRGS SSO состоит из трех основных контейнеризированных сервисов, объединенных изолированной сетью `sso_network`:
+Эксплуатационный контур содержит три постоянных сервиса и одноразовый `migrate` job. БД находится только во внутренней `db_network`; gateway/backend соединяются через `proxy_network`:
 
 1. **`db`** (`postgres:16-alpine`):
    - Реляционная СУБД PostgreSQL 16;
@@ -16,13 +16,13 @@
    - Проверка работоспособности: `pg_isready -U sso_user -d sso_db`.
 2. **`backend`** (`alxprgs-sso-backend`):
    - FastAPI приложение на Python 3.13;
-   - Автоматическое применение миграций Alembic (`alembic upgrade head`) при запуске контейнера;
+   - Миграции выполняет отдельный `migrate` job с ролью `sso_migrator` до запуска backend; runtime использует только `sso_runtime`;
    - Uvicorn ASGI сервер на порту 8000;
    - Эндпоинты проверки жизнеспособности: `/health/live` (Liveness) и `/health/ready` (Readiness с проверкой подключения к БД).
 3. **`frontend`** (`alxprgs-sso-frontend`):
-   - Nginx 1.27 + статический production-бандл React 18 SPA;
+   - Nginx 1.30.5 + статический production-бандл React 18 SPA;
    - Проксирование запросов к API, OIDC, Discovery и Healthcheck на сервис `backend:8000`;
-   - Единая точка входа по HTTP (порт 80 внутри контейнера, порт 3000 на хосте в development/staging, порт 80/443 в production).
+   - Local HTTP8080 внутри контейнера, только127.0.0.1:3000 на хосте. Production требует явно настроенный единственный TLS gateway из `deploy/nginx.conf`; шаблон не является готовым публичным развёртыванием.
 
 ---
 
@@ -38,14 +38,15 @@ cp .env.example .env
 Задайте безопасные значения секретов для production:
 ```bash
 # Генерация ключей:
-python scripts/rotate_keys.py
+python scripts/rotate_keys.py --kind rsa --output-dir <новый-защищённый-каталог> --key-id <уникальный-kid>
 ```
 
 Отредактируйте `.env`:
-- `SECRET_KEY`: криптографически стойкая строка (минимум 32 байта hex);
-- `MFA_ENCRYPTION_KEY`: Fernet base64 ключ для шифрования TOTP секретов;
+- `SESSION_SECRET_KEY`: случайная строка не менее 64 символов; генерация `--kind session` в отдельный новый каталог;
+- `TOTP_ENCRYPTION_KEY`: отдельный случайный Fernet base64 ключ; генерация `--kind totp` в отдельный новый каталог;
+- `JWT_PRIVATE_KEY_PEM`: путь внутри runtime к постоянному RSA secret mount либо PEM из secret store; `JWT_KEY_ID` явный уникальный ASCII kid;
 - `BASE_URL`: внешний базовый URL (например, `https://auth.alxprgs.tech`);
-- `OIDC_ISSUER`: идентификатор поставщика удостоверений (`https://auth.alxprgs.tech`);
+- `OIDC_ISSUER`: идентификатор поставщика удостоверений (`https://auth.alxprgs.tech`); production требует тот же точный HTTPS origin в `BASE_URL`, `FRONTEND_URL`, `WEBAUTHN_ORIGIN` и matching host в `WEBAUTHN_RP_ID`;
 - Убедитесь, что все флаги отложенных возможностей установлены в `false`:
   - `FEATURE_TOTP_ENABLED=false`
   - `FEATURE_PASSKEY_ENABLED=false`
@@ -144,22 +145,118 @@ python scripts/restore_db.py <проверенный-dump.sql> --confirm --delet
 
 ## 5. Ротация криптографических ключей
 
-Для генерации новых ключевых материалов используйте `scripts/rotate_keys.py`:
+Генерация не изменяет runtime или БД. Скрипт требует существующий parent и **новый** destination,
+отказывает при повторе, создаёт POSIX 0700/0600 или Windows owner-only ACL до записи файлов.
+Не выводит значения ключей; файл RSA в формате PKCS8, default 3072 bits. Parent, backup и secret
+store должны быть защищены оператором. Не добавляйте их в Git; не выводите содержимое файлов/Compose env.
 
 ```bash
-python scripts/rotate_keys.py --output-dir keys/ --bits 2048
+python scripts/rotate_keys.py --kind rsa --output-dir <новый-каталог-rsa> --key-id <новый-уникальный-kid> --bits 3072
+python scripts/rotate_keys.py --kind session --output-dir <новый-каталог-session>
+python scripts/rotate_keys.py --kind totp --output-dir <новый-каталог-totp>
 ```
 
-Скрипт формирует:
-1. Новую пару ключей RSA для подписи токенов OpenID Connect (`oidc_private.pem` и `oidc_public.pem`).
-2. Новый симметричный ключ Fernet для переменной `MFA_ENCRYPTION_KEY`.
-3. Новый псевдослучайный ключ для переменной `SECRET_KEY`.
+### 5.1. RSA: перекрытие и restart
 
-> **ВАЖНО**: При ротации ключей подписи OIDC старый открытый ключ должен сохраняться в JWKS до истечения срока действия ранее выпущенных токенов (не менее 10 минут).
+Сохраните отдельно backup действующего private/public key, kid и конфигурации. Создайте новую пару;
+доставьте новый private файл одинаково всем workers; установите `JWT_PRIVATE_KEY_PEM` и `JWT_KEY_ID`.
+В `JWT_PREVIOUS_PUBLIC_KEY_PEM` укажите старый public файл, в `JWT_PREVIOUS_KEY_ID` — старый kid,
+в `JWT_PREVIOUS_KEY_VALID_UNTIL` — timezone-aware ISO 8601 UTC deadline.
+Deadline отсчитывается от **последнего** выпуска старым worker: как минимум максимальный JWT TTL
+плюс согласованный clock skew (практический запас не менее 10 минут), с учётом желаемого окна
+приёма logout hints. По достижении срока JWKS и validator прекращают принимать старый kid,
+включая expired logout hints. Не удаляйте предыдущий public ключ раньше срока; затем удалите параметры.
+Скоординируйте rolling restart: никакой процесс не должен продолжать старую подпись после принятого
+момента отсчёта. Проверьте JWKS обоих ключей, токен до/после смены, restart и два worker.
+Процессная `rotate_active_signing_key` в production запрещена; изменения выполняются через secret store.
+Rollback до deadline: вернуть старый private/kid, сохранить новый public как previous с новым deadline
+для уже выпущенных токенов; после окончания окна требуется новый согласованный rollout.
+
+### 5.2. SESSION_SECRET_KEY
+
+При остановленных workers доставьте новый ключ одинаково всему кластеру. Он меняет CSRF/email
+derivation; действующие CSRF и email-code challenges перестают подходить. Opaque browser sessions
+хранятся по SHA-256 независимо от этого ключа: **сама замена ключа не удаляет сессии**.
+Для incident rotation дополнительно отзывайте все browser sessions/grants/pending actions штатной
+административной процедурой security revision; старый offline access JWT живёт до TTL.
+Синтетический drill должен проверить отказ старого CSRF, корректный новый login и факт выбранного
+отзыва. Rollback требует оценки, какие старые proofs снова станут пригодными; при инциденте
+не возвращать скомпрометированный ключ. Новый session key нельзя путать с Fernet или RSA.
+
+### 5.3. TOTP_ENCRYPTION_KEY: только вместе с ciphertext migration
+
+Остановите **все** API/worker/CLI, пишущие TOTP, и закройте входящий трафик. Сделайте backup БД,
+отдельный backup старого ключа/конфигурации; сначала проверьте restore на отдельной синтетической БД.
+Создайте новый `--kind totp` destination. В конфигурации migration оставьте старый действующий ключ.
+
+```bash
+python scripts/migrate_totp_key.py --old-key-file <защищённый-старый-файл> --new-key-file <защищённый-новый-файл> --offline-maintenance --confirm
+```
+
+Команда выбирает только configured `DATABASE_URL_SYNC`, блокирует строки, сначала расшифровывает
+весь набор, затем MultiFernet.rotate сохраняет timestamp и перешифровывает в одной транзакции.
+При любом повреждении ciphertext транзакция откатывается. Значения/DSN в stdout не выводятся.
+После commit **до restart** установите новый `TOTP_ENCRYPTION_KEY` для всех процессов.
+Проверьте enrolled TOTP положительным и отрицательным OTP на синтетическом аккаунте, затем readiness.
+Не оставляйте workers со старым ключом после commit. Rollback в offline mode: migration с обратной
+парой ключей и конфигурацией, соответствующей текущему ciphertext, либо согласованный backup restore
+с актуальным deletion journal; возврат одного старого ключа без возврата ciphertext недопустим.
+Флаг offline-maintenance является явным подтверждением оператора, а не механизмом остановки других
+процессов; advisory lock предотвращает два одновременных migration CLI, но не заменяет maintenance.
+
+### 5.4. Проверка production configuration и SMTP
+
+Настройки отвергают dev/empty secret, отсутствующий/слабый RSA, неявный/unsafe kid, несогласованный
+HTTPS origin, DEBUG и TTL сверх границ: code 60s/access 300s/MFA 300s/session idle 12h/absolute 7d,
+refresh 7d/family 30d. Небезопасная конфигурация не доходит до serving/readiness.
+SMTP в production требует `SMTP_USE_TLS=true`; credentials без TLS запрещены и в dev/test.
+Используется системный CA trust, либо явный `SMTP_CA_FILE` с доверенным CA; cert и hostname проверяются.
+STARTTLS unavailable/untrusted/mismatch завершается отказом без credentials или plaintext fallback.
+SES продолжает использовать штатный HTTPS boto3 transport с проверкой сертификата.
+Локальные TLS/crypto проверки не доказывают внешнюю доставку, custody или backup/restore production.
 
 ---
 
 ## 6. Мониторинг и диагностика
+
+### Раздельные роли БД и обновление существующего volume
+
+Свежий пустой volume выполняет `deploy/postgres/010-init-roles.sh` и `init-roles.sql` один раз.
+Повторный Compose запуск существующей БД не создаёт роли и не меняет владельца таблиц.
+Не удаляйте volume ради обновления. Сохраните проверенный backup/deletion journal и закрытую
+копию прежней конфигурации. Остановите всех backend workers, migrate и соединения monitoring
+на выбранной выделенной БД. `POSTGRES_USER` остаётся эксплуатационным owner; приложение его
+credentials не получает. Задайте отдельные случайные `SSO_RUNTIME_PASSWORD` и
+`SSO_MIGRATOR_PASSWORD` в защищённом окружении оператора; пароли должны различаться.
+
+Владелец БД применяет `psql --no-psqlrc --set ON_ERROR_STOP=1 --file deploy/postgres/init-roles.sql`
+с явно выбранными PGHOST/PGPORT/PGUSER/PGDATABASE и защищённым PGPASSFILE. Скрипт читает
+пароли ролей из env, не из аргументов. Используйте выделенную БД без чужих таблиц/ролей:
+существующие cluster-wide `sso_runtime`/`sso_migrator` сначала должны быть установлены как
+принадлежащие этому deployment; init не заменяет их пароли и не разрешает переиспользовать
+чужую роль. Ни DSN, ни вывод `docker compose config` с secrets не помещайте в журнал.
+
+После создания ролей установите `DATABASE_URL_SYNC` owner-соединения **только для CLI**:
+
+```text
+python scripts/transfer_database_ownership.py --expected-database <точное-имя-БД> --expected-owner <точный-owner> --offline-maintenance --confirm
+```
+
+CLI проверяет точную БД/login, отсутствие других соединений, неповышенные dedicated roles
+без наследования и прежнего владельца каждого application table. Он передаёт только
+известные application tables/привязанные sequences и public schema в одной транзакции;
+чужие таблицы не передаёт, `REASSIGN OWNED` для всего cluster не используется. Ошибка
+откатывает handoff. Флаг maintenance подтверждает, что оператор остановил workload.
+Затем миграции выполнять как `sso_migrator`, backend запускать как `sso_runtime`,
+проверить head0010_registration_session, readiness, login и отказ runtime CREATE/ALTER/DROP.
+Production startup отвергает повышенную runtime роль, ownership/CREATE schema и schema drift.
+Не выдавайте runtime роль migrator membership для обхода отказа.
+
+Rollback приложения с прежними schema expectations требует проверенного восстановления
+backup в maintenance, актуального deletion journal и совместимой конфигурации ключей.
+Без проверки совместимости не откатывайте миграции и не возвращайте superuser приложению.
+Реальные fresh/0004→head и ownership/DML/DDL drills —
+`tests/integration/test_migration_upgrade_roles_pg.py`; production custody/restore здесь не доказаны.
 
 ### 6.1. Эндпоинты контроля состояния (Health Checks)
 
@@ -173,7 +270,7 @@ python scripts/rotate_keys.py --output-dir keys/ --bits 2048
 ### 6.2. Журналирование и аудит
 
 - Логи бэкенда выводятся в stdout в структурированном виде.
-- Все события безопасности (вход, выход, неудачные попытки, блокировки, создание клиентов, ротация секретов) персистентно фиксируются в таблице PostgreSQL `audit_events` и доступны администраторам через REST API (`GET /api/v1/admin/audit-log`) и интерфейс панели управления.
+- Все события безопасности (вход, выход, неудачные попытки, блокировки, создание клиентов, ротация секретов) персистентно фиксируются в таблице PostgreSQL `audit_events` и доступны администраторам через REST API (`GET /api/v1/admin/audit`) и интерфейс панели управления.
 
 ## Реальные email-тесты
 
@@ -181,7 +278,7 @@ SES остаётся существующим отправителем; testmail
 
 ## Эксплуатация Sentry
 
-Flags/rates default-off; EU projects и DSN получены, включение требует live privacy/source-map приёмки. Backend env управляет database-free browser config. Для остановки component flag=false, tracing rates=0, Replay flag=false/rates=0; backend пересоздать, browser tabs перезагрузить. JSON stdout и PostgreSQL audit остаются локальными каналами. Nginx query/IP/Referer не пишет в access log; .map возвращает 404. Exact frontend ingest origin добавляется generated CSP snippet, сначала Report-Only staging, enforce только после browser проверки. Upload token не передавать application containers. Конкретные команды, alerts/quota/smoke и rollback: [observability.md](observability.md).
+Flags/rates default-off; EU projects и DSN получены, включение требует live privacy/source-map приёмки. Backend env управляет database-free browser config. Для остановки component flag=false, tracing rates=0, Replay flag=false/rates=0; backend пересоздать, browser tabs перезагрузить. JSON stdout и PostgreSQL audit остаются локальными каналами. Nginx query/IP/Referer не пишет в access log; .map возвращает 404. Enforced CSP включён по умолчанию. Generated snippet разрешает только точный frontend ingest origin; Report-Only доступен как явно выбранный диагностический режим staging, не production default. Upload token не передавать application containers. Конкретные команды, alerts/quota/smoke и rollback: [observability.md](observability.md).
 
 ## Удаление, сроки хранения и восстановление (0004_privacy)
 

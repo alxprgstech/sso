@@ -3,13 +3,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.core.security import validate_new_password
 
 
 class AdminUserCreateRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=64)
     email: str = Field(..., min_length=5, max_length=255)
-    password: str = Field(..., min_length=8, max_length=128)
+    password: str = Field(..., min_length=15, max_length=128)
+    _password_policy = field_validator("password")(validate_new_password)
     roles: list[str] = ["user"]
     is_superuser: bool = False
 
@@ -19,7 +23,12 @@ class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     is_superuser: bool | None = None
     roles: list[str] | None = None
-    new_password: str | None = Field(None, min_length=8, max_length=128)
+    new_password: str | None = Field(None, min_length=15, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_policy(cls, value: str | None) -> str | None:
+        return validate_new_password(value) if value is not None else None
 
 
 class AdminUserResponse(BaseModel):
@@ -40,6 +49,20 @@ class AdminClientCreateRequest(BaseModel):
     client_name: str = Field(..., min_length=2, max_length=128)
     client_type: str = Field("confidential", pattern="^(confidential|public)$")
     redirect_uris: list[str] = Field(..., min_length=1)
+    allowed_scopes: list[str] = Field(
+        default_factory=lambda: ["openid", "profile", "email"], min_length=1, max_length=3
+    )
+
+    @field_validator("allowed_scopes")
+    @classmethod
+    def scope_policy(cls, value: list[str]) -> list[str]:
+        if (
+            "openid" not in value
+            or not set(value) <= {"openid", "profile", "email"}
+            or len(set(value)) != len(value)
+        ):
+            raise ValueError("Допустимые scopes: openid (обязательно), profile, email")
+        return value
 
 
 class AdminClientResponse(BaseModel):
@@ -50,6 +73,7 @@ class AdminClientResponse(BaseModel):
     client_name: str
     client_type: str
     is_active: bool
+    allowed_scopes: list[str] = Field(default_factory=list)
     redirect_uris: list[str] = []
     client_secret: str | None = None  # Показывается ТОЛЬКО при создании или ротации
     created_at: datetime

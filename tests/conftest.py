@@ -49,6 +49,12 @@ def pytest_addoption(parser):
 
 
 def pytest_collection_modifyitems(config, items):
+    # Some established PostgreSQL tests live outside tests/integration. Infer
+    # their marker from the actual fixture graph so selected unit/PG commands
+    # remain truthful; the mandatory CI command still executes all tests.
+    for item in items:
+        if {"pg_session", "pg_client", "pg_engine"} & set(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.postgres)
     selected = [item for item in items if item.get_closest_marker("email_external")]
     if not config.getoption("--run-email-tests"):
         items[:] = [item for item in items if item not in selected]
@@ -109,7 +115,7 @@ def default_db_mock():
     """
     Явный мок get_db для unit-тестов, которым не требуется подключение к реальной БД.
     """
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=AsyncSession)
     mock_result = MagicMock()
     default_config = SystemConfiguration(
         id=1,
