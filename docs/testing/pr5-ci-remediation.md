@@ -59,3 +59,20 @@ CodeScene: collection hook теперь10.00, остальные23новых ф�
 owned Nginx/SMTP остановлены. Реальный GitHub browser job на этом head — PASS.
 JWT profile decomposition дополнительно проверен96tests с реальными подписями,
 35.84s; новые crypto/UI изменения пока отделены от runtime follow-up commit.
+
+## Readiness при остановленной БД — 2026-10-04
+
+Head `1003d14d3e0c87278e770637eae7e66da319e8fa`,
+[run37213910502](https://github.com/alxprgstech/sso/actions/runs/37213910502):
+все Actions jobs кроме container job — PASS; SES skips по CI-03.
+Alpine build, read-only/UID/role checks и browser CSP прошли; следующая проверка
+остановки БД завершилась TimeoutError клиентского запроса с неизменным3s deadline.
+Readiness теперь ограничивает сам DB await (DNS/connect/pre-ping/query) до2s
+через asyncio.timeout и возвращает прежний503. Клиентский deadline/503 assertion
+не ослаблены. Unit cancellation/response checks:3passed,1PGcase deselected,0.13s.
+Повторный реальный Compose proof и Trivy ещё pending.
+
+CodeScene refactoring текущего working tree: JWT real-signature96PASS;
+reauthentication/credential revision/temporary-password/production configuration
+62PASS на PostgreSQL33.99s; mypy58files/Ruff PASS. Это промежуточные результаты,
+не закрытие всех CodeScene замечаний и не проверка очередного remote head.

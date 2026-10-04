@@ -264,6 +264,9 @@ backup в maintenance, актуального deletion journal и совмест
   - Возвращает `200 OK` (`{"status": "alive"}`).
   - Используется оркестратором для проверки работы процесса uvicorn.
 - **Readiness probe**: `GET /health/ready`
+  Ожидание БД, включая DNS/connect/pre-ping/query, ограничено2s. Если БД
+  недоступна или операция не завершилась в срок, сервер возвращает503;
+  успешный ответ требует реальной проверки БД, кэшированный ready не используется.
   - Возвращает `200 OK` (`{"status": "ready", "database": "connected"}`).
   - Возвращает `503 Service Unavailable`, если подключение к PostgreSQL недоступно.
 

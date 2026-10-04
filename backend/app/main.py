@@ -44,6 +44,7 @@ from app.logging_config import configure_logging
 from app.telemetry import TelemetryFastAPI, initialize_sentry, register_routes
 
 settings = get_settings()
+READINESS_DATABASE_TIMEOUT_SECONDS = 2
 configure_logging()
 initialize_sentry(settings)
 
@@ -241,7 +242,10 @@ async def health_live() -> dict[str, str]:
 @app.get("/health/ready", tags=["Health"])
 async def health_ready(db: AsyncSession = Depends(get_db)) -> JSONResponse:
     try:
-        await db.execute(text("SELECT 1"))
+        # Bound DNS/connect/pre-ping as well as execution; an unavailable DB
+        # must not leave readiness hanging behind the reverse proxy.
+        async with asyncio.timeout(READINESS_DATABASE_TIMEOUT_SECONDS):
+            await db.execute(text("SELECT 1"))
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={"status": "ready", "database": "connected"},
