@@ -3,6 +3,8 @@
 import asyncio
 import copy
 from datetime import datetime, timedelta, timezone
+from email import message_from_string, policy
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from app.config import get_settings
@@ -52,10 +54,11 @@ async def test_user_and_admin_email_changes_bind_verification_to_exact_address(
         assert len(smtp.received_messages) == 1
         await pg_session.refresh(user)
         assert user.email == "verified-old@example.test" and user.email_verified
-        # The one-use link delivered to the pending address switches identity atomically.
-        from app.services.mfa_service import sent_emails_sink
-
-        pending = sent_emails_sink[-1]["token"]
+        # Read the actual SMTP delivery rather than a testing-only in-memory sink.
+        delivered = message_from_string(smtp.received_messages[0], policy=policy.default)
+        plain = delivered.get_body(preferencelist=("plain",)).get_content()
+        link = next(word for word in plain.split() if "/verify-email?" in word)
+        pending = parse_qs(urlsplit(link).query)["token"][0]
         assert (
             await pg_client.post("/api/v1/mfa/email/confirm", json={"token": pending})
         ).status_code == 200

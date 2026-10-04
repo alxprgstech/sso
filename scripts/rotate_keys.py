@@ -30,6 +30,14 @@ def generate_rsa_keypair(bits: int = 2048) -> tuple[bytes, bytes]:
     )
 
 
+def generate_session_secret() -> str:
+    """Draw 512 random bits; reject samples incompatible with startup policy."""
+    while True:
+        candidate = secrets.token_hex(64)
+        if len(set(candidate)) >= 16:
+            return candidate
+
+
 def private_directory(path: Path) -> None:
     """Refuse reuse/symlinks; protect an empty directory before writing secrets."""
     if not path.parent.is_dir():
@@ -76,7 +84,7 @@ def generate_bundle(output: Path, kind: str, kid: str, bits: int) -> None:
         write_private(output / "oidc_public.pem", public)
         write_private(output / "JWT_KEY_ID", kid.encode("ascii"))
     elif kind == "session":
-        write_private(output / "SESSION_SECRET_KEY", secrets.token_hex(64).encode("ascii"))
+        write_private(output / "SESSION_SECRET_KEY", generate_session_secret().encode("ascii"))
     elif kind == "totp":
         write_private(output / "TOTP_ENCRYPTION_KEY", Fernet.generate_key())
     else:

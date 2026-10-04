@@ -1050,3 +1050,10 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T14:59:17.605460+03:00 — BRANCH-PR-01 done. Начало2026-10-04T14:50:11.864713+03:00, завершение 2026-10-04T14:59:17.605460+03:00, Codex. Все ветки классифицированы; только remediation требовала новый PR, создан https://github.com/alxprgstech/sso/pull/5 и прикреплён. Remote/head/base verified, mergeabletrue/no current conflicts; CIpending, не PASS. Прежнийpublic approval blocker снят explicit ответом владельца. Остальныеветки сохранены. Следующая точка: владелец review/approval и результаты checks, правки в той же ветке при необходимости.
+
+
+## PR5-CI-01 — устранение сбоев remote checks
+
+Начало 2026-10-04T15:04:59.289865+03:00, Codex, P0, in_progress. По сообщению владельца run37200621991 на head3a2aac3 имеет5failed Actions jobs и failed CodeScene,2SES skips/4success. План: получить реальные logs/annotations, установить первопричины backend/frontend/container/E2E/Windows и CodeScene, реализовать связанную корректировку с regression checks; сохранить protections/required jobs, проверять exact head и обновить тот же PR5 normal push. Критерийdone: причины исправлены, применимые local checks успешны и обязательные remote checks новогоSHA успешны, либо точный внешний blocker явно сохранён без объявления PASS. Нельзя менять assertions/security/job gates ради green; merged/production не выполнять.
+
+2026-10-04T18:15:42.3211542+03:00 — PR5-CI-01 in_progress: Actions причины исправлены, local84unit+71PG/frontend PASS; enabled browser/remoteTrivy pending. CodeScene остаётся обязательной незавершённой частью; следующие шаги docs/testing/pr5-ci-remediation.md.

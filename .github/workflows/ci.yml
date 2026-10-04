@@ -63,7 +63,7 @@ jobs:
       - name: Install locked dependencies
         run: python -m pip install -r requirements-lock.txt
       - name: Execute reset safety regressions with UTF-8 and Cyrillic paths
-        run: python -m pytest tests/test_reset_local_ps1.py tests/test_start_ps1.py tests/test_windows_native_encoding.py tests/test_database_guard.py tests/test_migration_metadata.py -v
+        run: python -m pytest tests/test_reset_local_ps1.py tests/test_start_ps1.py tests/test_windows_native_encoding.py tests/test_database_guard.py tests/test_migration_metadata.py -m "not postgres" -v
 
   email-e2e-credentials:
     name: Check availability of CI AWS credentials
@@ -346,6 +346,17 @@ jobs:
           python -m pip install -r requirements-lock.txt
           python -m pip install --no-deps --no-build-isolation -e "./backend[dev]" -e "./packages/python-sdk"
           python -m pip check
+
+      - name: Set up Node for real server lifecycle tests
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+
+      - name: Prepare actual frontend for backend lifecycle tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - name: Run Ruff Lint and Format check
         run: |

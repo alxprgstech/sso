@@ -28,7 +28,7 @@
 
 Сервисный контур описывается в `docker-compose.yml`:
 - `db`: образ `postgres:16-alpine`, персистентное хранилище `sso_db_data`;
-- `backend`: digest-pinned `python:3.13-slim-bookworm`, UID10001, production-only зависимости, read-only/tmpfs/cap-drop/resource bounds; Uvicorn без автоматического доверия forwarding headers;
+- `backend`: digest-pinned `python:3.13.16-slim-trixie`, UID10001, production-only зависимости без pip/setuptools/wheel в готовом образе, read-only/tmpfs/cap-drop/resource bounds; Uvicorn без автоматического доверия forwarding headers; backup/restore использует инструменты PostgreSQL в отдельной среде оператора;
 - `migrate`: отдельный одноразовый job с ролью `sso_migrator`, `alembic upgrade head`; backend ждёт его успешного завершения и использует ограниченный `sso_runtime`;
 - `frontend`: образ на базе `nginx:1.30.5-alpine (закреплён digest)` с раздачей React SPA и проксированием API/OIDC на бэкенд.
 

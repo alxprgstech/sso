@@ -24,7 +24,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from scripts.migrate_totp_key import rotate_ciphertexts
-from scripts.rotate_keys import generate_bundle
+from scripts.rotate_keys import generate_bundle, generate_session_secret
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def production_values(tmp_path):
         _env_file=None,
         ENVIRONMENT="production",
         DEBUG=False,
-        SESSION_SECRET_KEY=secrets.token_hex(64),
+        SESSION_SECRET_KEY=generate_session_secret(),
         TOTP_ENCRYPTION_KEY=Fernet.generate_key().decode(),
         JWT_PRIVATE_KEY_PEM=str(path),
         JWT_KEY_ID="test-persistent-v1",
@@ -250,6 +250,17 @@ def test_generator_private_files_no_output_or_overwrite(tmp_path, capsys, kind, 
         assert b"(I)" not in acl  # Native utility output is OEM bytes, not UTF-8.
 
 
+def test_session_generator_rejects_samples_that_fail_startup_policy(monkeypatch, production_values):
+    samples = iter(("a" * 128, "0123456789abcdef" * 8))
+    monkeypatch.setattr("scripts.rotate_keys.secrets.token_hex", lambda size: next(samples))
+    generated = generate_session_secret()
+    assert generated == "0123456789abcdef" * 8
+    assert (
+        Settings(**{**production_values, "SESSION_SECRET_KEY": generated}).ENVIRONMENT
+        == "production"
+    )
+
+
 def test_totp_rotation_drill_preserves_plaintext_and_timestamp():
     old, new = Fernet.generate_key(), Fernet.generate_key()
     cipher = Fernet(old).encrypt_at_time(b"SYNTHETIC_BASE32", 1234567890).decode()
@@ -265,7 +276,9 @@ def test_totp_rotation_drill_preserves_plaintext_and_timestamp():
 @pytest.mark.asyncio
 async def test_session_key_rotation_invalidates_previous_csrf(production_values):
     old_settings = Settings(**production_values)
-    new_settings = Settings(**{**production_values, "SESSION_SECRET_KEY": secrets.token_hex(64)})
+    new_settings = Settings(
+        **{**production_values, "SESSION_SECRET_KEY": generate_session_secret()}
+    )
     identity = uuid.uuid4()
     old_proof = generate_csrf_token(identity, old_settings)
     request = Request(

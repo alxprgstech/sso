@@ -1,14 +1,7 @@
 import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { confirmSensitiveAction } from "./helpers/reauthentication";
+import { prepareIndependentScenario } from "./helpers/prepare";
 import { test, expect } from "@playwright/test";
-import { execFileSync } from "child_process";
-import path from "path";
-import { fileURLToPath } from "url";
-
-import fs from "fs";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", () => {
   test.use({ baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173" });
@@ -30,28 +23,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     }
   });
 
-  test.beforeEach(() => {
-    const testDbUrl = process.env.TEST_DATABASE_URL;
-    if (!testDbUrl) {
-      throw new Error("TEST_DATABASE_URL environment variable is required for E2E tests");
-    }
-    let pythonExe =
-      process.env.PYTHON_BIN ||
-      (process.platform === "win32"
-        ? path.resolve(__dirname, "../../.venv/Scripts/python.exe")
-        : path.resolve(__dirname, "../../.venv/bin/python"));
-    if (!fs.existsSync(pythonExe)) {
-      pythonExe = process.platform === "win32" ? "python" : "python3";
-    }
-    const scriptPath = path.resolve(__dirname, "../../scripts/prepare_e2e_data.py");
-    execFileSync(pythonExe, [scriptPath], {
-      env: {
-        ...process.env,
-        TEST_DATABASE_URL: testDbUrl,
-      },
-      stdio: "inherit",
-    });
-  });
+  test.beforeEach(prepareIndependentScenario);
 
   test("01. Enabled Profile Capabilities & Passkey Login Button Visibility", async ({ page }) => {
     await page.goto("/");

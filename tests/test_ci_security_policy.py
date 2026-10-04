@@ -13,6 +13,24 @@ def commands(job):
     return "\n".join(step.get("run", "") for step in job.get("steps", []))
 
 
+def test_backend_lifecycle_dependencies_and_pg_checks_remain_mandatory():
+    ci = yaml.load((ROOT / ".github/workflows/ci.yml").read_text("utf-8"), Loader=yaml.BaseLoader)
+    backend = commands(ci["jobs"]["backend-lint-and-test"])
+    assert (
+        backend.index("npm ci") < backend.index("npm run build") < backend.index("pytest -v tests/")
+    )
+    assert '-m "not postgres"' in commands(ci["jobs"]["windows-safety"])
+    assert '-m "not postgres"' not in backend
+
+
+def test_release_context_contains_every_copied_frontend_configuration():
+    source = (ROOT / "frontend/Dockerfile.release").read_text("utf-8")
+    allowed = (ROOT / "frontend/Dockerfile.release.dockerignore").read_text("utf-8").splitlines()
+    copies = re.findall(r"^COPY ([\w.-]+\.conf) ", source, re.M)
+    assert "nginx-main.conf" in copies
+    assert all("!" + name in allowed for name in copies)
+
+
 def test_required_security_windows_and_browser_jobs_have_no_bypass():
     ci = yaml.load((ROOT / ".github/workflows/ci.yml").read_text("utf-8"), Loader=yaml.BaseLoader)
     for name in (

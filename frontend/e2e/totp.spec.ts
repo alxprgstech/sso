@@ -2,8 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 import { spawnSync } from "node:child_process";
 import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { confirmSensitiveAction } from "./helpers/reauthentication";
+import { prepareIndependentScenario } from "./helpers/prepare";
 
 const password = "TOTPBrowserSynthetic2026!";
+
+test.beforeEach(prepareIndependentScenario);
 
 function otp(secret: string): string {
   const python = process.env.PYTHON_BIN;
