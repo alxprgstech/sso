@@ -102,3 +102,8 @@ SessionRequest/SessionAuthorization разделяют входные metadata �
 ## Итог source checks — 2026-10-04T21:47:51.194815+03:00
 
 На `f9e06d71c7806d71d9226cfb591585cbf5f3ef83` все9mandatory Actions [PASS](https://github.com/alxprgstech/sso/actions/runs/37225223182),2SES skipsCI03. CodeScene failed только по двум [сохранённым контрактам](codescene-contracts.md); все остальные замечания устранены. Это точный blocker, неуспехгейта не скрыт. Publicpush/PR5разрешён владельцем; merge/deployment/releaseне выполнялись. Следующийdocs-onlyhead проверяется отдельно перед финальнымотчётом.
+
+
+## Разрешённые исключения — 2026-10-04T22:06:36.934108+03:00
+
+Владелец согласовал ровно два [сохранённых контракта](codescene-contracts.md). Exact-path JSON исключает2complexityrules только у immutablearchive; functiondirective исключает только5argumentssmell include_object. Archive hash и callback AST неизменны,8callback/import regressionsPASS2.32s, Ruff/scansPASS. Новыйremotehead pending; successfulgate ещё не заявлен.

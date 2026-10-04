@@ -8,6 +8,8 @@ from app.database import Base
 target_metadata = Base.metadata
 
 
+# Owner-approved framework contract; see docs/testing/codescene-contracts.md.
+# @codescene(disable:"Excess Number of Function Arguments")
 def include_object(obj: Any, name: str, type_: str, reflected: bool, compare_to: Any) -> bool:
     # Owned by tests.db_guard/provisioning, never by application migrations.
     # No application table/index/constraint is exempted from drift detection.

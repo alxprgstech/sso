@@ -1,3 +1,9 @@
+# Продолжение PR5-CI-01 — разрешены два исключения CodeScene
+
+2026-10-04T22:02:23.736246+03:00, Codex: in_progress. Владелец разрешил два точечных исключения для неизменяемого архива аудита и обязательного callback Alembic. Два исключения подготовлены в version-controlled конфигурации: точный архивный путь и локальная директива callback. Archive SHA256 и callback AST неизменны,8регрессионных тестов/Ruff/secret scanPASS. Новый remote анализ пока pending. Все9Actions на6df8008e2be2f3e6813c37dd5605250fb3dd5da7 PASS,2SES skipsCI03. Следующий шаг: узкая policy и повторный анализ.
+
+## Предыдущая контрольная точка
+
 # Актуальный статус — Actions успешны; два замечания CodeScene требуют решения владельца
 
 Обновление 2026-10-04T21:47:51.194815+03:00, Codex. PR5-CI-01: `blocked` только по двум вопросам политики CodeScene. На source SHA `f9e06d71c7806d71d9226cfb591585cbf5f3ef83` все 9 обязательных [GitHub Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37225223182) успешны. Два внешних SES jobs пропущены без AWS credentials согласно CI-03. Проверены PostgreSQL в default/enabled профилях, Playwright, Windows, сборки frontend/SDK, установка SDK в чистую среду, настоящие Linux Compose/Trivy, ограничения runtime, отказ и восстановление БД, безопасность, версии и неактивный CD.
