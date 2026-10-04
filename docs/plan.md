@@ -1033,3 +1033,17 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 Все существенные implementation завершены в code commit `ae700d7a9803b9757980ef1862af31f6f360a97d`. Документированный verdict CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Общий GOAL-09 не done. E01…E07 раздела7 отчёта — конечный список внешних действий с prerequisites/командами/evidence; отсутствие доступа не объявлено успехом и не требует новых локальных code fixes.
 
 Точка продолжения: E01/E02 затем synthetic staging E03…E06/private E07. Полный run535/16subtests и20enabled/replay104/browser34+10/SDK17/scans/clean8payload bundle подтверждены; не суммировать overlap. Publication/production/live sending не выполнялись.
+
+
+## BRANCH-PR-01 — обзор всех веток и подготовка PR
+
+Начало 2026-10-04T14:50:11.864713+03:00, Codex; приоритетP1, статусin_progress. Поручение владельца: проверить локальные и запушенные ветки, создать необходимые PR для последующего одобрения. Зависимости: актуальный origin и доступ к GitHub. План: fetch/prune и ancestry каждой ветки, existing PR inventory, приватность repo и source/secret checks; пуш только новых нужных commits в new/ ветку, создать PR без дублирования и без merge; проверить refs/PR base/head/conflicts, сохранить результат и точку продолжения. Критерий done: каждая ветка классифицирована, для незамерженных нужных изменений есть PR со ссылкой и проверенными base/head, история/данные/чужие ветки сохранены. Объединение и production не входят в текущее действие.
+
+
+2026-10-04T14:52:05.284669+03:00 — BRANCH-PR-01 in_progress: inventory completed, единственная не включённая группа remediation готовится к PR; прочие branches merged/equalmain, criteria/new PR после push.
+
+
+2026-10-04T14:55:04.544304+03:00 — BRANCH-PR-01 blocked: обзор/описание готово, push/PR отклонён auto-review из-за public repo; unblock явное согласие владельца на публичную публикацию или verified private visibility. Подробный snapshot docs/branch-review.md, merge/production не выполнялись.
+
+
+2026-10-04T14:56:19.108344+03:00 — BRANCH-PR-01 in_progress: explicit public push/PR разрешён владельцем, прежний auto-review блокер снят; local index/normal push/create/check впереди.

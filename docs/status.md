@@ -1,5 +1,7 @@
 # Актуальный статус — CONDITIONALLY READY; локальное исправление F-01…F-27 завершено
 
+BRANCH-PR-01, 2026-10-04T14:56:19.108344+03:00, Codex: [обзор всех веток](branch-review.md) готов; нужен один remediation PR. Владелец явно разрешил push и PR в публичном репозитории, прежний auto-review блокер снят. Подготовка in_progress; merge/production не выполняются.
+
 Обновление **2026-10-04T14:32:18.518409+03:00**, Codex, AUDIT-REMEDIATION-01 `done` в рамках локального поручения. Проверенный implementation SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, ветка `new/production-readiness-remediation`, версия0.2.0. [Повторный аудит](PRODUCTION_READINESS_AUDIT.md):22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL; [краткая карта](REMEDIATION_SUMMARY.md), [безопасное evidence](audit/remediation-evidence.json). Все code/test/CI/docs изменения готовы, первоначальная история сохранена.
 
 Проверено:535full +16subtests/5external-email deselected,20enabled с обязательным email,104criteria replay на code SHA, настоящий PG+Nginx/Chromium34default-off/10enabled,17clean installed SDK,11unit/28component/9telemetry browser, Ruff/mypy/build/types/invariants/scans,0known dependency vulnerabilities, clean exact-SHA bundle8payload/manifest/checksums. Числа пересекающихся наборов не суммируются. Подробные commands/versions/failures/воспроизведение в отчёте и worklog.

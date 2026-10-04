@@ -3097,3 +3097,25 @@ Scoped current Markdown links101 и27status counts/byte-exact original audit/pro
 Итоговые scoped links101/status27/byte-exact baseline/probes, Ruff193/mypy58 и detector137candidates/0new + synthetic control PASS. Временная PostgreSQL19188 остановлена через pg_ctl только после exact executable/data/PID/creation/listener127.0.0.1:5433 и zero-other-client guard; data/binaries/private variables сохранены. Первый idle guard отказал из-за inet text127.0.0.1/32; исправлено представление SQL host(inet_server_addr()), условия точного host/port/DB не ослаблены, повтор PASS, порт5433 освобождён. Чужие процессы и данные не затрагивались.
 
 Сессия заканчивается docs/scan-metadata local commit после pre-commit source-scope/index/whitespace verification. Приложение/тесты/CI соответствуют проверенному code SHA ae700d7a9803b9757980ef1862af31f6f360a97d; новый отчёт не создаёт и не подменяет runtime evidence. Локальное поручение устранить F01…27/re-audit выполнено; FIX03/05 и общий GOAL09 blocked по конечным внешним критериям. Точка продолжения E01…E07 раздела7 текущего отчёта; до их приёмки CONDITIONALLY READY, без production/push/PR/tag/live email.
+
+
+### 2026-10-04T14:50:11.864713+03:00 — Codex, BRANCH-PR-01, начало
+
+Прочитаны AGENTS/GOAL/current plan/status/worklog. Рабочее дерево чистое, HEAD17b444f new/production-readiness-remediation. Fetch/prune successful;5local branches и2remote heads. Все local ветки кроме remediation уже ancestor origin/main7e857ab; audit branch равен main, skip-SES/code-repair history уже merged. Remediation содержит2 новых commits ae700d7/17b444f. gh CLI отсутствует; используем scoped GitHub REST через существующий Git credential manager без вывода credentials. Следующий шаг: existing PR/privacy inventory, подготовка описания/проверки, push/create PR по прямому поручению.
+
+
+### 2026-10-04T14:52:05.284669+03:00 — Codex, BRANCH-PR-01, inventory и подготовка публикации PR
+
+GitHub REST подтверждает main7e857ab и remote new/skip-ses-without-credentials dcc86d2; repo public (существующая настройка не менялась), поручение владельца создать PR разрешает push в этот repo. PR1/2/4 merged, PR3 closed и заменён4, open PR отсутствуют. Все4 local ветки помимо remediation ancestor main, audit равенmain; новых PR для merged history не требуется. Сохраняем все ветки, никаких force/delete/rebase или merge.
+
+Единственный новый PR: new/production-readiness-remediation → main, ae700d7+17b444f и текущий docs-only учёт. Описание подготовлено с actual535/20/104/browser34+10/SDK17/checksums, внешними E01…07 и миграцией0010; без production acceptance claims/секретов. Перед push — detector/self-test и docs whitespace/index; после — exact remote/head/base/PR check и привязка к чату. Статусin_progress.
+
+
+### 2026-10-04T14:55:04.544304+03:00 — Codex, BRANCH-PR-01, публикация blocked автоматической проверкой разрешений
+
+Inventory/source checks/PR description подготовлены, detector137/0 и synthetic rejection/whitespace PASS. Automatic approval review отклонил combined commit+push до исполнения: repo public, не хватает явного согласия на публикацию закрытого payload именно публично; обход отказа не выполняется. Через request_user_input_async запрошено разрешение публичного push/PR либо перевод repo в private владельцем. Пока нет ответа, remote не изменяется/PR не создаётся. Все5local/2remote ветки и4existing PR классифицированы в docs/branch-review.md; merged/equal branches не требуют новых PR. Statusblocked, unblock explicit public authorization или verified private repo. Следующий независимый шаг — локальный commit готового review/учёта, затем resume push/PR после ответа; merge не входит в этот этап.
+
+
+### 2026-10-04T14:56:19.108344+03:00 — Codex, BRANCH-PR-01, public publication explicitly authorized
+
+Владелец через request_user_input_async явно ответил: «Да, разрешаю push и PR в публичном репозитории». Условие auto-review снято прямым согласием именно на public new source/docs. Возобновляем statusin_progress, normal nonforce push и один PR new/production-readiness-remediation → main; исходный отказ сохранён в истории, обхода policy нет. Public visibility/merge/production не меняются.
