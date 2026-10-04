@@ -1,6 +1,6 @@
 # Продолжение PR5-CI-01 — разрешены два исключения CodeScene
 
-2026-10-04T22:02:23.736246+03:00, Codex: in_progress. Владелец разрешил два точечных исключения для неизменяемого архива аудита и обязательного callback Alembic. Два исключения подготовлены в version-controlled конфигурации: точный архивный путь и локальная директива callback. Archive SHA256 и callback AST неизменны,8регрессионных тестов/Ruff/secret scanPASS. Новый remote анализ пока pending. Все9Actions на6df8008e2be2f3e6813c37dd5605250fb3dd5da7 PASS,2SES skipsCI03. Следующий шаг: узкая policy и повторный анализ.
+2026-10-04T22:02:23.736246+03:00, Codex: in_progress. Владелец разрешил два точечных исключения для неизменяемого архива аудита и обязательного callback Alembic. Два исключения подготовлены в version-controlled конфигурации: точный архивный путь и локальная директива callback. Archive SHA256 и callback AST неизменны,8регрессионных тестов/Ruff/secret scanPASS. На40ecf87 все9ActionsPASS; CodeScene подтвердил callback, но остался второй архивный rule Excess Number of Function Arguments. Исправляется только его точное имя в прежнем rule-set; новыйremoteанализ pending. Все9Actions на6df8008e2be2f3e6813c37dd5605250fb3dd5da7 PASS,2SES skipsCI03. Следующий шаг: узкая policy и повторный анализ.
 
 ## Предыдущая контрольная точка
 

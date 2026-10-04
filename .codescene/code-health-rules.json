@@ -3,8 +3,14 @@
     {
       "matching_content_path": "docs/audit/readiness_probes_baseline.py",
       "rules": [
-        { "name": "Complex Method", "weight": 0.0 },
-        { "name": "Overall Code Complexity", "weight": 0.0 }
+        {
+          "name": "Complex Method",
+          "weight": 0.0
+        },
+        {
+          "name": "Excess Number of Function Arguments",
+          "weight": 0.0
+        }
       ]
     }
   ]

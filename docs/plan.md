@@ -1086,3 +1086,6 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T22:02:23.736246+03:00 — PR5-CI-01 in_progress: владелец разрешил ровно два исключения из docs/testing/codescene-contracts.md. Критерий завершения: применённая узкая policy и успешный CodeScene точного PR head; все9 обязательных Actions сохраняются.
+
+
+2026-10-04T23:24:44.165802+03:00 — PR5-CI-01 in_progress: callback исключение подтверждено; уточнить второе rule name у того же разрешённого archive exactpath, новый exacthead CI/CodeScene обязательны.
