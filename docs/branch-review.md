@@ -1,6 +1,6 @@
 # Обзор веток и подготовка PR
 
-BRANCH-PR-01, Codex, 04.10.2026. Inventory после `git fetch --all --prune`, `git ls-remote --heads origin`, ancestry checks и GitHub REST pagination всех branches/PR.
+BRANCH-PR-01, Codex, 04.10.2026. Итог 2026-10-04T14:59:17.605460+03:00: done. Создан единственный нужный [PR5](https://github.com/alxprgstech/sso/pull/5) new/production-readiness-remediation → main, open/ready-for-review, прикреплён к чату. Первый verified head cbf222c совпадает с origin, GitHub mergeable=true; mergeable_state=unstable относится к checks/review gates, не является content merge conflict; окончательный результат CI ещё не получен. [CI первого head](https://github.com/alxprgstech/sso/actions/runs/37200487212) in_progress, успех не заявлен. Последующий учёт меняет только docs и публикуется в тот же PR. Inventory после `git fetch --all --prune`, `git ls-remote --heads origin`, ancestry checks и GitHub REST pagination всех branches/PR.
 
 | Локальная ветка | Проверенный tip | Отношение к origin/main | Действие |
 | --- | --- | --- | --- |
@@ -18,4 +18,4 @@ BRANCH-PR-01, Codex, 04.10.2026. Inventory после `git fetch --all --prune`,
 
 Разрешение получено 2026-10-04T14:56:19.108344+03:00: владелец прямо ответил «Да, разрешаю push и PR в публичном репозитории». Блокер снят, public visibility не меняется.
 
-Следующий шаг: повторить visibility/open-PR/main inventory, при необходимости push checked branch без force, создать только один PR и привязать к чату; проверить remote SHA/base/head/mergeability и CI state. Merge остаётся владельцу после review; замечания/конфликты исправляются в этой же ветке без ослабления защиты. Зелёный remote CI пока не заявлен.
+Выполнено после разрешения: normal push branch, создание PR5 без дублей, привязка к чату, проверка exact origin/head/base/mergeability/CI state. Финальная проверка обновлённого docs-only head выполняется после push. Merge остаётся владельцу после review; замечания/конфликты исправляются в этой же ветке без ослабления защиты. Зелёный remote CI пока не заявлен.

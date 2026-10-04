@@ -1047,3 +1047,6 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T14:56:19.108344+03:00 — BRANCH-PR-01 in_progress: explicit public push/PR разрешён владельцем, прежний auto-review блокер снят; local index/normal push/create/check впереди.
+
+
+2026-10-04T14:59:17.605460+03:00 — BRANCH-PR-01 done. Начало2026-10-04T14:50:11.864713+03:00, завершение 2026-10-04T14:59:17.605460+03:00, Codex. Все ветки классифицированы; только remediation требовала новый PR, создан https://github.com/alxprgstech/sso/pull/5 и прикреплён. Remote/head/base verified, mergeabletrue/no current conflicts; CIpending, не PASS. Прежнийpublic approval blocker снят explicit ответом владельца. Остальныеветки сохранены. Следующая точка: владелец review/approval и результаты checks, правки в той же ветке при необходимости.

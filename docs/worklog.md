@@ -3119,3 +3119,10 @@ Inventory/source checks/PR description подготовлены, detector137/0 �
 ### 2026-10-04T14:56:19.108344+03:00 — Codex, BRANCH-PR-01, public publication explicitly authorized
 
 Владелец через request_user_input_async явно ответил: «Да, разрешаю push и PR в публичном репозитории». Условие auto-review снято прямым согласием именно на public new source/docs. Возобновляем statusin_progress, normal nonforce push и один PR new/production-readiness-remediation → main; исходный отказ сохранён в истории, обхода policy нет. Public visibility/merge/production не меняются.
+
+
+### 2026-10-04T14:59:17.605460+03:00 — Codex, BRANCH-PR-01, PR создан и проверен
+
+Normal push cbf222c8f09176867969cf012162f0d1dcefe7ab successful, git ls-remote независимо подтвердил ref; source/secret137/0+self-test/whitespace PASS. GitHub created https://github.com/alxprgstech/sso/pull/5, open/non-draft/headnew/production-readiness-remediation/basemain,3commits/211changed paths на первом head, mergeable=true. PR прикреплён к чату. CI https://github.com/alxprgstech/sso/actions/runs/37200487212 in_progress/nullconclusion, unstable связан с pending checks, не конфликт; PASS CI/production не заявлен.
+
+Проверены все5local и все2remote до push (после push3remote), все4historical PR; остальные ветки полностью в main/равныmain, не нуждаются в duplicatePR. Ни delete/force/merge/rebase/tag/deploy не было. Начало2026-10-04T14:50:11.864713+03:00, локальный результат 2026-10-04T14:59:17.605460+03:00, done по критерию обзора+подготовленногоPR, remote CI остаётся pending. Следующий шаг — approval владельца/результаты CI; если появятся conflicts/review issues, исправить в этом же PR с применимыми checks без weakening. Сейчас финальный docs-only учёт/публикация в PR и exacthead/clean-tree проверка, затем точка продолжения PR5.

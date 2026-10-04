@@ -1,6 +1,6 @@
 # Актуальный статус — CONDITIONALLY READY; локальное исправление F-01…F-27 завершено
 
-BRANCH-PR-01, 2026-10-04T14:56:19.108344+03:00, Codex: [обзор всех веток](branch-review.md) готов; нужен один remediation PR. Владелец явно разрешил push и PR в публичном репозитории, прежний auto-review блокер снят. Подготовка in_progress; merge/production не выполняются.
+BRANCH-PR-01, 2026-10-04T14:59:17.605460+03:00, Codex, done: [проверены все ветки](branch-review.md), создан только необходимый [PR5](https://github.com/alxprgstech/sso/pull/5) remediation → main и прикреплён к чату. GitHub mergeable=true/no current conflicts; [CI первого head](https://github.com/alxprgstech/sso/actions/runs/37200487212) пока выполняется, PASS не заявлен. Push в публичный repo явно разрешён владельцем, visibility не менялась. Остальные ветки уже в main, дубликаты PR не нужны. Следующий шаг: review/одобрение владельца и результаты checks; будущие замечания/конфликты исправить в этом PR. Merge/production не выполнялись.
 
 Обновление **2026-10-04T14:32:18.518409+03:00**, Codex, AUDIT-REMEDIATION-01 `done` в рамках локального поручения. Проверенный implementation SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, ветка `new/production-readiness-remediation`, версия0.2.0. [Повторный аудит](PRODUCTION_READINESS_AUDIT.md):22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL; [краткая карта](REMEDIATION_SUMMARY.md), [безопасное evidence](audit/remediation-evidence.json). Все code/test/CI/docs изменения готовы, первоначальная история сохранена.
 
