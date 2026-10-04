@@ -15,7 +15,7 @@ from app.models.oidc import AuthorizationCode, OIDCClient, OIDCRedirectUri, Refr
 from app.models.session import Session
 from app.models.user import PasswordCredential, User
 from app.services.admin_service import AdminService
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionAuthorization, SessionRequest
 from app.services.mfa_service import TOTPService, encrypt_totp_secret
 from app.services.oidc_service import OIDCService
 from sqlalchemy import event as sql_event
@@ -82,13 +82,10 @@ async def issue_grant(db, context: RaceScenario):
             db, authenticated, pyotp.TOTP(context.secret).now(), commit=False
         )
         value = await AuthService.create_user_session(
-            db,
-            context.user_id,
-            None,
-            None,
-            context.settings,
-            expected_revision=0,
-            mfa_token=context.grant,
+            db=db,
+            request=SessionRequest(context.user_id, None, None),
+            settings=context.settings,
+            authorization=SessionAuthorization(expected_revision=0, mfa_token=context.grant),
         )
     elif context.scenario == "change_code":
         value = await OIDCService.exchange_code(

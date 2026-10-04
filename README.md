@@ -5,7 +5,7 @@
 - **Целевой домен**: `alxprgs.tech`
 - **Идентификатор поставщика (Issuer)**: `https://auth.alxprgs.tech`
 - **Версия продукта**: `0.2.0` (SemVer, единый источник истины — `VERSION`)
-- **Статус**: **CONDITIONALLY READY** по [повторному аудиту от 04.10.2026](docs/PRODUCTION_READINESS_AUDIT.md), code SHA `ae700d7`: все локальные исправления F-01…F-27 готовы; до production нужны семь внешних gates E01…E07 (Docker/CI/HTTPS/provider/ops/OIF/owner review). [Карта исправлений](docs/REMEDIATION_SUMMARY.md), [актуальный статус](docs/status.md). Общая приёмка GOAL-09 ещё не закрыта.
+- **Статус**: **CONDITIONALLY READY** по [повторному аудиту от 04.10.2026](docs/PRODUCTION_READINESS_AUDIT.md), code SHA `ae700d7`: все локальные исправления F-01…F-27 готовы; реальные Docker/Trivy E01 и обязательные Actions подтверждены в PR5; CodeScene E02 и внешние HTTPS/provider/ops/OIF/owner review E03…E07 остаются незавершёнными. [Карта исправлений](docs/REMEDIATION_SUMMARY.md), [актуальный статус](docs/status.md). Общая приёмка GOAL-09 ещё не закрыта.
 
 ---
 

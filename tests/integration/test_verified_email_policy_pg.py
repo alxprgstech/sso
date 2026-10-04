@@ -12,7 +12,7 @@ from app.models.mfa import TOTPCredential
 from app.models.oidc import OIDCClient, RefreshToken
 from app.models.user import PasswordCredential, User
 from app.services import oidc_service
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest
 from app.services.oidc_service import OIDCService
 from sqlalchemy import func, select
 
@@ -39,7 +39,9 @@ async def test_required_email_rejects_password_before_mfa_and_session(pg_session
     assert failure.value.detail["error"] == "email_verification_required"
     assert await pg_session.scalar(select(func.count()).select_from(AuthenticationStep)) == 0
     with pytest.raises(AuthenticationException):
-        await AuthService.create_user_session(pg_session, user.id, None, None, cfg)
+        await AuthService.create_user_session(
+            db=pg_session, request=SessionRequest(user.id, None, None), settings=cfg
+        )
 
 
 async def test_required_email_rejects_legacy_refresh_access_and_code_issue(pg_session, monkeypatch):

@@ -36,7 +36,7 @@ from app.schemas.auth import (
     UserProfileResponse,
 )
 from app.services.audit_service import AuditService
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest, SessionAuthorization
 from app.services.registration_service import RegistrationService, verify_gmail_bearer
 from app.services.system_service import SystemService
 from app.services.verification_email import request_details
@@ -239,11 +239,9 @@ async def login(
     # Успешный парольный вход (сессия выпускается сразу)
     raw_token, session, csrf_token = await AuthService.create_user_session(
         db=db,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=ua,
+        request=SessionRequest(user.id, ip, ua),
         settings=settings,
-        expected_revision=user.security_revision or 0,
+        authorization=SessionAuthorization(expected_revision=user.security_revision or 0),
     )
 
     cookie_name = get_cookie_name(settings, request)

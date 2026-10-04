@@ -36,7 +36,7 @@ from app.schemas.mfa import (
     TOTPSetupResponse,
     TOTPVerifyRequest,
 )
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest, SessionAuthorization
 from app.services.mfa_service import (
     EmailVerificationService,
     RecoveryCodesService,
@@ -112,12 +112,11 @@ async def verify_totp_login(
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
         db=db,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=ua,
+        request=SessionRequest(user.id, ip, ua),
         settings=settings,
-        expected_revision=user.security_revision or 0,
-        mfa_token=payload.mfa_token,
+        authorization=SessionAuthorization(
+            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+        ),
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -207,12 +206,11 @@ async def verify_recovery_code_login(
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
         db=db,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=ua,
+        request=SessionRequest(user.id, ip, ua),
         settings=settings,
-        expected_revision=user.security_revision or 0,
-        mfa_token=payload.mfa_token,
+        authorization=SessionAuthorization(
+            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+        ),
     )
 
     cookie_name = get_cookie_name(settings, request)
@@ -310,25 +308,28 @@ async def _find_discoverable_credential(db: AsyncSession, raw_id: str):
     return cred_obj
 
 
-async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any]) -> User:
-    from sqlalchemy import select
-
-    # Discoverable passkey login (без пароля)
-    cred_dict = credential
-    raw_id = cred_dict.get("id") or cred_dict.get("rawId")
+def _discoverable_credential_id(credential: dict[str, Any]) -> Any:
+    raw_id = credential.get("id") or credential.get("rawId")
     if not raw_id:
         raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
+    return raw_id
 
-    cred_obj = await _find_discoverable_credential(db, raw_id)
 
-    if not cred_obj:
-        raise AuthenticationException("Passkey не найден или был удалён")
+async def _active_credential_user(db: AsyncSession, cred_obj: WebAuthnCredential) -> User:
+    from sqlalchemy import select
 
     user_stmt = select(User).where(User.id == cred_obj.user_id)
     found_user = (await db.execute(user_stmt)).scalar_one_or_none()
     if not found_user or not found_user.is_active:
         raise AuthenticationException("Пользователь не найден или заблокирован")
     return found_user
+
+
+async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any]) -> User:
+    cred_obj = await _find_discoverable_credential(db, _discoverable_credential_id(credential))
+    if not cred_obj:
+        raise AuthenticationException("Passkey не найден или был удалён")
+    return await _active_credential_user(db, cred_obj)
 
 
 @passkey_router.post("/auth/verify")
@@ -363,12 +364,11 @@ async def passkey_auth_verify(
     ua = request.headers.get("User-Agent")
     raw_token, session, csrf_token = await AuthService.create_user_session(
         db=db,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=ua,
+        request=SessionRequest(user.id, ip, ua),
         settings=settings,
-        expected_revision=user.security_revision or 0,
-        mfa_token=payload.mfa_token,
+        authorization=SessionAuthorization(
+            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+        ),
     )
 
     cookie_name = get_cookie_name(settings, request)

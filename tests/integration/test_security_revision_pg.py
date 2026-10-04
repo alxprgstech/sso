@@ -13,7 +13,7 @@ from app.models.mfa import TOTPCredential
 from app.models.oidc import OIDCClient, RefreshToken
 from app.models.session import Session
 from app.models.user import PasswordCredential, User
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionAuthorization, SessionRequest
 from app.services.mfa_service import TOTPService, encrypt_totp_secret
 from app.services.oidc_service import OIDCService
 from app.services.security_state import invalidate_security_state, lock_user
@@ -38,8 +38,12 @@ async def seed(db):
 async def test_password_change_revokes_refresh_and_userinfo_preserves_current_session(pg_session):
     user, client = await seed(pg_session)
     cfg = Settings(_env_file=None)
-    _, keep, _ = await AuthService.create_user_session(pg_session, user.id, None, None, cfg)
-    await AuthService.create_user_session(pg_session, user.id, None, None, cfg)
+    _, keep, _ = await AuthService.create_user_session(
+        db=pg_session, request=SessionRequest(user.id, None, None), settings=cfg
+    )
+    await AuthService.create_user_session(
+        db=pg_session, request=SessionRequest(user.id, None, None), settings=cfg
+    )
     tokens = await OIDCService._generate_tokens_for_user(
         pg_session, user, client, "openid profile email", expected_revision=0
     )
@@ -78,7 +82,10 @@ async def test_mfa_step_is_consumed_once_and_reset_invalidates_it(pg_session):
         pg_session, verified, pyotp.TOTP(secret).now(), commit=False
     )
     await AuthService.create_user_session(
-        pg_session, user.id, None, None, cfg, expected_revision=0, mfa_token=token
+        db=pg_session,
+        request=SessionRequest(user.id, None, None),
+        settings=cfg,
+        authorization=SessionAuthorization(expected_revision=0, mfa_token=token),
     )
     assert await pg_session.scalar(
         select(AuthenticationStep.consumed_at).where(
@@ -138,7 +145,10 @@ async def test_security_event_and_session_issue_are_serialized(pg_session, pg_en
             else:
                 with pytest.raises(AuthenticationException):
                     await AuthService.create_user_session(
-                        db, user_id, None, None, cfg, expected_revision=0
+                        db=db,
+                        request=SessionRequest(user_id, None, None),
+                        settings=cfg,
+                        authorization=SessionAuthorization(expected_revision=0),
                     )
                 await db.rollback()
 

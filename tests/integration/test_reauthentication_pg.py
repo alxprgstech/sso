@@ -10,7 +10,7 @@ from app.core.security import decrypt_totp_secret, hash_password
 from app.models.authentication import SecurityAuthorization
 from app.models.mfa import TOTPCredential
 from app.models.user import PasswordCredential, User
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, SessionRequest
 from app.services.mfa_service import TOTPService
 from app.services.reauthentication_service import payload_digest
 from sqlalchemy import select
@@ -118,7 +118,9 @@ async def test_pending_totp_preserves_active_factor_and_checks_session(pg_sessio
     pg_session.add(user)
     await record_test_consent(pg_session, user)
     cfg = Settings(_env_file=None, FEATURE_TOTP_ENABLED=True)
-    _, session, _ = await AuthService.create_user_session(pg_session, user.id, None, None, cfg)
+    _, session, _ = await AuthService.create_user_session(
+        db=pg_session, request=SessionRequest(user.id, None, None), settings=cfg
+    )
     first, _ = await TOTPService.setup_totp(pg_session, user, session.id)
     assert await TOTPService.confirm_totp(pg_session, user, pyotp.TOTP(first).now(), session.id)
     second, _ = await TOTPService.setup_totp(pg_session, user, session.id)

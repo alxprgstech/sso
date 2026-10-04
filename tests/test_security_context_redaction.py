@@ -1,7 +1,9 @@
 """Security input representations must never embed passwords or factor secrets."""
 
+import uuid
+
 import pytest
-from app.services.auth_service import LoginAttempt
+from app.services.auth_service import LoginAttempt, SessionAuthorization, SessionRequest
 from app.services.mfa_service import PasskeyAuthentication, PasskeyRegistration, WebAuthnContext
 from app.services.reauthentication_service import FactorProof, MutationProof
 
@@ -14,6 +16,8 @@ MARKER = "sensitive-context-canary"
     "context",
     [
         LoginAttempt(MARKER, MARKER, MARKER, MARKER),
+        SessionRequest(uuid.uuid4(), MARKER, MARKER),
+        SessionAuthorization(mfa_token=MARKER),
         MutationProof(MARKER, MARKER, MARKER),
         FactorProof(MARKER, "totp", MARKER, {"credential": MARKER}),
         MutationRequest("POST", "/api/v1/auth/change-password", {"password": MARKER}),

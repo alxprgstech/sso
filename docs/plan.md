@@ -1068,3 +1068,9 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T21:01:12.890399+03:00 — PR5-CI-01 in_progress: третья quality-группа, канонические импортированные типы, unchanged PG migrations и enabled20 проверены; pending normalpush/exact-head Actions/CodeScene.
+
+
+2026-10-04T21:13:23.536885+03:00 — PR5-CI-01 in_progress: исправить последние4 code-addressable CodeScene files по session lifecycle/discoverable lookup/claims-vs-audience boundaries; archived probe и framework signature сохранить. Actions44c3ff9PASS; новыйheadpending.
+
+
+2026-10-04T21:24:36.410422+03:00 — PR5-CI-01 in_progress: четвёртая группа110actualPG/cryptoPASS, mypy65/Ruff200/runtime lock/scans/docs PASS; pending new exact-head Actions/CodeScene.

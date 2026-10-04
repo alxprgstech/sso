@@ -44,16 +44,26 @@ class LoginAttempt:
     user_agent: str | None
 
 
+@dataclass(frozen=True, repr=False)
+class SessionRequest:
+    user_id: uuid.UUID
+    ip_address: str | None
+    user_agent: str | None
+
+
+@dataclass(frozen=True, repr=False)
+class SessionAuthorization:
+    expected_revision: int | None = None
+    mfa_token: str | None = None
+
+
 class AuthService:
     @staticmethod
     async def create_user_session(
         db: AsyncSession,
-        user_id: uuid.UUID,
-        ip_address: str | None,
-        user_agent: str | None,
+        request: SessionRequest,
         settings: Settings,
-        expected_revision: int | None = None,
-        mfa_token: str | None = None,
+        authorization: SessionAuthorization | None = None,
     ) -> tuple[str, Session, str]:
         """
         Создаёт новую серверную сессию в базе данных.
@@ -62,7 +72,40 @@ class AuthService:
         raw_token = generate_random_token(32)
         token_hash = hash_token(raw_token)
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(seconds=settings.SESSION_ABSOLUTE_TIMEOUT_SECONDS)
+        authorization = authorization or SessionAuthorization()
+        user = await AuthService._session_account(db, request.user_id, settings)
+        expires_at, purpose = AuthService._session_lifetime(user, settings, now)
+        await AuthService._authorize_session(db, user, authorization, now)
+
+        session = Session(
+            user_id=request.user_id,
+            session_token_hash=token_hash,
+            ip_address=request.ip_address,
+            user_agent=short_user_agent(request.user_agent) if request.user_agent else None,
+            expires_at=expires_at,
+            last_activity_at=now,
+            purpose=purpose,
+            security_revision=revision(user),
+            auth_time=now,
+        )
+        db.add(session)
+        if authorization.mfa_token is not None:
+            await AuditService.log_event(
+                db,
+                "mfa_login_success",
+                user_id=user.id,
+                ip_address=request.ip_address,
+                user_agent=request.user_agent,
+                commit=False,
+            )
+        await db.commit()
+        await db.refresh(session)
+
+        csrf_token = generate_csrf_token(session.id, settings)
+        return raw_token, session, csrf_token
+
+    @staticmethod
+    async def _session_account(db: AsyncSession, user_id: uuid.UUID, settings: Settings) -> User:
         user = await db.scalar(
             select(User)
             .where(User.id == user_id)
@@ -72,44 +115,28 @@ class AuthService:
         if not user or not user.is_active:
             raise AuthenticationException("Аккаунт недоступен")
         require_account_access(user, settings, allow_temporary=True)
+        return user
+
+    @staticmethod
+    def _session_lifetime(user: User, settings: Settings, now: datetime) -> tuple[datetime, str]:
+        expires_at = now + timedelta(seconds=settings.SESSION_ABSOLUTE_TIMEOUT_SECONDS)
         credential = user.password_credential
         temporary = bool(credential and credential.requires_change)
         if temporary:
             expires_at = AuthService._consume_temporary_password(user, now, expires_at)
+            return expires_at, "password_change"
+        purpose = "deletion_management" if user.deletion_scheduled_for else "full"
+        return expires_at, purpose
+
+    @staticmethod
+    async def _authorize_session(
+        db: AsyncSession, user: User, authorization: SessionAuthorization, now: datetime
+    ) -> None:
+        expected_revision = authorization.expected_revision
         if expected_revision is not None and revision(user) != expected_revision:
             raise AuthenticationException("Безопасность аккаунта изменилась; повторите вход")
-        if mfa_token is not None:
-            await AuthService._consume_mfa_step(db, user, mfa_token, now)
-        purpose = "deletion_management" if user.deletion_scheduled_for else "full"
-        if temporary:
-            purpose = "password_change"
-
-        session = Session(
-            user_id=user_id,
-            session_token_hash=token_hash,
-            ip_address=ip_address,
-            user_agent=short_user_agent(user_agent) if user_agent else None,
-            expires_at=expires_at,
-            last_activity_at=now,
-            purpose=purpose,
-            security_revision=revision(user),
-            auth_time=now,
-        )
-        db.add(session)
-        if mfa_token is not None:
-            await AuditService.log_event(
-                db,
-                "mfa_login_success",
-                user_id=user.id,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                commit=False,
-            )
-        await db.commit()
-        await db.refresh(session)
-
-        csrf_token = generate_csrf_token(session.id, settings)
-        return raw_token, session, csrf_token
+        if authorization.mfa_token is not None:
+            await AuthService._consume_mfa_step(db, user, authorization.mfa_token, now)
 
     @staticmethod
     async def authenticate_user(

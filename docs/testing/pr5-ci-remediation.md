@@ -85,3 +85,10 @@ reauthentication/credential revision/temporary-password/production configuration
 ADR0018 фиксирует разделение trust boundaries, реальных lifecycle phases и связанных доказательств. ADR0019 устраняет Any при внутренних импортах: `mypy.ini` задаёт только пути репозитория, без type ignores или глобальных настроек. Новые проверки обнаруживают несовместимую UUID→int assignment именно в импортированном User; проверяют rollback повреждённой регистрации и прежний пятиаргументный Alembic callback. Shared timestamp base не меняет metadata/registry/схему. WebAuthn context не принимает параметры доверия от HTTP-клиента; exact origins/RP ID/UV/purpose и atomic consumption сохранены.
 
 Третья группа локально:112passed89.31s;9passed379.50s import/callback;enabled20passed387.31s. Канонический mypy61files, Ruff check/format, runtime lock и secret self-test PASS. CodeScene последнего отправленного head ещё failed; новый head pending. Исторический audit probe и обязательная сигнатура Alembic не изменяются ради метрики. Полная production/live-приёмка не завершена.
+
+
+## Последние рабочие CodeScene замечания — 2026-10-04T21:24:36.410422+03:00
+
+На44c3ff96600bf9aa107ef1bf138814414ad8c664 ([CI37222860411](https://github.com/alxprgstech/sso/actions/runs/37222860411)) все9 обязательных Actions success,2SES skips. CodeScene оставил6files: session lifecycle, discoverable Passkey lookup, overall complexity двух token_profiles, archived probe и Alembic callback.
+
+SessionRequest/SessionAuthorization разделяют входные metadata и доказательство revision/MFA, actual locked-account/lifetime/authorization phases сохраняют consume/audit/commit order. Discoverable lookup разделяет credential ID и active user. token_claims и token_audience отделяют structural types/time и audience/azp от token-use policy; AST review17bodies unchanged у сервера и независимого SDK. Local110passed226.79s с actualPG/RSA; mypy65/Ruff200/runtime lock/secret scan PASS. Remote результат этой группы pending. Дополнительный audit replay103passed/1worker-timeout247.93s сохранён как failed; неизменный30s deadline не увеличен.
