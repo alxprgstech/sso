@@ -48,3 +48,11 @@
 ## Ограничения
 
 Реальная доставка Resend и настройка домена не проверены: реальные API keys/письма не нужны для разработки и не входят в поручение. Общая production-приёмка GOAL-09 не закрывается этой интеграцией. SES/testmail opt-in, main/release правила и закомментированный CD сохраняются. Для активации владелец задаёт `EMAIL_PROVIDER=resend`, настоящий `RESEND_API_KEY` и проверенный домен `SMTP_FROM_EMAIL`. AMP в native Resend API отсутствует; SES/SMTP MIME сохраняется.
+
+## GitHub CI — PR6
+
+2026-10-05T00:40:06.4698225+03:00, Codex. [Commit ff13c5c](https://github.com/alxprgstech/sso/commit/ff13c5cdef4f4a18c104d739ec29fc0722f3b6d0), [draft PR6](https://github.com/alxprgstech/sso/pull/6), [CI57](https://github.com/alxprgstech/sso/actions/runs/37236671323): completed/success, все9обязательных jobs successful. 2 внешних SESjobs skipped штатно дляPR; live delivery не заявлена.
+
+Backend Linux:613passed/11platform skipped/5external deselected/14subtests, enabled20passed; Windows PowerShell5.1/7 safety отдельныйjob PASS. Playwright default33passed, enabled/privacy9passed. Frontend typecheck/unit/build/private-source-map/privacy harness, SDK build/clean install, security/dependency scan, versions и CD invariants PASS. Immutable containers/Compose/fail-closed outage/image vulnerability audit PASS — ранее недоступная локально контейнерная проверка теперь выполнена вCI. Никаких исправлений или ослабления тестов для этого прогона не потребовалось.
+
+Эта запись сохраняет результаты именно указанной ревизии, не результат произвольного future HEAD. Следующий docs-only commit фиксирует actual evidence; его CI также ожидается перед итоговым ответом. Merge/release/deployment не выполняются. CodeScene отдельным status этой ревизии не возвращён API; его успех не заявляется.

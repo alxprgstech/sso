@@ -1,6 +1,6 @@
-# EMAIL-RESEND-01 — commit/CI in_progress
+# EMAIL-RESEND-01 — CI successful, final docs revision pending
 
-2026-10-05T00:33:39.6356927+03:00, Codex. Владелец поручил commit и ожидание CI; готовится draft PR для existing PR-trigger. Remote results pending; local результаты ниже сохраняются.
+2026-10-05T00:40:06.4698225+03:00, Codex. Commitff13c5c push, draft PR6 создан. CI57 all9requiredjobsPASS, externalSES2skipped; actual Compose и браузерные default/enabled проверки прошли. [Подробности](acceptance-resend.md), [CI](https://github.com/alxprgstech/sso/actions/runs/37236671323), [PR](https://github.com/alxprgstech/sso/pull/6). Фиксируется docs-only checkpoint; перед итогом ожидается CI его HEAD. No merge/deploy; CodeScene success не заявляется.
 
 # EMAIL-RESEND-01 — done
 
