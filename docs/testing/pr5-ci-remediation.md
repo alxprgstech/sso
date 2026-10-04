@@ -1,6 +1,6 @@
 # Исправления проверок PR 5
 
-Задача PR5-CI-01, статус in_progress. Исходный неуспешный запуск:
+Задача PR5-CI-01, статус blocked только по двум CodeScene contracts; рабочие причины исправлены. Исходный неуспешный запуск:
 [37200621991](https://github.com/alxprgstech/sso/actions/runs/37200621991),
 head `3a2aac35c5bc3ea6813c4a2fa94ade27ece068f6`.
 
@@ -97,3 +97,8 @@ SessionRequest/SessionAuthorization разделяют входные metadata �
 ## После e97f7e9 — 2026-10-04T21:38:27.846070+03:00
 
 [CI37224469586](https://github.com/alxprgstech/sso/actions/runs/37224469586) exactSHAe97f7e92b98a6ff45e2bfcd3897d15aa4180320a:9Actions success,2SES skips. CodeScene5remainingfiles: consume_temporary_password complexconditional,2token_claims overallcomplexity и2[contracts](codescene-contracts.md). Temporal policy отделена в token_dates;17function bodiesunchanged у обоих independent implementations. Used и missing/expired temporary password guards разделены с прежним отказом. ActualPG/crypto60passed6.82s; mypy67/Ruff202/runtime lock/secret scanPASS. Newcandidate CI ещёpending, CodeScene не объявленPASS.
+
+
+## Итог source checks — 2026-10-04T21:47:51.194815+03:00
+
+На `f9e06d71c7806d71d9226cfb591585cbf5f3ef83` все9mandatory Actions [PASS](https://github.com/alxprgstech/sso/actions/runs/37225223182),2SES skipsCI03. CodeScene failed только по двум [сохранённым контрактам](codescene-contracts.md); все остальные замечания устранены. Это точный blocker, неуспехгейта не скрыт. Publicpush/PR5разрешён владельцем; merge/deployment/releaseне выполнялись. Следующийdocs-onlyhead проверяется отдельно перед финальнымотчётом.

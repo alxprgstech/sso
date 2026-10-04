@@ -1080,3 +1080,6 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T21:38:27.846070+03:00 — PR5-CI-01 in_progress: последняя delta60actualPG/cryptoPASS,17bodies unchanged, mypy67/Ruff202/scansPASS. Pending normalpush/new exacthead.
+
+
+2026-10-04T21:47:51.194815+03:00 — PR5-CI-01 blocked: начало2026-10-04T15:04:59.289865+03:00; code-addressable fixes и9mandatory Actions наf9e06d71c7806d71d9226cfb591585cbf5f3ef83 complete. Остаются2CodeScenecontracts, неPASS; условиеразблокировки — решениевладельца о рассмотрении archived snapshot и Alembic callback вquality policy (docs/testing/codescene-contracts.md). Не менятьtoolsettings/thresholds без нового поручения. ProductionGOAL09 сохраняетсянезавершённым.
