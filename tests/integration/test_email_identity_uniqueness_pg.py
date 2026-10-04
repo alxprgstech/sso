@@ -15,7 +15,7 @@ from app.services.mfa_service import EmailVerificationService
 from sqlalchemy import select
 
 from tests.helpers.privacy import record_test_consent
-from tests.helpers.reauthentication import authorized_request
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 from tests.helpers.smtp_message import verification_token
 from tests.integration.test_email_verification_pg import MockSMTPServer
 
@@ -47,7 +47,9 @@ async def test_user_and_admin_email_changes_bind_verification_to_exact_address(
         assert (await pg_client.post(path, json=body, headers=headers)).status_code == 401
         assert (
             await authorized_request(
-                pg_client, "POST", path, password=password, headers=headers, json_body=body
+                pg_client,
+                MutationRequest("POST", path, json_body=body),
+                RequestAuthorization(password, headers),
             )
         ).status_code == 200
         assert len(smtp.received_messages) == 1

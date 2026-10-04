@@ -16,6 +16,7 @@ from app.services.reauthentication_service import payload_digest
 from sqlalchemy import select
 
 from tests.helpers.privacy import accept_current_documents, record_test_consent
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization
 
 pytestmark = [pytest.mark.postgres, pytest.mark.asyncio]
 PASSWORD = "ReauthenticationRegression2026!"
@@ -32,7 +33,9 @@ async def login(client, db):
     return {"X-CSRF-Token": response.json()["csrf_token"]}
 
 
-async def proof(client, headers, path, payload, password=PASSWORD):
+async def proof(client, request: MutationRequest, authorization: RequestAuthorization):
+    path, payload = request.path, request.json_body
+    password, headers = authorization.password, authorization.headers
     return await client.post(
         "/api/v1/auth/reauthentication",
         headers=headers,
@@ -53,8 +56,16 @@ async def test_sensitive_admin_action_requires_exact_one_use_proof(pg_session, p
         "redirect_uris": ["https://service.example.test/callback"],
     }
     assert (await pg_client.post(path, headers=headers, json=payload)).status_code == 401
-    assert (await proof(pg_client, headers, path, payload, "incorrect-password")).status_code == 401
-    issued = await proof(pg_client, headers, path, payload)
+    assert (
+        await proof(
+            pg_client,
+            MutationRequest("POST", path, payload),
+            RequestAuthorization("incorrect-password", headers),
+        )
+    ).status_code == 401
+    issued = await proof(
+        pg_client, MutationRequest("POST", path, payload), RequestAuthorization(PASSWORD, headers)
+    )
     assert issued.status_code == 200 and not issued.json()["factor_required"]
     authorized = {**headers, "X-Reauthentication": issued.json()["authorization"]}
     assert (
@@ -75,7 +86,9 @@ async def test_expired_and_other_session_proof_cannot_mutate(pg_session, pg_clie
         "client_type": "public",
         "redirect_uris": ["https://service.example.test/callback"],
     }
-    issued = await proof(pg_client, headers, path, payload)
+    issued = await proof(
+        pg_client, MutationRequest("POST", path, payload), RequestAuthorization(PASSWORD, headers)
+    )
     row = await pg_session.scalar(select(SecurityAuthorization))
     row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     await pg_session.commit()
@@ -86,7 +99,9 @@ async def test_expired_and_other_session_proof_cannot_mutate(pg_session, pg_clie
             headers={**headers, "X-Reauthentication": issued.json()["authorization"]},
         )
     ).status_code == 401
-    issued = await proof(pg_client, headers, path, payload)
+    issued = await proof(
+        pg_client, MutationRequest("POST", path, payload), RequestAuthorization(PASSWORD, headers)
+    )
     new_login = await pg_client.post(
         "/api/v1/auth/login", json={"username": "proof_admin", "password": PASSWORD}
     )
@@ -126,7 +141,13 @@ async def test_proof_from_different_admin_user_does_not_authorize_action(pg_sess
         "client_type": "public",
         "redirect_uris": ["https://proof.example.test/callback"],
     }
-    foreign = (await proof(pg_client, headers, path, payload)).json()["authorization"]
+    foreign = (
+        await proof(
+            pg_client,
+            MutationRequest("POST", path, payload),
+            RequestAuthorization(PASSWORD, headers),
+        )
+    ).json()["authorization"]
     other = User(username="second_proof_admin", email="secondproof@example.test", is_superuser=True)
     other.password_credential = PasswordCredential(password_hash=hash_password(PASSWORD))
     pg_session.add(other)
@@ -141,7 +162,13 @@ async def test_proof_from_different_admin_user_does_not_authorize_action(pg_sess
             path, json=payload, headers={**own_headers, "X-Reauthentication": foreign}
         )
     ).status_code == 401
-    own = (await proof(pg_client, own_headers, path, payload)).json()["authorization"]
+    own = (
+        await proof(
+            pg_client,
+            MutationRequest("POST", path, payload),
+            RequestAuthorization(PASSWORD, own_headers),
+        )
+    ).json()["authorization"]
     assert (
         await pg_client.post(path, json=payload, headers={**own_headers, "X-Reauthentication": own})
     ).status_code == 201

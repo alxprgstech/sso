@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
-from tests.helpers.reauthentication import authorized_request
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -59,15 +59,16 @@ async def test_concurrent_auth_code_redemption_pg(
 
     client_reg = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="RacePassword2026!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "Race Client",
-            "client_type": "public",
-            "redirect_uris": ["http://localhost:8081/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "Race Client",
+                "client_type": "public",
+                "redirect_uris": ["http://localhost:8081/callback"],
+            },
+        ),
+        RequestAuthorization("RacePassword2026!", {"X-CSRF-Token": adm_csrf}),
     )
     assert client_reg.status_code == 201
     c_data = client_reg.json()
@@ -265,32 +266,30 @@ async def test_concurrent_recovery_code_burn_pg(
         csrf_tok = login_res.json()["csrf_token"]
         setup_res = await authorized_request(
             pg_client,
-            "POST",
-            "/api/v1/mfa/totp/setup",
-            password="RecRacePassword2026!",
-            headers={"X-CSRF-Token": csrf_tok},
+            MutationRequest("POST", "/api/v1/mfa/totp/setup"),
+            RequestAuthorization("RecRacePassword2026!", {"X-CSRF-Token": csrf_tok}),
         )
         raw_secret = setup_res.json()["secret"]
         await authorized_request(
             pg_client,
-            "POST",
-            "/api/v1/mfa/totp/confirm",
-            password="RecRacePassword2026!",
-            headers={"X-CSRF-Token": csrf_tok},
-            json_body={"code": pyotp.TOTP(raw_secret).now()},
+            MutationRequest(
+                "POST", "/api/v1/mfa/totp/confirm", json_body={"code": pyotp.TOTP(raw_secret).now()}
+            ),
+            RequestAuthorization("RecRacePassword2026!", {"X-CSRF-Token": csrf_tok}),
         )
 
         # Выпускаем recovery codes
         gen_res = await authorized_request(
             pg_client,
-            "POST",
-            "/api/v1/mfa/recovery-codes/generate",
-            password="RecRacePassword2026!",
-            headers={"X-CSRF-Token": csrf_tok},
-            factor={
-                "method": "totp",
-                "code": pyotp.TOTP(raw_secret).at(__import__("time").time() + 30),
-            },
+            MutationRequest("POST", "/api/v1/mfa/recovery-codes/generate"),
+            RequestAuthorization(
+                "RecRacePassword2026!",
+                {"X-CSRF-Token": csrf_tok},
+                factor={
+                    "method": "totp",
+                    "code": pyotp.TOTP(raw_secret).at(__import__("time").time() + 30),
+                },
+            ),
         )
         codes = gen_res.json()["recovery_codes"]
         burn_code = codes[0]
@@ -375,15 +374,16 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
 
     client_reg = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="RtRacePassword2026!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "RT Race Client",
-            "client_type": "confidential",
-            "redirect_uris": ["http://localhost:8081/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "RT Race Client",
+                "client_type": "confidential",
+                "redirect_uris": ["http://localhost:8081/callback"],
+            },
+        ),
+        RequestAuthorization("RtRacePassword2026!", {"X-CSRF-Token": adm_csrf}),
     )
     c_data = client_reg.json()
     client_id = c_data["client_id"]

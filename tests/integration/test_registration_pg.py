@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
-from tests.helpers.reauthentication import authorized_request
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -481,11 +481,12 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
     # 4. Попытка переключить режим с неверным паролем -> 401 Unauthorized
     fail_toggle = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/system/registration-mode",
-        password="MasterAdminPassword123!",
-        headers={"X-CSRF-Token": csrf_token},
-        json_body={"mode": "open", "current_admin_password": "WrongPassword!"},
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/system/registration-mode",
+            json_body={"mode": "open", "current_admin_password": "WrongPassword!"},
+        ),
+        RequestAuthorization("MasterAdminPassword123!", {"X-CSRF-Token": csrf_token}),
     )
     assert fail_toggle.status_code == 401
 
@@ -498,11 +499,12 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
     # 5. Успешное переключение режима с корректным паролем
     ok_toggle = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/system/registration-mode",
-        password="MasterAdminPassword123!",
-        headers={"X-CSRF-Token": csrf_token},
-        json_body={"mode": "open", "current_admin_password": "MasterAdminPassword123!"},
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/system/registration-mode",
+            json_body={"mode": "open", "current_admin_password": "MasterAdminPassword123!"},
+        ),
+        RequestAuthorization("MasterAdminPassword123!", {"X-CSRF-Token": csrf_token}),
     )
     assert ok_toggle.status_code == 200
     assert ok_toggle.json()["registration_mode"] == "open"

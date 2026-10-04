@@ -28,11 +28,10 @@ def require_account_access(
         raise AuthenticationException(
             "Требуется подтверждение адреса электронной почты", error="email_verification_required"
         )
-    if (
-        user.password_credential
-        and user.password_credential.requires_change
-        and not allow_temporary
-    ):
+    if allow_temporary:
+        return
+    credential = user.password_credential
+    if credential and credential.requires_change:
         raise AuthenticationException(
             "Необходимо сменить временный пароль", error="password_change_required"
         )

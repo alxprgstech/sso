@@ -23,24 +23,7 @@ class StartBashTests(unittest.TestCase):
             tmp_path = Path(directory)
             shutil.copyfile(root / "start.sh", tmp_path / "start.sh")
             shutil.copyfile(root / ".env.example", tmp_path / ".env.example")
-            bin_dir = tmp_path / "bin"
-            bin_dir.mkdir()
-            docker = bin_dir / "docker"
-            docker.write_text(
-                "#!/bin/sh\n"
-                'case "$*" in\n'
-                "  'compose up -d --build') exit 17 ;;\n"
-                "  'compose ps -q frontend') echo owned-frontend ;;\n"
-                "esac\n"
-                "exit 0\n",
-                encoding="ascii",
-            )
-            docker.chmod(0o755)
-            git = bin_dir / "git"
-            git.write_text("#!/bin/sh\nprintf '%s\\n' " + "a" * 40 + "\n", encoding="ascii")
-            git.chmod(0o755)
-            environment = os.environ.copy()
-            environment["PATH"] = str(bin_dir) + os.pathsep + environment.get("PATH", "")
+            git, environment = self.prepare_stubs(tmp_path)
             result = subprocess.run(
                 [bash, "-c", 'export PATH="$PWD/bin:$PATH"; exec bash start.sh'],
                 cwd=tmp_path,
@@ -58,44 +41,78 @@ class StartBashTests(unittest.TestCase):
                 (root / ".env.example").read_text(encoding="utf-8").splitlines()[1], generated
             )
             values = dict(re.findall(r"^([A-Z_]+)=(.*)$", generated, flags=re.MULTILINE))
-            password = values["POSTGRES_PASSWORD"]
-            self.assertRegex(password, r"^[0-9a-f]{48}$")
-            passwords = [
-                values[name]
-                for name in ("POSTGRES_PASSWORD", "SSO_RUNTIME_PASSWORD", "SSO_MIGRATOR_PASSWORD")
-            ]
-            self.assertEqual(len(set(passwords)), 3)
-            self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in passwords[1:]))
-            expected = (
-                f"postgresql+psycopg://sso_runtime:{values['SSO_RUNTIME_PASSWORD']}@db:5432/sso_db"
-            )
-            self.assertTrue(
-                values["DATABASE_URL"] == expected, "Runtime must not use the bootstrap owner"
-            )
-            self.assertTrue(values["DATABASE_URL_SYNC"] == expected)
-            self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
-            self.assertEqual(values["BASE_URL"], "http://localhost:3000")
-            self.assertEqual(values["WEBAUTHN_RP_ID"], "localhost")
-            self.assertEqual(values["WEBAUTHN_ORIGIN"], "http://localhost:3000")
-            self.assertEqual(len(base64.urlsafe_b64decode(values["TOTP_ENCRYPTION_KEY"])), 32)
-            for name in (
-                "FEATURE_TOTP_ENABLED",
-                "FEATURE_PASSKEY_ENABLED",
-                "FEATURE_RECOVERY_CODES_ENABLED",
-            ):
-                self.assertEqual(values[name], "false")
+            passwords = self.assert_database_credentials(values)
+            self.assert_default_profile(values)
             self.assertTrue(all(value not in result.stdout + result.stderr for value in passwords))
             self.assertNotIn("ALX_BUILD_SHA", generated)
-            git.write_text("#!/bin/sh\necho invalid\n", encoding="ascii")
-            invalid = subprocess.run(
-                [bash, "-c", 'export PATH="$PWD/bin:$PATH"; exec bash start.sh'],
-                cwd=tmp_path,
-                env=environment,
-                capture_output=True,
-                text=True,
-                timeout=20,
-                check=False,
+            self.assert_invalid_revision_preserves_env(
+                bash, (tmp_path, git, environment), generated
             )
-            self.assertEqual(invalid.returncode, 1)
-            self.assertIn("Cannot determine the full Git revision", invalid.stderr)
-            self.assertEqual((tmp_path / ".env").read_bytes().decode("utf-8"), generated)
+
+    def prepare_stubs(self, tmp_path: Path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        docker = bin_dir / "docker"
+        docker.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            "  'compose up -d --build') exit 17 ;;\n"
+            "  'compose ps -q frontend') echo owned-frontend ;;\n"
+            "esac\n"
+            "exit 0\n",
+            encoding="ascii",
+        )
+        docker.chmod(0o755)
+        git = bin_dir / "git"
+        git.write_text("#!/bin/sh\nprintf '%s\\n' " + "a" * 40 + "\n", encoding="ascii")
+        git.chmod(0o755)
+        environment = os.environ.copy()
+        environment["PATH"] = str(bin_dir) + os.pathsep + environment.get("PATH", "")
+        return git, environment
+
+    def assert_database_credentials(self, values):
+        password = values["POSTGRES_PASSWORD"]
+        self.assertRegex(password, r"^[0-9a-f]{48}$")
+        passwords = [
+            values[name]
+            for name in ("POSTGRES_PASSWORD", "SSO_RUNTIME_PASSWORD", "SSO_MIGRATOR_PASSWORD")
+        ]
+        self.assertEqual(len(set(passwords)), 3)
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", value) for value in passwords[1:]))
+        expected = (
+            f"postgresql+psycopg://sso_runtime:{values['SSO_RUNTIME_PASSWORD']}@db:5432/sso_db"
+        )
+        self.assertTrue(
+            values["DATABASE_URL"] == expected, "Runtime must not use the bootstrap owner"
+        )
+        self.assertTrue(values["DATABASE_URL_SYNC"] == expected)
+        return passwords
+
+    def assert_default_profile(self, values):
+        self.assertEqual(values["FRONTEND_URL"], "http://localhost:3000")
+        self.assertEqual(values["BASE_URL"], "http://localhost:3000")
+        self.assertEqual(values["WEBAUTHN_RP_ID"], "localhost")
+        self.assertEqual(values["WEBAUTHN_ORIGIN"], "http://localhost:3000")
+        self.assertEqual(len(base64.urlsafe_b64decode(values["TOTP_ENCRYPTION_KEY"])), 32)
+        for name in (
+            "FEATURE_TOTP_ENABLED",
+            "FEATURE_PASSKEY_ENABLED",
+            "FEATURE_RECOVERY_CODES_ENABLED",
+        ):
+            self.assertEqual(values[name], "false")
+
+    def assert_invalid_revision_preserves_env(self, bash, campaign, generated):
+        tmp_path, git, environment = campaign
+        git.write_text("#!/bin/sh\necho invalid\n", encoding="ascii")
+        invalid = subprocess.run(
+            [bash, "-c", 'export PATH="$PWD/bin:$PATH"; exec bash start.sh'],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(invalid.returncode, 1)
+        self.assertIn("Cannot determine the full Git revision", invalid.stderr)
+        self.assertEqual((tmp_path / ".env").read_bytes().decode("utf-8"), generated)

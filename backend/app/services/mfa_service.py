@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import json
-import secrets
-import string
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import pyotp
 import webauthn
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn.helpers.structs import (
@@ -22,7 +18,6 @@ from webauthn.helpers.structs import (
 from app.config import Settings, get_settings
 from app.core.exceptions import (
     AuthenticationException,
-    AuthorizationException,
 )
 from app.core.security import (
     decrypt_totp_secret,
@@ -32,8 +27,6 @@ from app.core.security import (
 )
 from app.models.mfa import (
     EmailVerificationToken,
-    RecoveryCode,
-    TOTPCredential,
     WebAuthnChallenge,
     WebAuthnCredential,
 )
@@ -52,362 +45,34 @@ from app.services.verification_email import (
     new_code,
 )
 
+from app.services.totp_service import TOTPService, totp_step_usable
+from app.services.recovery_codes_service import RecoveryCodesService
+from app.services.webauthn_assertion import (
+    AssertionPolicy,
+    _cred_id_to_bytes,
+    assertion_dictionary,
+    locked_assertion_credential,
+    signed_assertion_challenge,
+    locked_assertion_challenge,
+    verify_assertion_signature,
+)
+
+__all__ = [
+    "TOTPService",
+    "RecoveryCodesService",
+    "WebAuthnService",
+    "EmailVerificationService",
+    "sent_emails_sink",
+    "encrypt_totp_secret",
+    "decrypt_totp_secret",
+    "_cred_id_to_bytes",
+    "totp_step_usable",
+]
+
 settings = get_settings()
 
 # Локальный сборщик доступен только при ENVIRONMENT=testing.
 sent_emails_sink: list[dict[str, Any]] = []
-
-
-def totp_step_usable(matched: int | None, previous: int | None) -> bool:
-    if matched is None:
-        return False
-    if previous is None:
-        return True
-    return matched > previous
-
-
-class TOTPService:
-    @staticmethod
-    async def setup_totp(
-        db: AsyncSession, user: User, session_id: uuid.UUID | None = None
-    ) -> tuple[str, str]:
-        """
-        Инициализирует подключение TOTP.
-        Секрет шифруется симметричным ключом (AES/Fernet) перед сохранением в БД.
-        Возвращает: (raw_base32_secret, provisioning_uri).
-        """
-        user = await lock_user(db, user.id)
-        secret = pyotp.random_base32()
-        encrypted = encrypt_totp_secret(secret)
-
-        stmt = select(TOTPCredential).where(TOTPCredential.user_id == user.id)
-        existing = (await db.execute(stmt)).scalar_one_or_none()
-
-        if existing:
-            existing.pending_encrypted_secret = encrypted
-            existing.pending_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-            existing.pending_session_id = session_id
-        else:
-            cred = TOTPCredential(
-                user_id=user.id,
-                encrypted_secret=encrypted,
-                is_confirmed=False,
-                pending_encrypted_secret=encrypted,
-                pending_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
-                pending_session_id=session_id,
-            )
-            db.add(cred)
-
-        await db.commit()
-
-        totp_obj = pyotp.TOTP(secret)
-        otpauth_url = totp_obj.provisioning_uri(
-            name=user.email,
-            issuer_name=settings.WEBAUTHN_RP_NAME,
-        )
-        return secret, otpauth_url
-
-    @staticmethod
-    async def confirm_totp(
-        db: AsyncSession, user: User, code: str, session_id: uuid.UUID | None = None
-    ) -> bool:
-        """
-        Подтверждение первого кода при подключении TOTP.
-        Только после этого фактор считается активным.
-        """
-        user = await lock_user(db, user.id)
-        stmt = select(TOTPCredential).where(TOTPCredential.user_id == user.id).with_for_update()
-        cred = (await db.execute(stmt)).scalar_one_or_none()
-        if not cred:
-            raise AuthenticationException("Подключение TOTP не было инициировано")
-
-        now = datetime.now(timezone.utc)
-        if (
-            not cred.pending_encrypted_secret
-            or not cred.pending_expires_at
-            or cred.pending_expires_at <= now
-            or cred.pending_session_id != session_id
-        ):
-            return False
-        raw_secret = decrypt_totp_secret(cred.pending_encrypted_secret)
-        totp = pyotp.TOTP(raw_secret)
-
-        if not totp.verify(code, valid_window=1):
-            return False
-
-        cred.is_confirmed = True
-        cred.confirmed_at = now
-        cred.encrypted_secret = cred.pending_encrypted_secret
-        cred.pending_encrypted_secret = None
-        cred.pending_expires_at = None
-        cred.pending_session_id = None
-        current_step = int(now.timestamp()) // totp.interval
-        cred.last_verified_step = max(
-            step
-            for step in (current_step - 1, current_step, current_step + 1)
-            if totp.verify(
-                code, for_time=datetime.fromtimestamp(step * totp.interval, timezone.utc)
-            )
-        )
-        await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-        await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
-        await AuditService.log_event(db, event_type="totp_enabled", user_id=user.id)
-        return True
-
-    @staticmethod
-    async def verify_totp(db: AsyncSession, user: User, code: str, *, commit: bool = True) -> bool:
-        """
-        Проверка TOTP кода при входе.
-        """
-        await lock_user(db, user.id)
-        stmt = select(TOTPCredential).where(
-            TOTPCredential.user_id == user.id,
-            TOTPCredential.is_confirmed.is_(True),
-        )
-        cred = (await db.execute(stmt.with_for_update())).scalar_one_or_none()
-        if not cred:
-            return False
-
-        raw_secret = decrypt_totp_secret(cred.encrypted_secret)
-        totp = pyotp.TOTP(raw_secret)
-        current_step = int(datetime.now(timezone.utc).timestamp()) // totp.interval
-        matched = next(
-            (
-                step
-                for step in (current_step - 1, current_step, current_step + 1)
-                if totp.verify(
-                    code, for_time=datetime.fromtimestamp(step * totp.interval, timezone.utc)
-                )
-            ),
-            None,
-        )
-        if not totp_step_usable(matched, cred.last_verified_step):
-            return False
-        cred.last_verified_step = matched
-        await db.flush()
-        if commit:
-            await db.commit()
-        return True
-
-    @staticmethod
-    async def remove_totp(
-        db: AsyncSession, user: User, session_id: uuid.UUID | None = None
-    ) -> None:
-        """
-        Удаление фактора TOTP и связанных резервных кодов.
-        """
-        user = await lock_user(db, user.id)
-        await db.execute(delete(TOTPCredential).where(TOTPCredential.user_id == user.id))
-        await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-        await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
-        await AuditService.log_event(db, event_type="totp_disabled", user_id=user.id)
-
-
-class RecoveryCodesService:
-    @staticmethod
-    def _normalize_code(code: str) -> str:
-        return code.replace("-", "").replace(" ", "").upper().strip()
-
-    @staticmethod
-    async def generate_codes(
-        db: AsyncSession, user: User, session_id: uuid.UUID | None = None
-    ) -> list[str]:
-        """
-        Выпуск нового набора из 10 резервных кодов.
-        Разрешен ТОЛЬКО при активном подтвержденном факторе TOTP (SEC-FLAG-03).
-        Показываются пользователю ТОЛЬКО ОДИН РАЗ.
-        """
-        user = await lock_user(db, user.id)
-        if not (user.totp_credential and user.totp_credential.is_confirmed):
-            raise AuthorizationException(
-                "Резервные коды могут быть выпущены только при активном факторе TOTP"
-            )
-
-        # Удаляем предыдущие коды пользователя
-        await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-
-        alphabet = string.ascii_uppercase + string.digits
-        plain_codes = []
-        for _ in range(10):
-            code_str = "-".join(
-                "".join(secrets.choice(alphabet) for _ in range(8)) for _ in range(4)
-            )
-            plain_codes.append(code_str)
-
-            normalized = RecoveryCodesService._normalize_code(code_str)
-            h = hash_token(normalized)
-            rec = RecoveryCode(
-                user_id=user.id,
-                code_hash=h,
-                is_used=False,
-            )
-            db.add(rec)
-
-        await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
-        await AuditService.log_event(db, event_type="recovery_codes_generated", user_id=user.id)
-        return plain_codes
-
-    @staticmethod
-    async def consume_code(db: AsyncSession, user: User, code: str, *, commit: bool = True) -> bool:
-        """
-        Атомарное одноразовое погашение резервного кода (SEC-FLAG-03).
-        Резервный код заменяет второй фактор после ввода пароля, но не является самостоятельным входом.
-        """
-        await lock_user(db, user.id)
-        normalized = RecoveryCodesService._normalize_code(code)
-        h = hash_token(normalized)
-        now = datetime.now(timezone.utc)
-
-        stmt = (
-            update(RecoveryCode)
-            .where(
-                RecoveryCode.user_id == user.id,
-                RecoveryCode.code_hash == h,
-                RecoveryCode.is_used.is_(False),
-            )
-            .values(is_used=True, used_at=now)
-            .returning(RecoveryCode.id)
-        )
-        result = await db.execute(stmt)
-        if commit:
-            await db.commit()
-
-        consumed_id = result.scalar_one_or_none()
-        if consumed_id:
-            await AuditService.log_event(
-                db, event_type="recovery_code_used", user_id=user.id, commit=commit
-            )
-            return True
-        return False
-
-
-def _cred_id_to_bytes(cred_id: str) -> bytes:
-    try:
-        return webauthn.helpers.base64url_to_bytes(cred_id)
-    except Exception:
-        return cred_id.encode("utf-8")
-
-
-@dataclass(frozen=True)
-class AssertionPolicy:
-    rp_id: str
-    origins: list[str]
-    purpose: str
-    expected_challenge: str | None
-
-
-def assertion_dictionary(credential: str | dict[str, Any]) -> dict[str, Any]:
-    return json.loads(credential) if isinstance(credential, str) else credential
-
-
-async def locked_assertion_credential(
-    db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any]
-) -> WebAuthnCredential:
-    raw_id = assertion.get("id") or assertion.get("rawId")
-    if not raw_id:
-        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
-    credentials = (
-        (
-            await db.execute(
-                select(WebAuthnCredential)
-                .where(
-                    WebAuthnCredential.user_id == user_id,
-                )
-                .with_for_update()
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if not credentials:
-        raise AuthenticationException("У пользователя отсутствуют зарегистрированные ключи Passkey")
-    for credential in credentials:
-        if credential.credential_id == raw_id or _cred_id_to_bytes(
-            credential.credential_id
-        ) == _cred_id_to_bytes(raw_id):
-            return credential
-    raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
-
-
-def signed_assertion_challenge(assertion: dict[str, Any], policy: AssertionPolicy) -> str | None:
-    try:
-        raw = assertion.get("response", {}).get("clientDataJSON")
-        if not raw:
-            return None
-        client_data = json.loads(webauthn.helpers.base64url_to_bytes(raw).decode("utf-8"))
-        challenge = client_data.get("challenge")
-    except (ValueError, TypeError, AttributeError):
-        return None
-    if policy.expected_challenge is not None:
-        if challenge != policy.expected_challenge:
-            return None
-    return challenge
-
-
-async def locked_assertion_challenge(
-    db: AsyncSession, user_id: uuid.UUID, assertion: dict[str, Any], policy: AssertionPolicy
-) -> WebAuthnChallenge:
-    signed = signed_assertion_challenge(assertion, policy)
-    query = select(WebAuthnChallenge).where(
-        WebAuthnChallenge.purpose == policy.purpose,
-        WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-    )
-    row = None
-    if signed:
-        row = await db.scalar(query.where(WebAuthnChallenge.challenge == signed).with_for_update())
-    if row is None:
-        row = await authentication_fallback_challenge(db, user_id, policy)
-    if row is None:
-        raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
-    if row.user_id is not None:
-        if row.user_id != user_id:
-            raise AuthenticationException("Срок действия challenge истёк или challenge не найден")
-    return row
-
-
-async def authentication_fallback_challenge(
-    db: AsyncSession, user_id: uuid.UUID, policy: AssertionPolicy
-) -> WebAuthnChallenge | None:
-    # Only ordinary authentication supports the legacy latest-challenge lookup.
-    # Action-bound deletion proofs never enter this fallback.
-    if policy.purpose != "authentication":
-        return None
-    if policy.expected_challenge is not None:
-        return None
-    return await db.scalar(
-        select(WebAuthnChallenge)
-        .where(
-            WebAuthnChallenge.user_id == user_id,
-            WebAuthnChallenge.purpose == policy.purpose,
-            WebAuthnChallenge.expires_at > datetime.now(timezone.utc),
-        )
-        .order_by(WebAuthnChallenge.created_at.desc())
-        .with_for_update()
-    )
-
-
-def verify_assertion_signature(
-    credential: str | dict[str, Any],
-    target: WebAuthnCredential,
-    challenge: WebAuthnChallenge,
-    policy: AssertionPolicy,
-) -> int:
-    try:
-        verification = webauthn.verify_authentication_response(
-            credential=credential,
-            expected_challenge=webauthn.helpers.base64url_to_bytes(challenge.challenge),
-            expected_rp_id=policy.rp_id,
-            expected_origin=policy.origins,
-            credential_public_key=bytes.fromhex(target.public_key),
-            credential_current_sign_count=target.sign_count,
-            require_user_verification=True,
-        )
-    except Exception:
-        raise AuthenticationException("Ошибка проверки аутентификации WebAuthn") from None
-    return verification.new_sign_count
 
 
 class WebAuthnService:

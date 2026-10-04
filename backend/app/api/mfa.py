@@ -281,6 +281,34 @@ async def passkey_auth_options(
     )
 
 
+async def _discoverable_passkey_user(db: AsyncSession, credential: dict[str, Any]) -> User:
+    from sqlalchemy import select
+
+    # Discoverable passkey login (без пароля)
+    cred_dict = credential
+    raw_id = cred_dict.get("id") or cred_dict.get("rawId")
+    if not raw_id:
+        raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
+
+    cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.credential_id == raw_id)
+    cred_obj = (await db.execute(cred_stmt)).scalar_one_or_none()
+    if not cred_obj:
+        all_creds = (await db.execute(select(WebAuthnCredential))).scalars().all()
+        for c in all_creds:
+            if _cred_id_to_bytes(c.credential_id) == _cred_id_to_bytes(raw_id):
+                cred_obj = c
+                break
+
+    if not cred_obj:
+        raise AuthenticationException("Passkey не найден или был удалён")
+
+    user_stmt = select(User).where(User.id == cred_obj.user_id)
+    found_user = (await db.execute(user_stmt)).scalar_one_or_none()
+    if not found_user or not found_user.is_active:
+        raise AuthenticationException("Пользователь не найден или заблокирован")
+    return found_user
+
+
 @passkey_router.post("/auth/verify")
 async def passkey_auth_verify(
     payload: PasskeyAuthenticationVerifyRequest,
@@ -289,36 +317,13 @@ async def passkey_auth_verify(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Any:
-    from sqlalchemy import select
 
     if payload.mfa_token:
         user = await AuthService.verify_mfa_step_token(
             payload.mfa_token, db, method="passkey", settings=settings
         )
     else:
-        # Discoverable passkey login (без пароля)
-        cred_dict = payload.credential
-        raw_id = cred_dict.get("id") or cred_dict.get("rawId")
-        if not raw_id:
-            raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
-
-        cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.credential_id == raw_id)
-        cred_obj = (await db.execute(cred_stmt)).scalar_one_or_none()
-        if not cred_obj:
-            all_creds = (await db.execute(select(WebAuthnCredential))).scalars().all()
-            for c in all_creds:
-                if _cred_id_to_bytes(c.credential_id) == _cred_id_to_bytes(raw_id):
-                    cred_obj = c
-                    break
-
-        if not cred_obj:
-            raise AuthenticationException("Passkey не найден или был удалён")
-
-        user_stmt = select(User).where(User.id == cred_obj.user_id)
-        found_user = (await db.execute(user_stmt)).scalar_one_or_none()
-        if not found_user or not found_user.is_active:
-            raise AuthenticationException("Пользователь не найден или заблокирован")
-        user = found_user
+        user = await _discoverable_passkey_user(db, payload.credential)
 
     await WebAuthnService.verify_authentication(
         db,

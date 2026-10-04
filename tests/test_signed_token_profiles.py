@@ -40,10 +40,7 @@ def sign(value):
     )
 
 
-@pytest.mark.parametrize("claim", ["iss", "sub", "aud", "iat", "exp", "token_use", "scope"])
-def test_missing_access_claims_rejected_by_server_and_independent_sdk(claim):
-    value = payload()
-    value.pop(claim)
+def assert_server_and_sdk_reject(value):
     token = sign(value)
     client = SSOClient(server_url=get_settings().OIDC_ISSUER, client_id="profile_client")
     with pytest.raises(OAuthErrorException):
@@ -53,6 +50,13 @@ def test_missing_access_claims_rejected_by_server_and_independent_sdk(claim):
         pytest.raises(InvalidTokenError),
     ):
         client.verify_access_token(token)
+
+
+@pytest.mark.parametrize("claim", ["iss", "sub", "aud", "iat", "exp", "token_use", "scope"])
+def test_missing_access_claims_rejected_by_server_and_independent_sdk(claim):
+    value = payload()
+    value.pop(claim)
+    assert_server_and_sdk_reject(value)
 
 
 @pytest.mark.parametrize(
@@ -72,15 +76,7 @@ def test_missing_access_claims_rejected_by_server_and_independent_sdk(claim):
 def test_wrong_claim_types_rejected_with_real_signature(claim, value):
     claims = payload()
     claims[claim] = value
-    token = sign(claims)
-    client = SSOClient(server_url=get_settings().OIDC_ISSUER, client_id="profile_client")
-    with pytest.raises(OAuthErrorException):
-        decode_jwt(token, audience="profile_client", expected_use="access_token")
-    with (
-        patch.object(client, "get_jwks", return_value=get_jwks()),
-        pytest.raises(InvalidTokenError),
-    ):
-        client.verify_access_token(token)
+    assert_server_and_sdk_reject(claims)
 
 
 def test_id_azp_nonce_age_and_access_scope_guard():

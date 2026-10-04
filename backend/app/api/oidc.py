@@ -362,26 +362,11 @@ async def logout_parameters(request: Request) -> dict[str, str]:
     return result
 
 
-@router.get("/logout")
-@router.post("/logout")
-async def logout(
-    request: Request,
-    values: dict[str, str] = Depends(logout_parameters),
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> Response:
-    import hmac
-    import html
-
-    from fastapi.responses import HTMLResponse
-
-    from app.api.deps import generate_csrf_token
+async def _logout_claims(db: AsyncSession, values: dict[str, str]):
     from app.core.security import decode_logout_hint
-    from app.services.security_state import lock_user
 
     hint = values.get("id_token_hint")
     redirect_uri = values.get("post_logout_redirect_uri")
-    state = values.get("state")
     selected_client = values.get("client_id")
     claims = None
     if hint:
@@ -397,46 +382,82 @@ async def logout(
         )
         if redirect_uri:
             OIDCService.validate_redirect_uri(client, redirect_uri)
+    return claims
+
+
+def _require_hint_session(claims, session: Session | None) -> None:
+    if session and str(session.user_id) != claims["sub"]:
+        raise OAuthErrorException(
+            "invalid_token", "ID Token не относится к текущей SSO-сессии", 401
+        )
+    if claims["exp"] <= datetime.now(timezone.utc).timestamp():
+        if not session or claims.get("auth_time") != int(session.auth_time.timestamp()):
+            raise OAuthErrorException(
+                "invalid_token", "Истёкший ID Token не связан с текущей сессией", 401
+            )
+
+
+def _logout_confirmation(values: dict[str, str], session: Session, settings: Settings) -> Response:
+    import html
+    from fastapi.responses import HTMLResponse
+    from app.api.deps import generate_csrf_token
+
+    hidden = {key: value for key, value in values.items() if key != "csrf_token"}
+    hidden["csrf_token"] = generate_csrf_token(session.id, settings)
+    fields = "".join(
+        f'<input type="hidden" name="{html.escape(key, quote=True)}" value="{html.escape(value, quote=True)}">'
+        for key, value in hidden.items()
+    )
+    response = HTMLResponse(
+        '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Выход из SSO</title><h1>Завершить текущую сессию?</h1><form method="post" action="/oauth/logout">'
+        + fields
+        + '<button type="submit">Выйти из SSO</button></form><a href="/">Отмена</a></html>'
+    )
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    )
+    return response
+
+
+def _require_logout_csrf(
+    request: Request, values: dict[str, str], session: Session, settings: Settings
+) -> None:
+    import hmac
+    from app.api.deps import generate_csrf_token
+
+    origin = request.headers.get("Origin")
+    supplied = values.get("csrf_token", "")
+    if (
+        origin and origin not in {settings.BASE_URL, settings.FRONTEND_URL}
+    ) or not hmac.compare_digest(supplied, generate_csrf_token(session.id, settings)):
+        raise OAuthErrorException("invalid_request", "Подтверждение выхода недействительно", 403)
+
+
+@router.get("/logout")
+@router.post("/logout")
+async def logout(
+    request: Request,
+    values: dict[str, str] = Depends(logout_parameters),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+
+    from app.services.security_state import lock_user
+
+    claims = await _logout_claims(db, values)
+    redirect_uri = values.get("post_logout_redirect_uri")
+    state = values.get("state")
     session = None
     try:
         session = await get_current_session(request, db, settings)
     except AuthenticationException:
         await db.rollback()
     if claims:
-        if session and str(session.user_id) != claims["sub"]:
-            raise OAuthErrorException(
-                "invalid_token", "ID Token не относится к текущей SSO-сессии", 401
-            )
-        if claims["exp"] <= datetime.now(timezone.utc).timestamp():
-            if not session or claims.get("auth_time") != int(session.auth_time.timestamp()):
-                raise OAuthErrorException(
-                    "invalid_token", "Истёкший ID Token не связан с текущей сессией", 401
-                )
+        _require_hint_session(claims, session)
     elif session:
         if request.method == "GET":
-            hidden = {key: value for key, value in values.items() if key != "csrf_token"}
-            hidden["csrf_token"] = generate_csrf_token(session.id, settings)
-            fields = "".join(
-                f'<input type="hidden" name="{html.escape(key, quote=True)}" value="{html.escape(value, quote=True)}">'
-                for key, value in hidden.items()
-            )
-            response = HTMLResponse(
-                '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Выход из SSO</title><h1>Завершить текущую сессию?</h1><form method="post" action="/oauth/logout">'
-                + fields
-                + '<button type="submit">Выйти из SSO</button></form><a href="/">Отмена</a></html>'
-            )
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-            )
-            return response
-        origin = request.headers.get("Origin")
-        supplied = values.get("csrf_token", "")
-        if (
-            origin and origin not in {settings.BASE_URL, settings.FRONTEND_URL}
-        ) or not hmac.compare_digest(supplied, generate_csrf_token(session.id, settings)):
-            raise OAuthErrorException(
-                "invalid_request", "Подтверждение выхода недействительно", 403
-            )
+            return _logout_confirmation(values, session, settings)
+        _require_logout_csrf(request, values, session, settings)
     if session:
         # Account before session, matching every security mutation's lock order.
         await lock_user(db, session.user_id)

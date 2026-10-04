@@ -307,6 +307,20 @@ def start_server(
     return 0
 
 
+def windows_process_exists(target_pid: int) -> bool:
+    result = subprocess.run(
+        ["tasklist", "/FI", f"PID eq {target_pid}", "/FO", "CSV", "/NH"],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode:
+        return True  # A failed inventory cannot prove that the owned PID exited.
+    for row in csv.reader(result.stdout.decode("ascii", errors="ignore").splitlines()):
+        if len(row) > 1 and row[1] == str(target_pid):
+            return True
+    return False
+
+
 def stop_server(
     pidfile: str, port: int | None = None, host: str = "127.0.0.1", timeout: int = 5
 ) -> int:
@@ -362,15 +376,7 @@ def stop_server(
         all_gone = True
         for target_pid in pids_to_kill:
             if sys.platform == "win32":
-                res = subprocess.run(
-                    ["tasklist", "/FI", f"PID eq {target_pid}", "/FO", "CSV", "/NH"],
-                    capture_output=True,
-                    check=False,
-                )
-                rows = csv.reader(res.stdout.decode("ascii", errors="ignore").splitlines())
-                if res.returncode or any(
-                    len(row) > 1 and row[1] == str(target_pid) for row in rows
-                ):
+                if windows_process_exists(target_pid):
                     all_gone = False
                     break
             else:

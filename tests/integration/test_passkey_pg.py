@@ -27,8 +27,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
-from tests.helpers.reauthentication import authorized_request
-from tests.helpers.webauthn_authenticator import Authenticator
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
+from tests.helpers.webauthn_authenticator import AssertionProfile, Authenticator
 
 
 @pytest.mark.postgres
@@ -173,24 +173,21 @@ async def passkey_login(db, client):
 async def register_key(client, headers, cfg, authenticator, name, factor=None):
     options = await authorized_request(
         client,
-        "POST",
-        "/api/v1/mfa/passkey/register/options",
-        password=PASSWORD,
-        headers=headers,
-        factor=factor,
+        MutationRequest("POST", "/api/v1/mfa/passkey/register/options"),
+        RequestAuthorization(PASSWORD, headers, factor=factor),
     )
     assert options.status_code == 200
     registered = await authorized_request(
         client,
-        "POST",
-        "/api/v1/mfa/passkey/register/verify",
-        password=PASSWORD,
-        headers=headers,
-        json_body={
-            "name": name,
-            "credential": authenticator.registration(options.json(), cfg.WEBAUTHN_ORIGIN),
-        },
-        factor=factor,
+        MutationRequest(
+            "POST",
+            "/api/v1/mfa/passkey/register/verify",
+            json_body={
+                "name": name,
+                "credential": authenticator.registration(options.json(), cfg.WEBAUTHN_ORIGIN),
+            },
+        ),
+        RequestAuthorization(PASSWORD, headers, factor=factor),
     )
     assert registered.status_code == 200, registered.json()
 
@@ -201,10 +198,8 @@ async def test_passkey_options_and_challenge_persistence_pg(pg_session, pg_clien
     headers = await passkey_login(pg_session, pg_client)
     options = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/mfa/passkey/register/options",
-        password=PASSWORD,
-        headers=headers,
+        MutationRequest("POST", "/api/v1/mfa/passkey/register/options"),
+        RequestAuthorization(PASSWORD, headers),
     )
     assert options.status_code == 200
     assert options.json()["authenticatorSelection"]["userVerification"] == "required"
@@ -238,11 +233,8 @@ async def test_passkey_multiple_credentials_and_deletion_pg(pg_session, pg_clien
     assert {row["name"] for row in listed.json()} == {"Laptop Key", "Mobile Key"}
     deleted = await authorized_request(
         pg_client,
-        "DELETE",
-        f"/api/v1/mfa/passkey/credentials/{second.id}",
-        password=PASSWORD,
-        headers=headers,
-        factor=factor,
+        MutationRequest("DELETE", f"/api/v1/mfa/passkey/credentials/{second.id}"),
+        RequestAuthorization(PASSWORD, headers, factor=factor),
     )
     assert deleted.status_code == 200
     remaining = await pg_client.get("/api/v1/mfa/passkey/credentials")
@@ -269,10 +261,8 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(pg_session, pg_client,
     key = Authenticator()
     options = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/mfa/passkey/register/options",
-        password=PASSWORD,
-        headers=headers,
+        MutationRequest("POST", "/api/v1/mfa/passkey/register/options"),
+        RequestAuthorization(PASSWORD, headers),
     )
     registration = key.registration(options.json(), cfg.WEBAUTHN_ORIGIN)
     # Registration UV and origin/RP/challenge negatives execute the real library.
@@ -283,11 +273,10 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(pg_session, pg_client,
     ]:
         rejected = await authorized_request(
             pg_client,
-            "POST",
-            "/api/v1/mfa/passkey/register/verify",
-            password=PASSWORD,
-            headers=headers,
-            json_body={"credential": credential},
+            MutationRequest(
+                "POST", "/api/v1/mfa/passkey/register/verify", json_body={"credential": credential}
+            ),
+            RequestAuthorization(PASSWORD, headers),
         )
         assert rejected.status_code == 401
         assert await pg_session.scalar(select(func.count()).select_from(WebAuthnCredential)) == 0
@@ -307,7 +296,15 @@ async def test_passkey_negative_crypto_checks_no_mocks_pg(pg_session, pg_client,
         args = {"origin": cfg.WEBAUTHN_ORIGIN, **kwargs}
         rejected = await pg_client.post(
             "/api/v1/mfa/passkey/auth/verify",
-            json={"credential": key.assertion(options.json(), **args)},
+            json={
+                "credential": key.assertion(
+                    options.json(),
+                    args["origin"],
+                    AssertionProfile(
+                        **{name: value for name, value in args.items() if name != "origin"}
+                    ),
+                )
+            },
         )
         assert rejected.status_code == 401
     options = await pg_client.post("/api/v1/mfa/passkey/auth/options")

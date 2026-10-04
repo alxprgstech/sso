@@ -4,11 +4,19 @@ import hashlib
 import json
 import secrets
 import struct
+from dataclasses import dataclass
 
 import cbor2
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from webauthn.helpers import bytes_to_base64url
+
+
+@dataclass(frozen=True)
+class AssertionProfile:
+    rp_id: str | None = None
+    uv: bool = True
+    signature_valid: bool = True
 
 
 class Authenticator:
@@ -53,7 +61,8 @@ class Authenticator:
             },
         }
 
-    def assertion(self, options, origin, *, rp_id=None, uv=True, signature_valid=True):
+    def assertion(self, options, origin, profile: AssertionProfile = AssertionProfile()):
+        rp_id, uv, signature_valid = profile.rp_id, profile.uv, profile.signature_valid
         self.counter += 1
         data = self.client_data(options, origin, "webauthn.get")
         auth = hashlib.sha256((rp_id or options["rpId"]).encode()).digest()

@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
-from tests.helpers.reauthentication import authorized_request
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 @pytest.mark.postgres
@@ -152,14 +152,15 @@ async def test_change_password_revokes_other_sessions_pg(
         # 4. В Сессии 1 меняем пароль
         r_chg = await authorized_request(
             pg_client,
-            "POST",
-            "/api/v1/auth/change-password",
-            password="OriginalPassword123!",
-            headers={"X-CSRF-Token": token1},
-            json_body={
-                "current_password": "OriginalPassword123!",
-                "new_password": "NewSecretPassword2026!",
-            },
+            MutationRequest(
+                "POST",
+                "/api/v1/auth/change-password",
+                json_body={
+                    "current_password": "OriginalPassword123!",
+                    "new_password": "NewSecretPassword2026!",
+                },
+            ),
+            RequestAuthorization("OriginalPassword123!", {"X-CSRF-Token": token1}),
         )
         assert r_chg.status_code == 200
         assert r_chg.json()["status"] == "ok"
@@ -224,17 +225,18 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     # 4. Администратор создает обычного пользователя
     r_create = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/users",
-        password="AdminPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "username": "regular_user_1",
-            "email": "regular1@alxprgs.tech",
-            "password": "UserPassword123!",
-            "roles": [ROLE_USER],
-            "is_superuser": False,
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/users",
+            json_body={
+                "username": "regular_user_1",
+                "email": "regular1@alxprgs.tech",
+                "password": "UserPassword123!",
+                "roles": [ROLE_USER],
+                "is_superuser": False,
+            },
+        ),
+        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
     assert r_create.status_code == 201
     normal_id = r_create.json()["id"]
@@ -242,11 +244,8 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     # 5. Защита USR-08: Попытка заблокировать последнего администратора отклоняется
     r_block_admin = await authorized_request(
         pg_client,
-        "PATCH",
-        f"/api/v1/admin/users/{admin_id}",
-        password="AdminPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={"is_active": False},
+        MutationRequest("PATCH", f"/api/v1/admin/users/{admin_id}", json_body={"is_active": False}),
+        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
     assert r_block_admin.status_code == 403
     assert "последнего" in str(r_block_admin.json())
@@ -254,22 +253,20 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     # Попытка снять права суперпользователя с последнего администратора
     r_demote_admin = await authorized_request(
         pg_client,
-        "PATCH",
-        f"/api/v1/admin/users/{admin_id}",
-        password="AdminPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={"is_superuser": False},
+        MutationRequest(
+            "PATCH", f"/api/v1/admin/users/{admin_id}", json_body={"is_superuser": False}
+        ),
+        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
     assert r_demote_admin.status_code == 403
 
     # 6. Блокировка обычного пользователя разрешена
     r_block_user = await authorized_request(
         pg_client,
-        "PATCH",
-        f"/api/v1/admin/users/{normal_id}",
-        password="AdminPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={"is_active": False},
+        MutationRequest(
+            "PATCH", f"/api/v1/admin/users/{normal_id}", json_body={"is_active": False}
+        ),
+        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
     assert r_block_user.status_code == 200
     assert r_block_user.json()["is_active"] is False
@@ -278,11 +275,8 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     # Входим обычным пользователем (предварительно активируем его)
     await authorized_request(
         pg_client,
-        "PATCH",
-        f"/api/v1/admin/users/{normal_id}",
-        password="AdminPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={"is_active": True},
+        MutationRequest("PATCH", f"/api/v1/admin/users/{normal_id}", json_body={"is_active": True}),
+        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
 
     transport = httpx.ASGITransport(app=pg_client._transport.app)
@@ -295,14 +289,17 @@ async def test_admin_rbac_and_last_admin_protection_pg(
         assert r_user_login.json()["user"]["session_purpose"] == "password_change"
         changed = await authorized_request(
             user_client,
-            "POST",
-            "/api/v1/auth/change-password",
-            password="UserPassword123!",
-            headers={"X-CSRF-Token": r_user_login.json()["csrf_token"]},
-            json_body={
-                "current_password": "UserPassword123!",
-                "new_password": "PermanentUserPassword2026!",
-            },
+            MutationRequest(
+                "POST",
+                "/api/v1/auth/change-password",
+                json_body={
+                    "current_password": "UserPassword123!",
+                    "new_password": "PermanentUserPassword2026!",
+                },
+            ),
+            RequestAuthorization(
+                "UserPassword123!", {"X-CSRF-Token": r_user_login.json()["csrf_token"]}
+            ),
         )
         assert changed.status_code == 200 and changed.json()["requires_login"]
         r_user_login = await user_client.post(

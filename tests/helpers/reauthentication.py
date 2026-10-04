@@ -1,13 +1,28 @@
 """Explicit sensitive API requests complete password/MFA proof, with no bypass."""
 
 import json
+from dataclasses import dataclass
 
 from app.services.reauthentication_service import payload_digest
 
 
-async def authorized_request(
-    client, method, path, *, password, headers, json_body=None, factor=None
-):
+@dataclass(frozen=True)
+class MutationRequest:
+    method: str
+    path: str
+    json_body: object = None
+
+
+@dataclass(frozen=True)
+class RequestAuthorization:
+    password: str
+    headers: dict[str, str]
+    factor: object = None
+
+
+async def authorized_request(client, request: MutationRequest, authorization: RequestAuthorization):
+    method, path, json_body = request.method, request.path, request.json_body
+    password, headers, factor = authorization.password, authorization.headers, authorization.factor
     encoded = b"" if json_body is None else json.dumps(json_body).encode()
     proof = await client.post(
         "/api/v1/auth/reauthentication",

@@ -31,34 +31,40 @@ class FactorRequest(BaseModel):
     credential: dict[str, Any] | None = None
 
 
+async def authenticated_actor(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_current_session),
+) -> service.AuthenticatedActor:
+    return service.AuthenticatedActor(user, session)
+
+
 @router.post("")
 async def start(
     payload: StartRequest,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_current_session),
+    actor: service.AuthenticatedActor = Depends(authenticated_actor),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
     return await service.start(
-        db, user, session, settings, payload.current_password, payload.action, payload.payload_hash
+        db,
+        actor,
+        settings,
+        service.MutationProof(payload.current_password, payload.action, payload.payload_hash),
     )
 
 
 @router.post("/factor")
 async def factor(
     payload: FactorRequest,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_current_session),
+    actor: service.AuthenticatedActor = Depends(authenticated_actor),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
     return await service.confirm(
         db,
-        user,
-        session,
+        actor,
         settings,
-        payload.authorization,
-        payload.method,
-        payload.code,
-        payload.credential,
+        service.FactorProof(
+            payload.authorization, payload.method, payload.code, payload.credential
+        ),
     )

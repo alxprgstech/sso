@@ -542,3 +542,7 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-04T18:52:59.6421597+03:00 — PR5-CI-01: remote1003d14backend/frontend/Windows/browser/SDK/security/version/CD PASS; containerDBoutage readinessdeadline исправлен/unitPASS, requiredCompose/Trivy pending. CodeScene in_progress, merging/production не выполнять.
 
 2026-10-04T19:07:04.4265923+03:00 — PR5-CI-01: всеActionsкромеfrontendimageTrivyPASS на0978de1; дваCVEpatch exactpins готовывобоихimages. Backend/ComposePASS подтвержденынаGitHub. CodeScene refactors local checks PASS, wholegate ещёfailed; неdone.
+
+2026-10-04T19:28:35.7718180+03:00 — PR5-CI-01: Actions run37215595679 PASS на c1a6f23; CodeScene failed/in_progress. ADR0018 и рефакторинг готовы к full regression; 75 focused PASS, full pending. Исходные audit snapshots неизменны.
+
+2026-10-04T19:35:09.7398701+03:00 — PR5-CI-01: quality local546tests/16subtests PASS, CI mypy61/frontend/Ruff/runtime lock/secret scan PASS. Перваягруппаготовакnormalpush; CodeScene и remote новогоSHA ещёpending.

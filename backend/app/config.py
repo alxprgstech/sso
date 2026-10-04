@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import json
 import re
 from datetime import datetime
 from functools import lru_cache
@@ -10,6 +12,37 @@ from urllib.parse import urlsplit
 from cryptography.fernet import Fernet
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _require_production_origin(value: str, issuer: str) -> None:
+    parsed = urlsplit(value)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
+    if parsed.hostname in ("localhost", "127.0.0.1", "::1"):
+        raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
+    if parsed.username or parsed.password:
+        raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
+    if any((parsed.query, parsed.fragment, parsed.path)):
+        raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
+    if parsed.port == 0 or value != issuer:
+        raise ValueError("Production issuer and external URLs must share one exact HTTPS origin")
+
+
+def _parse_proxy_list(value: str) -> Any:
+    if value.startswith("[") and value.endswith("]"):
+        try:
+            return json.loads(value)
+        except Exception:
+            raise ValueError("Invalid trusted proxy list") from None
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _validate_proxy_address(address: Any) -> None:
+    if not isinstance(address, str):
+        raise ValueError("Invalid trusted proxy address")
+    network = ipaddress.ip_network(address, strict=True)
+    if network.prefixlen == 0:
+        raise ValueError("Wildcard proxy trust is forbidden")
 
 
 class Settings(BaseSettings):
@@ -163,26 +196,12 @@ class Settings(BaseSettings):
     @field_validator("TRUSTED_PROXIES", mode="after")
     @classmethod
     def parse_trusted_proxies(cls, val: Any) -> list[str]:
-        import ipaddress
-
         if isinstance(val, str):
-            if val.startswith("[") and val.endswith("]"):
-                import json
-
-                try:
-                    val = json.loads(val)
-                except Exception:
-                    raise ValueError("Invalid trusted proxy list") from None
-            else:
-                val = [x.strip() for x in val.split(",") if x.strip()]
+            val = _parse_proxy_list(val)
         if not isinstance(val, list) or len(val) > 16:
             raise ValueError("Invalid trusted proxy list")
         for item in val:
-            if not isinstance(item, str):
-                raise ValueError("Invalid trusted proxy address")
-            network = ipaddress.ip_network(item, strict=True)
-            if network.prefixlen == 0:
-                raise ValueError("Wildcard proxy trust is forbidden")
+            _validate_proxy_address(item)
         return val
 
     @model_validator(mode="after")
@@ -223,6 +242,14 @@ class Settings(BaseSettings):
                 )
 
     def validate_production_configuration(self) -> None:
+        self._validate_session_secret()
+        self._validate_totp_key()
+        self._validate_production_signing()
+        self._validate_production_origins()
+        self._validate_lifetimes()
+        self._validate_production_transport()
+
+    def _validate_session_secret(self) -> None:
         session = self.SESSION_SECRET_KEY
         if (
             len(session) < 64
@@ -232,6 +259,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Production requires a non-default random SESSION_SECRET_KEY (64+ characters)"
             )
+
+    def _validate_totp_key(self) -> None:
         try:
             Fernet(self.TOTP_ENCRYPTION_KEY.encode("ascii"))
         except (ValueError, UnicodeError):
@@ -240,31 +269,22 @@ class Settings(BaseSettings):
             raise ValueError("Production rejects the development TOTP_ENCRYPTION_KEY")
         if len(set(base64.urlsafe_b64decode(self.TOTP_ENCRYPTION_KEY))) < 16:
             raise ValueError("Production requires a random TOTP_ENCRYPTION_KEY")
+
+    def _validate_production_signing(self) -> None:
         if not self.JWT_PRIVATE_KEY_PEM.strip() or self.JWT_KEY_ID == "default-rsa-key-1":
             raise ValueError(
                 "Production requires persistent RSA material and an explicit JWT_KEY_ID"
             )
         if self.JWT_PREVIOUS_PUBLIC_KEY_PEM and self.JWT_PREVIOUS_KEY_VALID_UNTIL is None:
             raise ValueError("Production previous RSA key requires an explicit retirement deadline")
+
+    def _validate_production_origins(self) -> None:
         for value in (self.OIDC_ISSUER, self.BASE_URL, self.FRONTEND_URL, self.WEBAUTHN_ORIGIN):
-            parsed = urlsplit(value)
-            if (
-                parsed.scheme != "https"
-                or not parsed.hostname
-                or parsed.hostname in ("localhost", "127.0.0.1", "::1")
-                or parsed.username
-                or parsed.password
-                or parsed.query
-                or parsed.fragment
-                or parsed.path
-                or parsed.port == 0
-                or value != self.OIDC_ISSUER
-            ):
-                raise ValueError(
-                    "Production issuer and external URLs must share one exact HTTPS origin"
-                )
+            _require_production_origin(value, self.OIDC_ISSUER)
         if self.WEBAUTHN_RP_ID != urlsplit(self.OIDC_ISSUER).hostname:
             raise ValueError("Production WebAuthn RP ID must match the issuer host")
+
+    def _validate_lifetimes(self) -> None:
         bounds = {
             "AUTH_CODE_TTL_SECONDS": 60,
             "ACCESS_TOKEN_TTL_SECONDS": 300,
@@ -278,6 +298,8 @@ class Settings(BaseSettings):
             raise ValueError("Production token/session lifetimes exceed the supported bounds")
         if self.SESSION_IDLE_TIMEOUT_SECONDS > self.SESSION_ABSOLUTE_TIMEOUT_SECONDS:
             raise ValueError("Idle session timeout cannot exceed the absolute timeout")
+
+    def _validate_production_transport(self) -> None:
         if self.DEBUG:
             raise ValueError("Production DEBUG must be disabled")
         if not re.fullmatch(r"__Host-[A-Za-z0-9_-]+", self.SESSION_COOKIE_NAME):

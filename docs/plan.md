@@ -1059,3 +1059,5 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 2026-10-04T18:15:42.3211542+03:00 — PR5-CI-01 in_progress: Actions причины исправлены, local84unit+71PG/frontend PASS; enabled browser/remoteTrivy pending. CodeScene остаётся обязательной незавершённой частью; следующие шаги docs/testing/pr5-ci-remediation.md.
 
 2026-10-04T18:37:19.9938569+03:00 — PR5-CI-01 in_progress: remaining Actions causes narrowed to enabled SMTP sink and Debian13OS vulnerabilities; local enabled20PASS, Alpine candidate ready for mandatoryCI. CodeScene23newfiles/6hotspots backlog persists, collection hook10.00.
+
+2026-10-04T19:28:35.7718180+03:00 — PR5-CI-01 in_progress: обязательные Actions восстановлены на c1a6f23; остаются CodeScene, full regression нового рефакторинга и exact-head remote verification.

@@ -4,6 +4,7 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,23 +59,32 @@ def test_required_security_windows_and_browser_jobs_have_no_bypass():
             assert re.search(r"@sha256:[0-9a-f]{64}$", service["image"])
 
 
-def test_runtime_compose_and_both_frontend_images_enforce_boundaries():
+@pytest.mark.parametrize("name", ["backend", "migrate", "frontend"])
+def test_runtime_compose_enforces_service_boundaries(name):
     services = yaml.safe_load((ROOT / "docker-compose.yml").read_text("utf-8"))["services"]
-    for name in ("backend", "migrate", "frontend"):
-        service = services[name]
-        assert service["read_only"] and service["cap_drop"] == ["ALL"]
-        assert "no-new-privileges:true" in service["security_opt"]
-        assert service["mem_limit"] and service["cpus"] > 0 and service["pids_limit"] > 0
-        assert not service.get("ports") or name == "frontend"
+    service = services[name]
+    assert service["read_only"] and service["cap_drop"] == ["ALL"]
+    assert "no-new-privileges:true" in service["security_opt"]
+    assert service["mem_limit"] and service["cpus"] > 0 and service["pids_limit"] > 0
+    assert not service.get("ports") or name == "frontend"
+
+
+def test_compose_database_is_private_and_roles_are_separate():
+    services = yaml.safe_load((ROOT / "docker-compose.yml").read_text("utf-8"))["services"]
     db = services["db"]
     assert not db.get("ports") and db["mem_limit"] and db["pids_limit"] > 0
-    for path in ("frontend/Dockerfile", "frontend/Dockerfile.release", "backend/Dockerfile"):
-        source = (ROOT / path).read_text("utf-8")
-        for image in re.findall(r"^FROM\s+(\S+)", source, re.M):
-            assert re.search(r"@sha256:[0-9a-f]{64}$", image)
-        assert re.search(r"^USER\s+(?!root\b|0\b)\S+", source, re.M)
     assert "sso_runtime:" in str(services["backend"]["environment"]["DATABASE_URL"])
     assert "sso_migrator:" in str(services["migrate"]["environment"]["DATABASE_URL"])
+
+
+@pytest.mark.parametrize(
+    "path", ["frontend/Dockerfile", "frontend/Dockerfile.release", "backend/Dockerfile"]
+)
+def test_container_images_pin_digests_and_nonroot_users(path):
+    source = (ROOT / path).read_text("utf-8")
+    for image in re.findall(r"^FROM\s+(\S+)", source, re.M):
+        assert re.search(r"@sha256:[0-9a-f]{64}$", image)
+    assert re.search(r"^USER\s+(?!root\b|0\b)\S+", source, re.M)
 
 
 def test_container_role_proof_is_executable_python():

@@ -62,72 +62,72 @@ class SSOClient:
     # JWKS кэширование (SDK-02)
     # --------------------------------------------------------------------------
 
-    def get_jwks(self, force_refresh: bool = False) -> dict[str, Any]:
-        """
-        Синхронное получение JWKS с сервера или из локального кэша (SDK-02).
-        Поддерживает ограниченный период устаревания кэша и rate-limiting force_refresh.
-        """
-        now = time.time()
-        if force_refresh:
-            if now - self._last_force_refresh_at < self._min_force_refresh_interval:
-                if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                    return self._cached_jwks
-            self._last_force_refresh_at = now
-        elif self._cached_jwks and now < self._jwks_expires_at:
+    def _stale_jwks(self, now: float) -> dict[str, Any] | None:
+        if self._cached_jwks and now < self._jwks_expires_at + self.max_stale_seconds:
             return self._cached_jwks
+        return None
 
-        jwks_url = f"{self.server_url}/.well-known/jwks.json"
+    def _cached_for_request(self, now: float, force: bool) -> dict[str, Any] | None:
+        if not force:
+            return self._cached_jwks if now < self._jwks_expires_at else None
+        if now - self._last_force_refresh_at < self._min_force_refresh_interval:
+            cached = self._stale_jwks(now)
+            if cached:
+                return cached
+        self._last_force_refresh_at = now
+        return None
+
+    def _append_jwks_chunk(self, body: bytearray, chunk: bytes) -> None:
+        body.extend(chunk)
+        if len(body) > self.JWKS_MAX_BYTES:
+            raise ValueError("JWKS exceeds response limit")
+
+    def _cache_jwks_body(self, body: bytearray, now: float) -> dict[str, Any]:
+        data = json.loads(body)
+        self._parse_jwks(data)
+        self._cached_jwks = data
+        self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
+        return data
+
+    def _jwks_unavailable(self, now: float) -> dict[str, Any]:
+        cached = self._stale_jwks(now)
+        if cached:
+            return cached
+        raise ConfigurationError("Не удалось загрузить JWKS") from None
+
+    def get_jwks(self, force_refresh: bool = False) -> dict[str, Any]:
+        """Fetch bounded JWKS with the same cache and force-refresh limits."""
+        now = time.time()
+        cached = self._cached_for_request(now, force_refresh)
+        if cached:
+            return cached
         try:
             with httpx.Client(verify=self.verify_ssl, timeout=10.0) as client:
-                with client.stream("GET", jwks_url) as resp:
+                with client.stream("GET", f"{self.server_url}/.well-known/jwks.json") as resp:
                     resp.raise_for_status()
                     body = bytearray()
                     for chunk in resp.iter_bytes():
-                        body.extend(chunk)
-                        if len(body) > self.JWKS_MAX_BYTES:
-                            raise ValueError("JWKS exceeds response limit")
-                    data = json.loads(body)
-                self._parse_jwks(data)
-                self._cached_jwks = data
-                self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
-                return data
+                        self._append_jwks_chunk(body, chunk)
+                return self._cache_jwks_body(body, now)
         except Exception:
-            if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                return self._cached_jwks
-            raise ConfigurationError("Не удалось загрузить JWKS") from None
+            return self._jwks_unavailable(now)
 
     async def get_jwks_async(self, force_refresh: bool = False) -> dict[str, Any]:
-        """
-        Асинхронное получение JWKS с сервера или из локального кэша (SDK-02).
-        """
+        """Asynchronously fetch JWKS under the identical bounded cache policy."""
         now = time.time()
-        if force_refresh:
-            if now - self._last_force_refresh_at < self._min_force_refresh_interval:
-                if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                    return self._cached_jwks
-            self._last_force_refresh_at = now
-        elif self._cached_jwks and now < self._jwks_expires_at:
-            return self._cached_jwks
-
-        jwks_url = f"{self.server_url}/.well-known/jwks.json"
+        cached = self._cached_for_request(now, force_refresh)
+        if cached:
+            return cached
         try:
             async with httpx.AsyncClient(verify=self.verify_ssl, timeout=10.0) as client:
-                async with client.stream("GET", jwks_url) as resp:
+                async with client.stream("GET", f"{self.server_url}/.well-known/jwks.json") as resp:
                     resp.raise_for_status()
                     body = bytearray()
                     async for chunk in resp.aiter_bytes():
-                        body.extend(chunk)
-                        if len(body) > self.JWKS_MAX_BYTES:
-                            raise ValueError("JWKS exceeds response limit")
-                    data = json.loads(body)
-                self._parse_jwks(data)
-                self._cached_jwks = data
-                self._jwks_expires_at = now + self.jwks_cache_ttl_seconds
-                return data
+                        self._append_jwks_chunk(body, chunk)
+                return self._cache_jwks_body(body, now)
         except Exception:
-            if self._cached_jwks and now < (self._jwks_expires_at + self.max_stale_seconds):
-                return self._cached_jwks
-            raise ConfigurationError("Не удалось загрузить JWKS") from None
+            return self._jwks_unavailable(now)
 
     def _get_signing_key(self, token_or_header: str | dict[str, Any]) -> Any:
         if isinstance(token_or_header, str):

@@ -40,23 +40,29 @@ export function ReauthenticationDialog() {
     current.current = null; setPending(null); setPassword(""); setCode(""); setProof(null);
   }
 
+  async function confirmFactor(authorization: SecurityAuthorization) {
+    if (method !== "passkey") {
+      return api.confirmReauthentication(authorization.authorization, method, code);
+    }
+    if (!authorization.passkey_options) throw new Error("Нет запроса подтверждения Passkey");
+    const assertion = await navigator.credentials.get(prepareRequestOptions(authorization.passkey_options));
+    if (!assertion) throw new Error("Passkey не подтвердил запрос");
+    return api.confirmReauthentication(authorization.authorization, method, undefined, serializeRequestResponse(assertion));
+  }
+
+  async function requestAuthorization(operation: Pending) {
+    if (proof) return confirmFactor(proof);
+    const result = await api.startReauthentication(operation.action, operation.digest, password);
+    setPassword("");
+    return result;
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!pending) return;
     setBusy(true); setError("");
     try {
-      let result: SecurityAuthorization;
-      if (!proof) {
-        result = await api.startReauthentication(pending.action, pending.digest, password);
-        setPassword("");
-      } else if (method === "passkey") {
-        if (!proof.passkey_options) throw new Error("Нет запроса подтверждения Passkey");
-        const assertion = await navigator.credentials.get(prepareRequestOptions(proof.passkey_options));
-        if (!assertion) throw new Error("Passkey не подтвердил запрос");
-        result = await api.confirmReauthentication(proof.authorization, method, undefined, serializeRequestResponse(assertion));
-      } else {
-        result = await api.confirmReauthentication(proof.authorization, method, code);
-      }
+      const result = await requestAuthorization(pending);
       if (!result.factor_required) finish(result.authorization);
       else { setProof(result); setMethod(result.methods?.[0] || "totp"); }
     } catch (caught) {

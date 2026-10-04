@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -18,6 +19,27 @@ from app.models.session import Session
 from app.models.user import User
 from app.services.privacy_service import RateLimit, consume_rate_limit, factor_methods
 from app.services.security_state import lock_user, require_account_access, revision
+
+
+@dataclass(frozen=True)
+class AuthenticatedActor:
+    user: User
+    session: Session
+
+
+@dataclass(frozen=True)
+class MutationProof:
+    password: str
+    action: str
+    digest: str
+
+
+@dataclass(frozen=True)
+class FactorProof:
+    authorization: str
+    method: str
+    code: str | None
+    credential: dict[str, Any] | None
 
 
 def sensitive_action(method: str, path: str) -> bool:
@@ -53,7 +75,8 @@ def reject() -> AuthenticationException:
     )
 
 
-async def scoped_row(db: AsyncSession, user: User, session: Session, raw: str, stage: str):
+async def scoped_row(db: AsyncSession, actor: AuthenticatedActor, raw: str, stage: str):
+    user, session = actor.user, actor.session
     current = await lock_user(db, user.id)
     row = await db.scalar(
         select(SecurityAuthorization)
@@ -86,25 +109,21 @@ async def scoped_row(db: AsyncSession, user: User, session: Session, raw: str, s
     return row
 
 
-async def start(
-    db: AsyncSession,
-    user: User,
-    session: Session,
-    cfg: Settings,
-    password: str,
-    action: str,
-    digest: str,
-) -> dict[str, Any]:
-    parts = action.split(" ", 1)
+def _require_mutation_proof(proof: MutationProof) -> None:
+    parts = proof.action.split(" ", 1)
     if (
         len(parts) != 2
         or not sensitive_action(*parts)
-        or len(action) > 255
-        or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        or len(proof.action) > 255
+        or not re.fullmatch(r"[0-9a-f]{64}", proof.digest)
     ):
         raise reject()
-    await consume_rate_limit(db, cfg, RateLimit("security-reauth", str(user.id), 5))
-    current = await lock_user(db, user.id)
+
+
+async def _require_live_actor(
+    db: AsyncSession, actor: AuthenticatedActor, cfg: Settings, action: str
+) -> None:
+    current, session = actor.user, actor.session
     require_account_access(current, cfg, allow_temporary=session.purpose == "password_change")
     if session.purpose == "password_change" and action != "POST /api/v1/auth/change-password":
         raise reject()
@@ -117,10 +136,28 @@ async def start(
         )
     ):
         raise reject()
+
+
+async def _require_current_password(current: User, password: str) -> None:
     if not current.password_credential or not await async_verify_password(
         password, current.password_credential.password_hash
     ):
         raise reject()
+
+
+async def start(
+    db: AsyncSession,
+    actor: AuthenticatedActor,
+    cfg: Settings,
+    proof: MutationProof,
+) -> dict[str, Any]:
+    user, session = actor.user, actor.session
+    password, action, digest = proof.password, proof.action, proof.digest
+    _require_mutation_proof(proof)
+    await consume_rate_limit(db, cfg, RateLimit("security-reauth", str(user.id), 5))
+    current = await lock_user(db, user.id)
+    await _require_live_actor(db, AuthenticatedActor(current, session), cfg, action)
+    await _require_current_password(current, password)
     methods = factor_methods(current, cfg)
     raw = generate_random_token(32)
     row = SecurityAuthorization(
@@ -155,17 +192,15 @@ async def start(
 
 async def confirm(
     db: AsyncSession,
-    user: User,
-    session: Session,
+    actor: AuthenticatedActor,
     cfg: Settings,
-    raw: str,
-    method: str,
-    code: str | None,
-    credential: dict | None,
+    proof: FactorProof,
 ) -> dict[str, Any]:
+    user, session = actor.user, actor.session
+    raw, method, code, credential = proof.authorization, proof.method, proof.code, proof.credential
     await consume_rate_limit(db, cfg, RateLimit("security-factor", str(user.id), 5))
     current = await lock_user(db, user.id)
-    row = await scoped_row(db, current, session, raw, "factor")
+    row = await scoped_row(db, AuthenticatedActor(current, session), raw, "factor")
     methods = factor_methods(current, cfg)
     from app.services.mfa_service import RecoveryCodesService, TOTPService, WebAuthnService
 
@@ -203,7 +238,7 @@ async def consume(db: AsyncSession, user: User, session: Session, request: Reque
     raw = request.headers.get("X-Reauthentication", "")
     if not raw or len(raw) > 256:
         raise reject()
-    row = await scoped_row(db, user, session, raw, "authorized")
+    row = await scoped_row(db, AuthenticatedActor(user, session), raw, "authorized")
     if row.action != f"{request.method} {request.url.path}" or row.payload_hash != payload_digest(
         await request.body()
     ):

@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.privacy import accept_current_documents
-from tests.helpers.reauthentication import authorized_request
+from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
 def make_pkce_pair() -> tuple[str, str]:
@@ -83,18 +83,19 @@ async def test_oidc_client_creation_and_redirect_uri_strict_validation_pg(
     # 2. Регистрируем клиента через админ API
     c_res = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="AdminClientPass2026!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "Secure Service A",
-            "client_type": "confidential",
-            "redirect_uris": [
-                "https://service-a.alxprgs.tech/oauth/callback",
-                "http://127.0.0.1:8080/callback",
-            ],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "Secure Service A",
+                "client_type": "confidential",
+                "redirect_uris": [
+                    "https://service-a.alxprgs.tech/oauth/callback",
+                    "http://127.0.0.1:8080/callback",
+                ],
+            },
+        ),
+        RequestAuthorization("AdminClientPass2026!", {"X-CSRF-Token": adm_csrf}),
     )
     assert c_res.status_code == 201
     client_data = c_res.json()
@@ -193,15 +194,16 @@ async def test_oidc_authorization_code_pkce_flow_pg(
 
     c_res = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="OidcPassword2026!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "PKCE App",
-            "client_type": "confidential",
-            "redirect_uris": ["https://pkce-client.alxprgs.tech/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "PKCE App",
+                "client_type": "confidential",
+                "redirect_uris": ["https://pkce-client.alxprgs.tech/callback"],
+            },
+        ),
+        RequestAuthorization("OidcPassword2026!", {"X-CSRF-Token": adm_csrf}),
     )
     client_id = c_res.json()["client_id"]
     client_secret = c_res.json()["client_secret"]
@@ -332,15 +334,16 @@ async def test_oidc_userinfo_and_id_token_rejection_pg(
 
     c_res = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="UserinfoPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "UserInfo App",
-            "client_type": "public",
-            "redirect_uris": ["https://userinfo.alxprgs.tech/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "UserInfo App",
+                "client_type": "public",
+                "redirect_uris": ["https://userinfo.alxprgs.tech/callback"],
+            },
+        ),
+        RequestAuthorization("UserinfoPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
     client_id = c_res.json()["client_id"]
     redirect_uri = "https://userinfo.alxprgs.tech/callback"
@@ -424,15 +427,16 @@ async def test_refresh_token_rotation_and_replay_family_revocation_pg(
 
     c_res = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="RotationPassword123!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "Rotation App",
-            "client_type": "confidential",
-            "redirect_uris": ["https://rotation.alxprgs.tech/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "Rotation App",
+                "client_type": "confidential",
+                "redirect_uris": ["https://rotation.alxprgs.tech/callback"],
+            },
+        ),
+        RequestAuthorization("RotationPassword123!", {"X-CSRF-Token": adm_csrf}),
     )
     client_id = c_res.json()["client_id"]
     client_secret = c_res.json()["client_secret"]
@@ -556,29 +560,31 @@ async def test_seamless_cross_client_sso_and_rp_logout_pg(
     # 3. Регистрируем Client 1 (Analytics) и Client 2 (Docs)
     c1_res = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="WandererPass2026!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "Analytics Client",
-            "client_type": "public",
-            "redirect_uris": ["http://localhost:8001/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "Analytics Client",
+                "client_type": "public",
+                "redirect_uris": ["http://localhost:8001/callback"],
+            },
+        ),
+        RequestAuthorization("WandererPass2026!", {"X-CSRF-Token": adm_csrf}),
     )
     c1_id = c1_res.json()["client_id"]
 
     c2_res = await authorized_request(
         pg_client,
-        "POST",
-        "/api/v1/admin/clients",
-        password="WandererPass2026!",
-        headers={"X-CSRF-Token": adm_csrf},
-        json_body={
-            "client_name": "Docs Client",
-            "client_type": "public",
-            "redirect_uris": ["http://localhost:8002/callback"],
-        },
+        MutationRequest(
+            "POST",
+            "/api/v1/admin/clients",
+            json_body={
+                "client_name": "Docs Client",
+                "client_type": "public",
+                "redirect_uris": ["http://localhost:8002/callback"],
+            },
+        ),
+        RequestAuthorization("WandererPass2026!", {"X-CSRF-Token": adm_csrf}),
     )
     c2_id = c2_res.json()["client_id"]
 
