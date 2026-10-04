@@ -1103,3 +1103,5 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-05T00:33:39.6356927+03:00, Codex; in_progress. Прямое поручение владельца: commit/push, ожидание existing CI, исправление failures. Зависимость: завершённая local приёмка выше. Критерий: рабочие изменения сохранены commit, draft PR и actual CI для его ревизии проверены; no merge/deploy.
 
 2026-10-05T00:40:06.4698225+03:00 — EMAIL-RESEND-01 commit/CI: implementation commit/push/draftPR6 и CI57 выполнены,9requiredPASS/2externalSES skipped. Actual container/PG/browser regressions закрыты. Финальная docs фиксацияactualresults и еёCI в процессе; failures отсутствуют.
+
+2026-10-05T00:41:16.6519935+03:00 — EMAIL-RESEND-01 commit/CI этап done по verified implementationff13c5c и CI57: commit/push/PR и9requiredjobsPASS. Docs checkpoint55054c9 отправлен; завершающий учёт не меняет приложение. Повтор CI final docs revision выполняется отдельно, его результат будет сообщён по фактическому run/SHA.
