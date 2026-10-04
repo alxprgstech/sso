@@ -1,12 +1,10 @@
-# Актуальный статус — исправления CI в PR5, production-приёмка условная
+# Актуальный статус — Actions восстановлены, CodeScene проверяется
 
-Обновление 2026-10-04T21:24:36.410422+03:00, Codex, PR5-CI-01 `in_progress`. На source SHA44c3ff96600bf9aa107ef1bf138814414ad8c664 все9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37222860411) успешны; два внешних SES skips согласно CI-03 без credentials. CodeScene этогоSHA failed6files. Четыре рабочие причины исправлены в следующей локальной группе; archived audit и mandatory Alembic5-argument contract сохранены. Публичный push/PR5 разрешены владельцем, [PR](https://github.com/alxprgstech/sso/pull/5) без конфликтов с main на проверенном head.
+Обновление 2026-10-04T21:38:27.846070+03:00, Codex, PR5-CI-01 `in_progress`. На source SHAe97f7e92b98a6ff45e2bfcd3897d15aa4180320a все9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37224469586) success;2SES skips по CI-03 безcredentials. CodeScene этогоSHA failed5files:3рабочие причины и2сохранённых контракта. Последняя группа исправляет temporary-password conditional и отделяет NumericDate от identity/roles claims; local60actualPG/cryptoPASS6.82s, mypy67/Ruff202/runtime lock/scansPASS. Все17signed-claim bodies неизменны в каждом независимом модуле.
 
-Проверено в новой группе:110actualPG/crypto/session/MFA/race/SDKtests226.79s; canonical mypy65/Ruff200/runtime lock/secret scan PASS. AST переносит17 signed-claim функций без изменения тела в каждом независимом модуле. Links106/27finding statuses и оба immutable archives PASS. Новый head CI ещё предстоит; локальный дополнительный audit replay на44c3ff9 дал103PASS/1worker-timeout, не объявлен успешным.
+Следующий шаг: normalpush и exact-head CI/CodeScene. Для архивного audit snapshot и обязательной5-argument Alembic signature подготовлено [обоснование](testing/codescene-contracts.md); policy exceptions не применены. Дополнительный localauditreplay103PASS/1worker-timeout сохранён какfailed, прежние deadlines/assertions не ослаблены.
 
-E01/F18 теперь подтверждён реальными Linux Compose/Trivy CI:23CLOSED/4PARTIALLY VERIFIED. E02 остаётся до quality gate нового head; E03–E07 live HTTPS/provider/operations/OIF/owner review не завершены. GOAL-09 не закрыт. Все остальные ветки включены в main, дополнительных PR не требуется. Merge/deploy/release не выполнялись.
-
-Следующий шаг: normalpush и результаты exact-head Actions/CodeScene; обновить PR описание под фактический результат. Исторические точки ниже относятся к своим датам.
+[PR5](https://github.com/alxprgstech/sso/pull/5) ведётся в разрешённой публичной new/ветке; конфликтов сmain на проверенном head нет. Другиеветки уже включены вmain. E01/F18 подтверждён реальными LinuxCompose/TrivyCI:23CLOSED/4PARTIAL. E02qualitygate и внешниеE03–E07/GOAL09 не завершены. Merge/deploy/release/live mail не выполнялись. Исторические записи ниже относятся к своим датам.
 
 ## История: локальная приёмка и первоначальный PR
 

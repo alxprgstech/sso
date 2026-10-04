@@ -1074,3 +1074,9 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 
 2026-10-04T21:24:36.410422+03:00 — PR5-CI-01 in_progress: четвёртая группа110actualPG/cryptoPASS, mypy65/Ruff200/runtime lock/scans/docs PASS; pending new exact-head Actions/CodeScene.
+
+
+2026-10-04T21:35:11.654052+03:00 — PR5-CI-01 in_progress: e97f7e9ActionsPASS;3addressable CodeScene files плюс2contracts. Разделить temporal/identity validation и temporary consumption guard, actualPG/crypto/CI verify.
+
+
+2026-10-04T21:38:27.846070+03:00 — PR5-CI-01 in_progress: последняя delta60actualPG/cryptoPASS,17bodies unchanged, mypy67/Ruff202/scansPASS. Pending normalpush/new exacthead.

@@ -92,3 +92,8 @@ ADR0018 фиксирует разделение trust boundaries, реальны
 На44c3ff96600bf9aa107ef1bf138814414ad8c664 ([CI37222860411](https://github.com/alxprgstech/sso/actions/runs/37222860411)) все9 обязательных Actions success,2SES skips. CodeScene оставил6files: session lifecycle, discoverable Passkey lookup, overall complexity двух token_profiles, archived probe и Alembic callback.
 
 SessionRequest/SessionAuthorization разделяют входные metadata и доказательство revision/MFA, actual locked-account/lifetime/authorization phases сохраняют consume/audit/commit order. Discoverable lookup разделяет credential ID и active user. token_claims и token_audience отделяют structural types/time и audience/azp от token-use policy; AST review17bodies unchanged у сервера и независимого SDK. Local110passed226.79s с actualPG/RSA; mypy65/Ruff200/runtime lock/secret scan PASS. Remote результат этой группы pending. Дополнительный audit replay103passed/1worker-timeout247.93s сохранён как failed; неизменный30s deadline не увеличен.
+
+
+## После e97f7e9 — 2026-10-04T21:38:27.846070+03:00
+
+[CI37224469586](https://github.com/alxprgstech/sso/actions/runs/37224469586) exactSHAe97f7e92b98a6ff45e2bfcd3897d15aa4180320a:9Actions success,2SES skips. CodeScene5remainingfiles: consume_temporary_password complexconditional,2token_claims overallcomplexity и2[contracts](codescene-contracts.md). Temporal policy отделена в token_dates;17function bodiesunchanged у обоих independent implementations. Used и missing/expired temporary password guards разделены с прежним отказом. ActualPG/crypto60passed6.82s; mypy67/Ruff202/runtime lock/secret scanPASS. Newcandidate CI ещёpending, CodeScene не объявленPASS.

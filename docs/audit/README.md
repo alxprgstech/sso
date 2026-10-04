@@ -1,6 +1,6 @@
 # Воспроизведение исходного и повторного аудита
 
-Текущий [отчёт](../PRODUCTION_READINESS_AUDIT.md) относится к code SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, версия0.2.0, ветка `new/production-readiness-remediation`: CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. [Summary](../REMEDIATION_SUMMARY.md), [новые безопасные evidence](remediation-evidence.json).
+Историческое локальное evidence в [отчёте](../PRODUCTION_READINESS_AUDIT.md) относится к code SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, версия0.2.0, ветка `new/production-readiness-remediation`: Первоначальный snapshot CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Последующее реальное CI подтверждение E01/F18 даёт23CLOSED/4PARTIALLY VERIFIED; текущие PR/quality gates описаны в начале отчёта. [Summary](../REMEDIATION_SUMMARY.md), [новые безопасные evidence](remediation-evidence.json).
 
 ## Сохранённый baseline
 
@@ -18,7 +18,7 @@ $env:PYTHONPATH = 'backend;packages/python-sdk;.'
 python -m pytest -p tests.conftest docs/audit/test_readiness_probes.py -q --junitxml=artifacts/audit/probes-current.xml
 ```
 
-Точный локальный run с private environment wrapper записан как C03 в отчёте:104 passed/1Starlette warning. Он пересекается с535full, не отдельное суммируемое покрытие. Negative assertions/UV/PKCE/verified-email/quota не ослаблялись. Missing production RSA запрещён; persistent/restart тест использует доставленный реальный key. Обычный CI также исполняет постоянные исходные тесты.
+Исторический локальный run на ae700d7 с private environment wrapper записан как C03 в отчёте:104 passed/1Starlette warning. Он пересекается с535full, не отдельное суммируемое покрытие. Negative assertions/UV/PKCE/verified-email/quota не ослаблялись. Missing production RSA запрещён; persistent/restart тест использует доставленный реальный key. Обычный CI также исполняет постоянные исходные тесты.
 
 ## Git-история без вывода значений
 

@@ -331,11 +331,9 @@ class AuthService:
         credential = user.password_credential
         if credential is None:
             raise AuthenticationException("Неверный логин или пароль")
-        if (
-            credential.temporary_consumed_at is not None
-            or credential.temporary_expires_at is None
-            or credential.temporary_expires_at <= now
-        ):
+        if credential.temporary_consumed_at is not None:
+            raise AuthenticationException("Временный пароль истёк или уже использован")
+        if credential.temporary_expires_at is None or credential.temporary_expires_at <= now:
             raise AuthenticationException("Временный пароль истёк или уже использован")
         credential.temporary_consumed_at = now
         expires_at = min(expires_at, now + timedelta(minutes=10))

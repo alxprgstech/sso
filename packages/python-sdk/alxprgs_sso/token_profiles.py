@@ -5,11 +5,10 @@ from typing import Any
 
 from .token_audience import _validate_audience
 from .token_claims import (
-    _nonnegative_integer,
-    _validate_dates,
     _validate_optional_claims,
     _validate_strings,
 )
+from .token_dates import _nonnegative_integer, _validate_dates
 
 
 def _validate_access_profile(payload: dict[str, Any]) -> None:
