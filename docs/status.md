@@ -1,3 +1,21 @@
+# PROJECT-PR-01 — in_progress
+
+2026-10-05T19:04:38+03:00, Codex. По поручению владельца готовится commit всего рабочего diff ветки `new/frontend-redesign`, PR в main и проверка CI итогового SHA. В HEAD уже есть редизайн, 18 файлов изменены после него. План: review/scans/локальные проверки → commit/push/PR → диагностика Actions и сторонних checks → evidence/точка продолжения. GitHub connector HTTP403; обычный Git/API требует выхода из sandbox. Успех CI текущего diff пока не подтверждён; общий GOAL-09 не закрыт.
+
+2026-10-05T19:14:45+03:00: локальные проверки PASS; [матрица и история отказов](acceptance-project-pr.md). BOOTSTRAP-PASSWORD-01 unit-блокер снят, критерий реализации done; реальные user bootstrap/общая production-приёмка отдельно не подтверждены. Passkey component fixture синхронизирована с настоящим вызовом API, полный набор37PASS/exit0. Git/API работает, PR ветки отсутствует. Следующий шаг commit/push/PR, затем CI точного SHA. Исторические статусы ниже относятся к своим датам.
+
+# UI-LAYOUT-01 — done
+
+2026-10-05T18:42:42+03:00, Codex; начало 18:20:35+03:00. Футер и геометрия схемы исправлены; targeted2PASS, production UI browser37PASS/1.1m, components37PASS, lint/types/build PASS; desktop/mobile PNG инспектированы. GOAL/frontend/operator/ADR/report/acceptance согласованы; UTF-8 10 документов/75 локальных ссылок/0 ошибок и git diff --check PASS. Собственные Vite dev/preview остановлены. Продолжение: review локального diff, при необходимости пересборка frontend владельцем в его локальном Compose. Commit/push/deployment не выполнялись. Исходные изменения сохранены; ограничения BOOTSTRAP-PASSWORD-01 ниже относятся к другой задаче, общая GOAL-09 не закрыта.
+
+# BOOTSTRAP-PASSWORD-01 — implementation ready, tests blocked
+
+2026-10-05T18:10:53.9596707+03:00 — User Docker build/healthy/migration прошли, bootstrap CLI ошибочно принимал8chars перед server15..128. Исправлен общий validator и TTY retry; unit regressions добавлены. RuffPASS; pytest blocked native ABI/libpq, успех не заявлен. Следующее: start с подходящим паролем без reset, unit verification в совместимой среде. Изменения локальные, данные сохранены.
+
+# LOCAL-START-02 — implementation done, runtime unverified
+
+2026-10-05T17:00:49.6539127+03:00 — Fresh env содержит оба role passwords (64chars), UTF8noBOM. start теперь задаёт explicit --env-file/-f; тестовый syntax defect исправлен. PowerShell/pwsh16PASS, env selection2PASS, RuffPASS. Docker недоступен; точная причина user automatic loading failure и actual start не доказаны. .env/БД не изменены. Продолжение: повтор start владельцем, reset не нужен.
+
 # LOCAL-RESET-01 — done
 
 2026-10-05T14:55:22.7249366+03:00 — Исправлен сброс старого .env без новых паролей ролей; start выдаёт инструкцию upgrade/reset и сохраняет конфигурацию. 12 regression tests PowerShell/pwsh PASS, git diff --check PASS. Docker недоступен; реальный запуск/сброс не проверены. Данные не удалены. Следующий шаг: запуск владельцем reset при ненужных данных либо сохранение БД по docs/operations.md. Чужие изменения frontend сохранены.

@@ -208,13 +208,13 @@
     @apply flex h-dvh flex-col;
   }
   .app-scroll {
-    @apply min-h-0 flex-1 overflow-auto;
+    @apply flex min-h-0 flex-1 flex-col overflow-auto;
   }
   #main-content {
-    @apply min-h-0;
+    @apply flex flex-auto shrink-0 flex-col;
   }
   .appearance-bar {
-    @apply flex justify-end px-4 py-2 border-b border-line;
+    @apply flex shrink-0 justify-end px-4 py-2 border-b border-line;
   }
   .theme-control {
     @apply flex items-center gap-2 text-xs text-secondary;
@@ -263,7 +263,7 @@
     @apply mr-2;
   }
   .legal-footer {
-    @apply flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-5 text-xs text-secondary;
+    @apply flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-5 text-xs text-secondary;
   }
   .legal-footer nav,
   .privacy-actions {
@@ -356,8 +356,7 @@
     height: var(--brand-compact-size);
   }
   .auth-layout {
-    @apply grid;
-    min-height: calc(100dvh - 170px);
+    @apply grid flex-1;
     grid-template-columns: minmax(0, 1fr);
   }
   .auth-form-region {
@@ -387,9 +386,9 @@
     @apply size-1.5 rounded-full bg-brand;
   }
   .topology-links {
-    @apply absolute inset-0 w-full h-full;
+    @apply pointer-events-none absolute inset-0 w-full h-full;
   }
-  .topology-links path {
+  .topology-links line {
     stroke: var(--border-default);
     stroke-width: 1;
   }
@@ -418,22 +417,7 @@
   }
   .topology-node {
     @apply absolute flex items-center gap-3 rounded-lg border border-border bg-raised px-4 py-3 text-secondary text-xs;
-  }
-  .node-one {
-    top: 25%;
-    left: 12%;
-  }
-  .node-two {
-    top: 28%;
-    right: 8%;
-  }
-  .node-three {
-    bottom: 23%;
-    left: 14%;
-  }
-  .node-four {
-    bottom: 28%;
-    right: 8%;
+    translate: -50% -50%;
   }
   .topology-caption {
     @apply absolute bottom-10 left-10 text-lg text-primary;

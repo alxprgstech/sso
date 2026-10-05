@@ -4,6 +4,8 @@
 
 ## Решение
 
+Уточнение UI-LAYOUT-01 от 05.10.2026: `.app-scroll` использует flex column с растущим main и естественной высотой футера; AuthSurface заполняет свободное место. Фиксированный вычет высоты auth и наложение fixed-футера не подходят: переносы текста и настройки cookies меняют доступную высоту. Infrastructure использует общие процентные anchors для карточек и SVG-линий, без отдельного квадратного viewBox. Измерение узлов/ResizeObserver отвергнуто как ненужная зависимость от расписания layout. Историческая приёмка ниже сохранена; новые результаты UI-LAYOUT-01 фиксируются отдельно в acceptance/worklog.
+
 Сохранить React18 и защищённый API-клиент. Tailwind4.3.3 подключить официальным Vite plugin той же версии (peer Vite5–8). React Router7.18.4 — последняя registry-версия7 с React>=18; текущая8.4.0 требует React>=19.2.7, такое обновление не относится к цели. Декларативные Routes размещаются после единого server-state gate. Backend остаётся authority для session purpose, legal/deletion/MFA/RBAC.
 
 Radix Dialog/DropdownMenu/Tooltip — MIT, focus/keyboard/modal semantics. Компоненты принадлежат source проекта, без shadcn generator/default theme. Native select/checkbox/radio сохраняют браузерную семантику. cmdk1.1.1 (MIT, React18/19) — command palette внутри нашего Dialog. Motion14 (MIT, React18/19) — contextual transitions, reducedMotion=user плюс отключение decorative/height travel. Lucide1.52 (ISC, React18) — named imports. Geist1.7.2 (OFL) — локальные variable WOFF2, без runtime CDN.

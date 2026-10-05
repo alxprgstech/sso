@@ -1,5 +1,19 @@
 # Акт и матрица приёмки программного комплекса ALXPRGS SSO
 
+## UI-LAYOUT-01: футер и линии схемы (05.10.2026)
+
+Локальная проверка с Node24.20.0/Vite8.3.1/Chromium; API — явно обозначенные UI fixtures. Общая приёмка backend/PG/OIDC/production этой задачей не повторялась.
+
+| Требование | Проверка и команда из `frontend/` | Результат |
+| --- | --- | --- |
+| ARCH-05, PRIV-01/03/08: футер у нижнего края короткой страницы, после длинного содержимого, без перекрытия | `npx playwright test e2e/appearance.spec.ts --grep 'legal footer\|infrastructure links' --reporter=line`; 13 маршрутов/session gates, desktop/mobile, cookies/settings/refusal, длинный документ | До исправления 2 FAIL; после 2 PASS/31.5s. Положение футера дополнительно измерено: desktop900/900px и mobile844/844px, горизонтального overflow нет |
+| FRONTEND-REDESIGN-01: соединения точно направлены к карточкам, responsive/motion/keyboard | При `PLAYWRIGHT_BASE_URL=http://127.0.0.1:5183` и `npm run preview -- --host 127.0.0.1 --port 5183 --strictPort`: `npx playwright test e2e/appearance.spec.ts --reporter=line` | 37 PASS/1.1m; четыре размера схемы, обе темы, keyboard/focus/dialog/Axe, reduced motion всех четырёх линий |
+| Frontend качество и сборка | `npm run lint`, `npm run typecheck`, `npm run typecheck:tests`, `npm run test:components`, `npm run build` | PASS; 37 components/50.08s, build3.50s. После последних тестовых правок lint/test-types повторно PASS |
+| Визуальная проверка | Инспекция реальных PNG из `artifacts/ui-layout-01/`: login1920×1080, footer1440×900 и390×844 | PASS: линии касаются карточек, футер у нижнего края, переносы mobile не перекрывают содержимое |
+| DOC-TRACK-01–07, согласованность документации | UTF-8 strict decode/проверка локальных Markdown ссылок в 10 изменённых документах; `git diff --check` | PASS: 75 ссылок/0 ошибок; начало18:20:35 и завершение18:42:42+03:00 в plan/worklog/status; собственный dev/preview остановлен |
+
+Первый общий dev-browser прогон: 35 PASS/2 FAIL/2.6m. Тест клавиатуры начинал Tab до готовности React-формы; добавлено ожидание видимого поля перед вводом. Reduced-motion locator ожидал один path; теперь проверяет отсутствие animation на всех четырёх линиях. Assertions сохранены, retries/skips отсутствуют. Production-прогон выше выполнен после исправлений. Серверный функциональный E2E, enforcing Nginx CSP, Docker runtime и удалённый CI для этого diff не запускались; preview не является deployment.
+
 ## TASK-096: обязательное email-подтверждение при самостоятельной регистрации (29.09.2026)
 
 | Проверка | Фактический результат | Статус |
@@ -495,8 +509,14 @@ PR5 открыт, mergeable=true, другие ветки включены в ma
 
 ## FRONTEND-REDESIGN-01 — frontend platform: done
 
+Commit/PR и последующие локальные/remote проверки по поручению05.10.2026: [PROJECT-PR-01](acceptance-project-pr.md); результаты разных SHA не смешиваются.
+
 Начало2026-10-05T03:52:42.0367906+03:00, завершение2026-10-05T14:46:25.6409088+03:00, Codex. [Матрица26, версии/команды/результаты/история failures](../FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [plan/continuation](frontend-redesign-plan.md), [ADR0021](adr/0021-frontend-design-platform.md), [brand provenance](../frontend/public/brand/README.md). Итоговый full Nginx campaign73f23772a99b42ea9c95d2873611a21c:46default/1.7m и10enabled/1.3m; component37/6.42s, unit13, ESLint/TypeScript/Ruff/mypy68/build, fullPG625/16subtests/297.08s, Sentry browser9/22.0s, offline private maps PASS. Secret scanner137/0new и synthetic control, UTF-8/local links/whitespace PASS. Сначала failed decorative chunk/Passkey loading states/focus race выявлены отрицательными assertions, исправлены; test weakening/retries отсутствуют. Исторические restricted-token failures сохранены.
 
 Визуально инспектированы dark/light desktop/mobile/short-height/dialog; canonical local assets проверены byte/hash/currentSrc/favicon/CSP. Собственный стенд остановлен с ownership и0clients guards, данные сохранены. Изменения локальные без commit/push/PR/deploy. Frontend приёмка не закрывает общую production GOAL-09; remote CI текущего diff, live HTTPS/email/Docker/Linux/hardware matrix не заявлены.
 
 2026-10-05T14:55:22.7249366+03:00 — LOCAL-RESET-01 / SETUP-02/04, TEST-SETUP-04: 12 unittest regression checks PASS (17.339s), Windows PowerShell/pwsh, bundled Python. Docker commands mocked; проверка реального Compose не выполнялась — executable отсутствует. Проверены legacy configuration, сохранность .env/отмена/volume guard/down failure и teardown rendering; защита БД/ручное подтверждение сохранены. Общая приёмка не закрывается.
+
+2026-10-05T17:00:49.6539127+03:00 — LOCAL-START-02:16WindowsPowerShell/pwsh regressionsPASS78.908s; final env-selection2PASS11.934s; RuffPASS. Explicit paths проверены mocked Docker, real Compose unavailable. Runtime запуска на машине владельца не заявлен.
+
+2026-10-05T18:10:53.9596707+03:00 — BOOTSTRAP-PASSWORD-01: RuffPASS; unit pytestBLOCKED pydantic_core/psycopg native ABI/libpq, real bootstrap rerun unverified. User supplied actual Compose success/health/migration evidence для LOCAL-START-02; bootstrap failure зафиксирован и исправлен без ослабления policy.

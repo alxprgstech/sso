@@ -1,5 +1,22 @@
 # План реализации ALXPRGS SSO
 
+### PROJECT-PR-01: commit проекта, PR и проверка CI
+
+- P1; `in_progress`; Codex; начало 2026-10-05T19:04:38+03:00; ветка `new/frontend-redesign`.
+- Требования: CI-01/02/03, CD-03, DOC-TRACK-02–07; зависит от FRONTEND-REDESIGN-01, UI-LAYOUT-01 и исправлений локального запуска/bootstrap.
+- План: проверить весь diff и отсутствие секретов, выполнить доступные локальные проверки, закоммитить все рабочие изменения, push и PR в main, проверить обязательные Actions и сторонние checks именно итогового SHA; исправить выявленные сбои и сохранить evidence.
+- Готовность: рабочие изменения сохранены в commit, существующий либо новый PR содержит полный diff, обязательный CI итогового SHA успешен либо конкретный внешний блокер документирован. Merge/release/deployment не поручены.
+- Начальные ограничения: GitHub connector отвечает HTTP 403; shell network и запись .git требуют разрешённого выхода из sandbox. Проверяется доступ обычными Git/API инструментами; чужие изменения и локальные секреты сохраняются.
+- 2026-10-05T19:14:45+03:00: Git/API доступ восстановлен; локальные Ruff/types/unit/build/secret/config/version/docs PASS. Passkey mock rejection race исправлена без ослабления assertions, components37PASS/exit0. [Матрица](acceptance-project-pr.md). Далее commit/push/PR и обязательный CI.
+
+### UI-LAYOUT-01: футер и соединения схемы входа
+
+- P1; `done`; исполнитель Codex; начало 2026-10-05T18:20:35+03:00; завершение 2026-10-05T18:42:42+03:00; ветка `new/frontend-redesign`.
+- Требования: ARCH-05, PRIV-01/03/08, FRONTEND-REDESIGN-01; зависит от FR-02/04 (done).
+- План: браузерные regression tests → общий макет футера без фиксированного вычета высоты → единые координаты карточек и SVG → согласование GOAL/frontend/operator/acceptance → проверки.
+- Готовность: футер у нижнего края коротких страниц и после длинного содержимого, без перекрытия форм/баннера; линии касаются нужных карточек при desktop resize; lint/typecheck/components/build и браузерные проверки проходят. Начальные чужие изменения сохраняются; backend/production не входят в задачу.
+- Критерий выполнен: targeted2PASS; production UI browser37PASS, components37PASS, lint/types/test-types/build PASS; desktop/mobile PNG инспектированы; UTF-8 10 документов/75 локальных ссылок/0 ошибок и git diff --check PASS. Приёмка — [acceptance.md](acceptance.md). Собственные Vite dev/preview остановлены. Продолжение: review локальных правок владельцем, при необходимости пересборка frontend в его локальном Compose. Commit/push/deployment не выполнялись; BOOTSTRAP-PASSWORD-01 остаётся отдельным ранее зафиксированным блокером.
+
 ### FRONTEND-REDESIGN-01: Полная миграция ALXPRGS Design Language v1
 
 - Приоритет P0; статус `done`; начало 2026-10-05T03:52:42.0367906+03:00; Codex; ветка `new/frontend-redesign`.
@@ -1122,3 +1139,13 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-05T15:28:49.0680006+03:00 — PROJECT-COMMIT-01: проверки done; локальный commit выполняется сейчас, проверка результата по git show/status; точка продолжения — review владельцем.
 
 2026-10-05T15:29:36.9404975+03:00 — PROJECT-COMMIT-01 done: проверки завершены, сохранение подготовленного проекта локальным commit выполняется следующим Git действием. Известные whitespace notices исходного reference Markdown/canonical SVG сохранены ради исходных bytes; обязательные security checks PASS. Продолжение: review commit владельцем, no push.
+
+2026-10-05T16:57:47.5238840+03:00 — LOCAL-START-02 P1 in_progress, SETUP-02/04 TEST-SETUP-04; зависит от LOCAL-RESET-01. Приёмка: explicit paths in Compose calls, executable Windows tests и сохранение существующего .env; real Docker пока unavailable.
+
+2026-10-05T17:00:49.6539127+03:00 — LOCAL-START-02 implementation done; runtime verification blocked: Docker отсутствует в execution environment. Критерий regressions/static PASS16+2; real Docker outcome требуется от владельца повтором start, без повторного reset.
+
+2026-10-05T18:08:22.7746214+03:00 — BOOTSTRAP-PASSWORD-01 P1 in_progress; USR-02 SETUP-03 TEST-SETUP-04; приёмка: единая password policy, friendly reject/retry без traceback и записи пользователя при invalid input, unit regressions.
+
+2026-10-05T18:10:53.9596707+03:00 — BOOTSTRAP-PASSWORD-01 blocked (implementation ready): обязательные unit regressions пока не выполнены, причина native Python dependencies/libpq unavailable. Условие: совместимое Python окружение с проектными dependencies; продолжение start владельцем без reset.
+
+2026-10-05T19:14:45+03:00 — BOOTSTRAP-PASSWORD-01 done, Codex; начало2026-10-05T18:08:22.7746214+03:00. Совместимый Python3.13/supplemental Sentry найден; обязательные bootstrap unit regressions в группе27PASS+4subtests, Ruff/typesPASS. Единая policy/invalid-no-writes/TTY retry подтверждены. Реальный интерактивный bootstrap у владельца отдельно не воспроизводился; unit-блокер снят, защита не ослаблена.

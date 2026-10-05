@@ -15,7 +15,7 @@ class StartPowerShellTests(unittest.TestCase):
     def run_start(
         self, tmp_path: Path, fallback: bool, revision: str = "a" * 40
     ) -> tuple[subprocess.CompletedProcess[str], Path]:
-        shell = shutil.which("powershell.exe")
+        shell = shutil.which(getattr(self, "shell_executable", "powershell.exe"))
         self.assertIsNotNone(shell, "Windows PowerShell is required for this check")
         source = Path(__file__).resolve().parents[1] / "start.ps1"
         script = tmp_path / "start.ps1"
@@ -24,24 +24,28 @@ class StartPowerShellTests(unittest.TestCase):
 
         # Stop at Compose up; no real daemon, containers, or HTTP server are used.
         ps_script = f"""
+$env:COMPOSE_DISABLE_ENV_FILE = '1'
+$env:COMPOSE_ENV_FILES = 'unrelated.env'
 $logPath = '{str(log).replace("'", "''")}'
 function git {{ $global:LASTEXITCODE = 0; '{revision}' }}
 function docker {{
+    $operation = if ($args[1] -eq 'version') {{ 'version' }} else {{ $args[5] }}
     $commandLine = 'docker ' + ($args -join ' ')
     Add-Content -LiteralPath $logPath -Value $commandLine -Encoding UTF8
     if ($args[0] -eq 'compose' -and $args[1] -eq 'version' -and ${str(fallback).lower()}) {{
         $global:LASTEXITCODE = 1
-    }} elseif ($args[0] -eq 'compose' -and $args[1] -eq 'up') {{
+    }} elseif ($args[0] -eq 'compose' -and $operation -eq 'up') {{
         $global:LASTEXITCODE = 17
     }} else {{
         $global:LASTEXITCODE = 0
-        if ($args[0] -eq 'compose' -and $args[1] -eq 'ps') {{ 'owned-frontend' }}
+        if ($args[0] -eq 'compose' -and $operation -eq 'ps') {{ 'owned-frontend' }}
     }}
 }}
 function docker-compose {{
+    $operation = $args[4]
     Add-Content -LiteralPath $logPath -Value ('docker-compose ' + ($args -join ' ')) -Encoding UTF8
-    if ($args[0] -eq 'up') {{ $global:LASTEXITCODE = 17 }}
-    else {{ $global:LASTEXITCODE = 0; if ($args[0] -eq 'ps') {{ 'owned-frontend' }} }}
+    if ($operation -eq 'up') {{ $global:LASTEXITCODE = 17 }}
+    else {{ $global:LASTEXITCODE = 0; if ($operation -eq 'ps') {{ 'owned-frontend' }} }}
 }}
 & '{str(script).replace("'", "''")}' -NonInteractive -NoBrowser
 """
@@ -68,11 +72,16 @@ function docker-compose {{
         for fallback in (False, True):
             with self.subTest(fallback=fallback), tempfile.TemporaryDirectory() as directory:
                 tmp_path = Path(directory)
-                (tmp_path / ".env").write_text(("SSO_RUNTIME_PASSWORD=synthetic-runtime\n"  # pragma: allowlist secret (synthetic fixture)
-                     "SSO_MIGRATOR_PASSWORD=synthetic-migrator\n")  # pragma: allowlist secret (synthetic fixture), encoding="utf-8")
+                fixture = (
+                    "SSO_RUNTIME_PASSWORD=synthetic-runtime\n"  # pragma: allowlist secret
+                    "SSO_MIGRATOR_PASSWORD=synthetic-migrator\n"  # pragma: allowlist secret
+                )
+                (tmp_path / ".env").write_text(fixture, encoding="utf-8")
                 result, log = self.run_start(tmp_path, fallback)
+                executable = "docker-compose" if fallback else "docker compose"
                 expected = (
-                    "docker-compose up -d --build" if fallback else "docker compose up -d --build"
+                    f"{executable} --env-file {tmp_path / '.env'} "
+                    f"-f {tmp_path / 'docker-compose.yml'} up -d --build"
                 )
                 self.assertTrue(log.exists(), f"stdout={result.stdout!r}; stderr={result.stderr!r}")
                 self.assertIn(expected, log.read_text(encoding="utf-8").splitlines())
@@ -82,8 +91,7 @@ function docker-compose {{
                 self.assertNotIn("ALX_BUILD_SHA", (tmp_path / ".env").read_text(encoding="utf-8"))
                 self.assertEqual(
                     (tmp_path / ".env").read_text(encoding="utf-8"),
-                    ("SSO_RUNTIME_PASSWORD=synthetic-runtime\n"  # pragma: allowlist secret (synthetic fixture)
-                     "SSO_MIGRATOR_PASSWORD=synthetic-migrator\n")  # pragma: allowlist secret (synthetic fixture),
+                    fixture,
                 )
 
     def test_legacy_env_refuses_start_with_recovery_instructions(self) -> None:
@@ -155,3 +163,7 @@ function docker-compose {{
                 "up -d --build", log.read_text(encoding="utf-8") if log.exists() else ""
             )
             self.assertEqual((tmp_path / ".env").read_text(encoding="utf-8"), "# preserved\n")
+
+
+class StartPwshTests(StartPowerShellTests):
+    shell_executable = "pwsh.exe"

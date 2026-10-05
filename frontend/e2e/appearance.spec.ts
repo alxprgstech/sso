@@ -182,6 +182,194 @@ async function bannerAtBottom(page: Page) {
   expect(geometry.fitsWidth).toBe(true);
 }
 
+test("legal footer reaches the page bottom across routes and cookie states", async ({
+  page,
+}) => {
+  const cases = [
+    { path: "/login", user: null },
+    { path: "/register", user: null },
+    { path: "/verify-email", user: null },
+    { path: "/privacy", user: null },
+    { path: "/terms", user: null },
+    { path: "/cookies", user: null },
+    { path: "/data-consent", user: null },
+    { path: "/missing-page", user: null },
+    { path: "/account/sessions", user: profile },
+    { path: "/admin/system", user: profile },
+    {
+      path: "/change-password",
+      user: { ...profile, session_purpose: "password_change" as const },
+    },
+    {
+      path: "/accept-terms",
+      user: { ...profile, legal_acceptance_required: true },
+    },
+    { path: "/account-deletion", user: { ...profile, deletion_pending: true } },
+  ];
+  const footerAtBottom = async () => {
+    await expect(page.locator(".legal-footer")).toHaveCount(1);
+    await expect(page.locator("#main-content h1")).toBeVisible();
+    await page.locator(".app-scroll").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const geometry = await page.evaluate(() => {
+      const scroll = document.querySelector(".app-scroll")!;
+      const footer = document
+        .querySelector(".legal-footer")!
+        .getBoundingClientRect();
+      return {
+        bottom: footer.bottom,
+        contentBottom: scroll.getBoundingClientRect().bottom,
+        mainBottom: document
+          .querySelector("#main-content")!
+          .getBoundingClientRect().bottom,
+        top: footer.top,
+        fitsWidth:
+          document.documentElement.scrollWidth <= innerWidth &&
+          scroll.scrollWidth <= scroll.clientWidth,
+      };
+    });
+    expect(Math.abs(geometry.bottom - geometry.contentBottom)).toBeLessThan(2);
+    expect(geometry.top).toBeGreaterThanOrEqual(geometry.mainBottom - 1);
+    expect(geometry.fitsWidth).toBe(true);
+  };
+  for (const viewport of [
+    { width: 1440, height: 1200 },
+    { width: 390, height: 1200 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const scenario of cases) {
+      await mockUI(page, scenario.user);
+      await page.goto(scenario.path);
+      await footerAtBottom();
+    }
+    // Short legal content must fit with both the first-visit banner and cookie settings.
+    await mockUI(page);
+    await page.goto("/privacy");
+    await page.getByRole("button", { name: "Настроить", exact: true }).click();
+    await bannerAtBottom(page);
+    await footerAtBottom();
+    await page.getByRole("button", { name: "Только необходимые" }).click();
+    await footerAtBottom();
+    await page
+      .getByRole("button", { name: "Настройки cookies", exact: true })
+      .click();
+    await bannerAtBottom(page);
+    await footerAtBottom();
+    await page.getByRole("button", { name: "Только необходимые" }).click();
+
+    // A long document scrolls naturally; its final paragraph remains above the footer.
+    await mockUI(page, null, false, {
+      "GET /api/v1/legal/documents": {
+        json: {
+          ...documents,
+          documents: documents.documents.map((doc) => ({
+            ...doc,
+            paragraphs: Array.from(
+              { length: 60 },
+              (_, index) => `Параграф ${index + 1}. Длинный тестовый документ.`,
+            ),
+          })),
+        },
+      },
+    });
+    await page.goto("/privacy");
+    await expect(
+      page.getByText("Параграф 60.", { exact: false }),
+    ).toBeAttached();
+    expect(
+      await page
+        .locator(".app-scroll")
+        .evaluate((element) => element.scrollHeight > element.clientHeight),
+    ).toBe(true);
+    await footerAtBottom();
+    const lastBottom = await page
+      .getByText("Параграф 60.", { exact: false })
+      .evaluate((element) => element.getBoundingClientRect().bottom);
+    const footerTop = await page
+      .locator(".legal-footer")
+      .evaluate((element) => element.getBoundingClientRect().top);
+    expect(lastBottom).toBeLessThanOrEqual(footerTop);
+    // Reset the browser-only choice for the next viewport's first-visit checks.
+    await page.evaluate(() => localStorage.clear());
+  }
+});
+
+test("infrastructure links meet the center and each card after resizing", async ({
+  page,
+}) => {
+  await mockUI(page);
+  await page.goto("/login");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 1280, height: 1200 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(page.locator(".topology-node")).toHaveCount(4);
+    const distances = await page.evaluate(() => {
+      const core = document
+        .querySelector(".topology-core")!
+        .getBoundingClientRect();
+      const nodes = [...document.querySelectorAll(".topology-node")].map(
+        (node) => node.getBoundingClientRect(),
+      );
+      const svg = document.querySelector<SVGSVGElement>(".topology-links")!;
+      const segments: { start: DOMPoint; end: DOMPoint }[] = [];
+      for (const shape of svg.querySelectorAll(
+        "path:not(.signal), line:not(.signal)",
+      )) {
+        const matrix = (shape as SVGGraphicsElement).getScreenCTM()!;
+        if (shape instanceof SVGLineElement) {
+          segments.push({
+            start: new DOMPoint(
+              shape.x1.baseVal.value,
+              shape.y1.baseVal.value,
+            ).matrixTransform(matrix),
+            end: new DOMPoint(
+              shape.x2.baseVal.value,
+              shape.y2.baseVal.value,
+            ).matrixTransform(matrix),
+          });
+        } else {
+          // Existing straight paths are included so this regression also diagnoses the old geometry.
+          const matches = shape
+            .getAttribute("d")!
+            .matchAll(/M([\d.]+)\s+([\d.]+)L([\d.]+)\s+([\d.]+)/g);
+          for (const match of matches)
+            segments.push({
+              start: new DOMPoint(
+                Number(match[1]),
+                Number(match[2]),
+              ).matrixTransform(matrix),
+              end: new DOMPoint(
+                Number(match[3]),
+                Number(match[4]),
+              ).matrixTransform(matrix),
+            });
+        }
+      }
+      return segments.map((segment, index) => ({
+        core: Math.hypot(
+          segment.start.x - (core.left + core.width / 2),
+          segment.start.y - (core.top + core.height / 2),
+        ),
+        node: Math.hypot(
+          segment.end.x - (nodes[index].left + nodes[index].width / 2),
+          segment.end.y - (nodes[index].top + nodes[index].height / 2),
+        ),
+      }));
+    });
+    expect(distances).toHaveLength(4);
+    for (const distance of distances) {
+      expect(distance.core).toBeLessThan(2);
+      expect(distance.node).toBeLessThan(2);
+    }
+  }
+});
+
 test("cookies layout remains consistent through repeated resizes without ResizeObserver", async ({
   page,
 }) => {
@@ -279,6 +467,8 @@ test("theme selector is reachable and operable with a keyboard", async ({
 }) => {
   await mockUI(page);
   await page.goto("/login");
+  // Navigation can finish before React mounts; begin keyboard input once the form exists.
+  await expect(page.getByLabel("Пароль", { exact: true })).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(
     page.getByRole("link", { name: "К основному содержимому" }),
@@ -795,11 +985,14 @@ test("reduced motion disables repeated topology animation and pointer lighting u
   await page.goto("/login");
   const scene = page.locator(".infrastructure");
   await expect(scene).toHaveAttribute("data-running", "false");
+  await expect(page.locator(".signal")).toHaveCount(4);
   expect(
     await page
       .locator(".signal")
-      .evaluate((e) => getComputedStyle(e).animationName),
-  ).toBe("none");
+      .evaluateAll((elements) =>
+        elements.map((e) => getComputedStyle(e).animationName),
+      ),
+  ).toEqual(["none", "none", "none", "none"]);
   const box = await scene.boundingBox();
   await page.mouse.move(box!.x + 10, box!.y + 10);
   await page.mouse.move(box!.x + 100, box!.y + 100);

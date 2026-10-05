@@ -23,3 +23,5 @@
 ## Уточнение05.10.2026 — FRONTEND-REDESIGN-01
 
 [ADR0021](0021-frontend-design-platform.md) заменяет presentation foundation SSO: SPA использует отдельный design-tokens.css и Tailwind, default identity Dark. Явный System/light/dark, privacy preference/cross-tab/no-storage и synchronous CSP-compatible bootstrap сохраняются. Два demos используют прежний palette.css/System default. Исходное решение выше сохраняется как история, но не описывает текущий CSS import/default SPA. Нижний banner/scroll/QR и focus/privacy contracts остаются.
+
+Уточнение UI-LAYOUT-01 от 05.10.2026: футер внутри основной прокручиваемой области прижат к её нижнему краю на коротких страницах растущим main; на длинных следует за содержимым. Это дополняет положение футера, а нижняя строка баннера из ADR-0013 сохраняется. Точный текущий макет описан в [frontend.md](../frontend.md).

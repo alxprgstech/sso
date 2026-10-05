@@ -117,15 +117,19 @@ describe("server capabilities and account flows", () => {
       passkey_enabled: true,
     });
     let rejectRead!: (reason: Error) => void;
-    apiMock.getPasskeyCredentials.mockReturnValueOnce(
-      new Promise((_, reject) => {
-        rejectRead = reject;
-      }),
+    apiMock.getPasskeyCredentials.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectRead = reject;
+        }),
     );
     apiMock.getPasskeyCredentials.mockResolvedValueOnce([]);
     render(<App />);
     await screen.findByText("Загрузка ключей доступа");
     expect(screen.queryByTestId("passkeys-empty")).toBeNull();
+    await waitFor(() =>
+      expect(apiMock.getPasskeyCredentials).toHaveBeenCalledTimes(1),
+    );
     await act(async () => rejectRead(new Error("Unavailable")));
     await screen.findByText("Не удалось загрузить ключи доступа.");
     expect(screen.queryByTestId("passkeys-empty")).toBeNull();

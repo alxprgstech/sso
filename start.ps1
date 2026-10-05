@@ -67,6 +67,10 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
+# Bind Compose to this checkout and its configuration, including when automatic
+# .env discovery is disabled or a different working directory is selected.
+$composeArgs += @("--env-file", (Join-Path $PSScriptRoot ".env"), "-f", (Join-Path $PSScriptRoot "docker-compose.yml"))
+
 # 3. Проверка доступности порта 3000 на loopback 127.0.0.1 (SETUP-08, TEST-SETUP-04)
 Write-Host "[3/6] Проверка порта 127.0.0.1:3000..." -NoNewline
 $portBusy = $false

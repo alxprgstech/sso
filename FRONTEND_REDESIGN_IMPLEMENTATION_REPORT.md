@@ -79,6 +79,12 @@ OAuth/OIDC verifier, token endpoint, MFA cryptography и схема БД не м
 
 Secret scanner выявил три ложных сигнала: синтетический QR field, prose UI-selector в supplied FRONTEND_UI_DISCOVERY.md и после форматирования фиксированный analytics client_secret из prepare_e2e_data.py в privacy E2E. Последний итоговый scan138/1new был FAIL до точечных fixture pragmas. Добавлены только точечные detect-secrets pragmas, содержательные assertions/описания сохранены; baseline и правила scanner не расширены. Synthetic control продолжает отвергаться.
 
+## Дополнение UI-LAYOUT-01 от 05.10.2026
+
+По замечанию владельца общий футер прижат к нижнему краю коротких страниц; длинные страницы сохраняют естественную прокрутку после содержимого. Main растёт внутри flex column, высота баннера/футера определяется CSS без вычета170px. Infrastructure задаёт единые процентные координаты SVG-линий и центров карточек. Уточнение внесено в GOAL/frontend/operator/ADR; исходный Design Language остаётся reference, текущий макет описан явно.
+
+Приёмка этого дополнительного diff: 37 UI browser PASS на production preview, 37 component PASS, lint/types/test-types/build PASS; реальные PNG1920×1080/1440×900/390×844 инспектированы. Геометрические regressions до изменения2FAIL, после2PASS. История dev-browser35PASS/2FAIL и исправления readiness/четырёх signal элементов — в [acceptance](docs/acceptance.md) и worklog. API fixtures не подтверждают реальный backend/PG/OIDC/CSP; прежние результаты миграции ниже относятся к прежнему проверенному срезу, не новому diff.
+
 ## Матрица26 критериев
 
 | № | Критерий | Evidence / статус |

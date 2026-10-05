@@ -6,6 +6,8 @@
 
 React18 + TypeScript/Vite8; React Router7 BrowserRouter/Routes/NavLink. AppShell предоставляет единственный main, skip-link, theme control, scroll area и cookie banner. Public legal/verify-email доступны до session gate. Для остальных маршрутов loading → password_change → force_login → anonymous → deletion_management/pending → legal acceptance → application. URL не выдаёт права. Backend продолжает independently проверять session purpose, grants и RBAC.
 
+Общий футер находится у нижнего края коротких страниц; на длинных следует за содержимым внутри `.app-scroll`. Эта область — flex column с растущим main, а верхняя панель и футер сохраняют свою высоту. AuthSurface заполняет доступное место без фиксированного вычета из высоты окна. Баннер cookies занимает отдельное место снизу в AppShell; его раскрытие автоматически уменьшает прокручиваемую область, без перекрытия формы или футера. Правило одинаково для публичных страниц, кабинета, администратора и session gates.
+
 | Адрес | Экран |
 | --- | --- |
 | `/login`, `/register`, `/verify-email` | Вход, регистрация с обязательным подтверждением email, явное подтверждение ссылки |
@@ -41,6 +43,8 @@ Geist/Geist Mono WOFF2 идут из pinned npm пакета в Vite assets, OFL
 OTP — один доступный логический input numeric/autocomplete/paste, шесть цифр для TOTP/email; recovery ввод остаётся буквенно-цифровым. Setup QR + ручной secret + copy, recovery one-time visibility/copy и client secret one-time modal очищаются при завершении/закрытии/смене раздела. Bearer/refresh/proof/password/secrets не сохраняются в браузерное storage, telemetry или logs.
 
 Motion: auth-step/layout, modal entry, selected navigation. CSS state/copy/success/skeleton feedback; continuous topology сигналы останавливаются при hidden/reduced motion. Pointer glow: один layout read на entry, максимум один rAF style write, без React render loop. Reduced motion убирает travel/layout/decorative repeats; authentication работает без visual layer. Тема не анимирует первый render, explicit switching имеет короткий CSS переход.
+
+Карточки Infrastructure и SVG-линии используют один набор процентных anchors. Карточки центрируются на этих координатах; SVG без квадратного viewBox сохраняет их положение при любом соотношении сторон панели. Линии проходят под непрозрачными карточками, поэтому видимый конец касается границы карточки. Измерения DOM и ResizeObserver для соединений не нужны.
 
 Декоративный lazy-модуль имеет локальный ErrorBoundary внутри aside: при ошибке загрузки или render визуализация скрывается, форма остаётся доступной, layout становится одноколоночным. Общий boundary критических ошибок приложения сохраняется. Browser regression намеренно обрывает запрос модуля и проверяет сохранение полей и отправку входа; API-ответ в этом case — явно обозначенный UI fixture.
 

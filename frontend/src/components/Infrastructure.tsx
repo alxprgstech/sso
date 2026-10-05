@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { Box, Database, Fingerprint, Layers } from "lucide-react";
+
+// Cards and SVG use the same percentage anchors, independent of the panel's aspect ratio.
+const nodes = [
+  { className: "node-one", label: "Приложения", Icon: Box, x: 20, y: 28 },
+  { className: "node-two", label: "Сервисы", Icon: Layers, x: 85, y: 31 },
+  { className: "node-three", label: "Сессии", Icon: Database, x: 20, y: 75 },
+  {
+    className: "node-four",
+    label: "Идентификация",
+    Icon: Fingerprint,
+    x: 82,
+    y: 70,
+  },
+];
+
 export default function Infrastructure() {
   const reduced = useReducedMotion();
   const ref = useRef<HTMLDivElement>(null);
@@ -57,12 +72,19 @@ export default function Infrastructure() {
       <div className="topology-label">
         <span className="status-dot" /> ИНФРАСТРУКТУРА ALXPRGS
       </div>
-      <svg className="topology-links" viewBox="0 0 600 600" fill="none">
-        <path d="M300 300L130 160M300 300L480 180M300 300L140 460M300 300L470 430" />
-        <path
-          className="signal"
-          d="M300 300L130 160M300 300L480 180M300 300L140 460M300 300L470 430"
-        />
+      <svg className="topology-links" fill="none">
+        {nodes.map(({ className, x, y }) => (
+          <g key={className}>
+            <line x1="50%" y1="50%" x2={`${x}%`} y2={`${y}%`} />
+            <line
+              className="signal"
+              x1="50%"
+              y1="50%"
+              x2={`${x}%`}
+              y2={`${y}%`}
+            />
+          </g>
+        ))}
       </svg>
       <div className="topology-core">
         <img
@@ -75,22 +97,16 @@ export default function Infrastructure() {
         <strong>ALXPRGS SSO</strong>
         <span>IDENTITY / ACCESS</span>
       </div>
-      <div className="topology-node node-one">
-        <Box size={20} />
-        <span>Приложения</span>
-      </div>
-      <div className="topology-node node-two">
-        <Layers size={20} />
-        <span>Сервисы</span>
-      </div>
-      <div className="topology-node node-three">
-        <Database size={20} />
-        <span>Сессии</span>
-      </div>
-      <div className="topology-node node-four">
-        <Fingerprint size={20} />
-        <span>Идентификация</span>
-      </div>
+      {nodes.map(({ className, label, Icon, x, y }) => (
+        <div
+          key={className}
+          className={`topology-node ${className}`}
+          style={{ left: `${x}%`, top: `${y}%` }}
+        >
+          <Icon size={20} />
+          <span>{label}</span>
+        </div>
+      ))}
       <div className="topology-caption">
         Единая точка доступа<span>alxprgs.tech / identity infrastructure</span>
       </div>

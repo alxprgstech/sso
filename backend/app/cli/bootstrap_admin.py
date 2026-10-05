@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rbac import ROLE_ADMIN, ROLE_USER
-from app.core.security import async_hash_password
+from app.core.security import async_hash_password, validate_new_password
 from app.database import async_session_maker
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
@@ -85,9 +85,11 @@ async def execute_bootstrap(
         )
         return 1, msg
 
-    # 3. Валидация длины пароля
-    if len(password) < 8:
-        return 1, "[ERROR] Длина пароля администратора должна быть не менее 8 символов."
+    # 3. Единая политика пароля до изменения пользователей и ролей.
+    try:
+        validate_new_password(password)
+    except ValueError as exc:
+        return 1, f"[ERROR] {exc}"
 
     # 4. Проверка и создание системных ролей
     for r_name, r_desc in [
@@ -245,12 +247,12 @@ async def bootstrap_admin(
             try:
                 while True:
                     p1 = getpass.getpass(
-                        "Введите пароль первого администратора (мин. 8 символов): "
+                        "Введите пароль первого администратора (от 15 до 128 символов): "
                     )
-                    if len(p1) < 8:
-                        print(
-                            "[ERROR] Пароль должен содержать не менее 8 символов.", file=sys.stderr
-                        )
+                    try:
+                        validate_new_password(p1)
+                    except ValueError as exc:
+                        print(f"[ERROR] {exc}", file=sys.stderr)
                         continue
                     p2 = getpass.getpass("Повторите пароль: ")
                     if p1 != p2:
