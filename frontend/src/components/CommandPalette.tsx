@@ -4,19 +4,20 @@ import { Command } from "cmdk";
 import { Search } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Dialog } from "./ui/Dialog";
-export function CommandPalette() {
+function isCommandShortcut(event: KeyboardEvent) {
+  return (
+    event.key.toLowerCase() === "k" &&
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey
+  );
+}
+
+function useCommandShortcut() {
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
-  const { user } = useAuth();
   useEffect(() => {
     const show = () => setOpen((value) => !value);
     const key = (event: KeyboardEvent) => {
-      if (
-        event.key.toLowerCase() !== "k" ||
-        !(event.ctrlKey || event.metaKey) ||
-        event.altKey
-      )
-        return;
+      if (!isCommandShortcut(event)) return;
       if (document.querySelector('[role="dialog"]')) return;
       event.preventDefault();
       show();
@@ -28,6 +29,13 @@ export function CommandPalette() {
       window.removeEventListener("alxprgs-command", show);
     };
   }, []);
+  return { open, setOpen };
+}
+
+export function CommandPalette() {
+  const { open, setOpen } = useCommandShortcut();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const items = [
     { name: "Учётная запись", path: "/" },
     { name: "Безопасность", path: "/account/security" },

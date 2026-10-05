@@ -1149,3 +1149,9 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-05T18:10:53.9596707+03:00 — BOOTSTRAP-PASSWORD-01 blocked (implementation ready): обязательные unit regressions пока не выполнены, причина native Python dependencies/libpq unavailable. Условие: совместимое Python окружение с проектными dependencies; продолжение start владельцем без reset.
 
 2026-10-05T19:14:45+03:00 — BOOTSTRAP-PASSWORD-01 done, Codex; начало2026-10-05T18:08:22.7746214+03:00. Совместимый Python3.13/supplemental Sentry найден; обязательные bootstrap unit regressions в группе27PASS+4subtests, Ruff/typesPASS. Единая policy/invalid-no-writes/TTY retry подтверждены. Реальный интерактивный bootstrap у владельца отдельно не воспроизводился; unit-блокер снят, защита не ослаблена.
+
+2026-10-05T19:20:50+03:00 — PROJECT-PR-01 in_progress: [PR7](https://github.com/alxprgstech/sso/pull/7), source089ed932ae28deb024c6ce0da28c45a1dbc6be46 отправлен. [CI](https://github.com/alxprgstech/sso/actions/runs/37339819853) и CodeScene выполняются; финальный outcome не подтверждён.
+
+2026-10-05T19:23:23+03:00 — PROJECT-PR-01 in_progress: Windows8dot3 fixture canonicalization и9files CodeScene refactor запланированы до изменений; критерий — те же regression assertions и все3remotequalitygates, без suppression/threshold changes.
+
+2026-10-05T19:52:58+03:00 — PROJECT-PR-01 in_progress: Windows/PG/SVG/CodeScene source fixes реализованы; all local gates и browser37PASS. Далее новыйcommit/normalpush, новыйremoteCI; успех ещё не заявлен.

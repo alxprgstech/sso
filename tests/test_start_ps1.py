@@ -71,7 +71,8 @@ function docker-compose {{
     def test_start_passes_compose_as_separate_arguments(self) -> None:
         for fallback in (False, True):
             with self.subTest(fallback=fallback), tempfile.TemporaryDirectory() as directory:
-                tmp_path = Path(directory)
+                # PSScriptRoot expands existing Windows 8.3 directory names.
+                tmp_path = Path(directory).resolve()
                 fixture = (
                     "SSO_RUNTIME_PASSWORD=synthetic-runtime\n"  # pragma: allowlist secret
                     "SSO_MIGRATOR_PASSWORD=synthetic-migrator\n"  # pragma: allowlist secret

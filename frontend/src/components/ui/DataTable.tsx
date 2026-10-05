@@ -7,6 +7,70 @@ export interface Column<T> {
   render: (row: T) => ReactNode;
   sortValue?: (row: T) => string | number;
 }
+type Sort = { id: string; direction: 1 | -1 } | null;
+
+function compareValues(left: string | number, right: string | number) {
+  if (typeof left === "number" && typeof right === "number")
+    return left - right;
+  return String(left).localeCompare(String(right), "ru");
+}
+
+function useSortedRows<T>(columns: Column<T>[], rows: T[], sort: Sort) {
+  return useMemo(() => {
+    const column = columns.find((column) => column.id === sort?.id);
+    const value = column?.sortValue;
+    if (!sort || !value) return rows;
+    return [...rows].sort(
+      (a, b) => compareValues(value(a), value(b)) * sort.direction,
+    );
+  }, [columns, rows, sort]);
+}
+
+function ariaSort(columnId: string, sort: Sort) {
+  if (sort?.id !== columnId) return undefined;
+  return sort.direction === 1 ? "ascending" : "descending";
+}
+
+function nextSort(columnId: string, sort: Sort): NonNullable<Sort> {
+  const descending = sort?.id === columnId && sort.direction === 1;
+  return { id: columnId, direction: descending ? -1 : 1 };
+}
+
+function SortIndicator({ direction }: { direction: 1 | -1 | undefined }) {
+  if (!direction) return null;
+  return direction === 1 ? (
+    <ArrowUp size={14} aria-hidden="true" />
+  ) : (
+    <ArrowDown size={14} aria-hidden="true" />
+  );
+}
+
+function ColumnHeader<T>({
+  column,
+  sort,
+  onSort,
+}: {
+  column: Column<T>;
+  sort: Sort;
+  onSort: (value: NonNullable<Sort>) => void;
+}) {
+  const direction = sort?.id === column.id ? sort.direction : undefined;
+  return (
+    <th scope="col" aria-sort={ariaSort(column.id, sort)}>
+      {column.sortValue ? (
+        <Button
+          variant="ghost"
+          onClick={() => onSort(nextSort(column.id, sort))}
+        >
+          {column.label}
+          <SortIndicator direction={direction} />
+        </Button>
+      ) : (
+        column.label
+      )}
+    </th>
+  );
+}
 export function DataTable<T>({
   columns,
   rows,
@@ -24,22 +88,8 @@ export function DataTable<T>({
   empty?: string;
   caption: string;
 }) {
-  const [sort, setSort] = useState<{ id: string; direction: 1 | -1 } | null>(
-    null,
-  );
-  const visible = useMemo(() => {
-    const column = columns.find((column) => column.id === sort?.id);
-    if (!sort || !column?.sortValue) return rows;
-    return [...rows].sort((a, b) => {
-      const left = column.sortValue!(a),
-        right = column.sortValue!(b);
-      return (
-        (typeof left === "number" && typeof right === "number"
-          ? left - right
-          : String(left).localeCompare(String(right), "ru")) * sort.direction
-      );
-    });
-  }, [columns, rows, sort]);
+  const [sort, setSort] = useState<Sort>(null);
+  const visible = useSortedRows(columns, rows, sort);
   if (loading) return <Skeleton label={`Загрузка: ${caption}`} rows={4} />;
   if (error) return <Alert>{error}</Alert>;
   if (!rows.length) return <EmptyState title={empty} />;
@@ -52,42 +102,12 @@ export function DataTable<T>({
         <thead>
           <tr>
             {columns.map((column) => (
-              <th
+              <ColumnHeader
                 key={column.id}
-                scope="col"
-                aria-sort={
-                  sort?.id === column.id
-                    ? sort.direction === 1
-                      ? "ascending"
-                      : "descending"
-                    : undefined
-                }
-              >
-                {column.sortValue ? (
-                  <Button
-                    variant="ghost"
-                    onClick={() =>
-                      setSort({
-                        id: column.id,
-                        direction:
-                          sort?.id === column.id && sort.direction === 1
-                            ? -1
-                            : 1,
-                      })
-                    }
-                  >
-                    {column.label}
-                    {sort?.id === column.id &&
-                      (sort.direction === 1 ? (
-                        <ArrowUp size={14} aria-hidden="true" />
-                      ) : (
-                        <ArrowDown size={14} aria-hidden="true" />
-                      ))}
-                  </Button>
-                ) : (
-                  column.label
-                )}
-              </th>
+                column={column}
+                sort={sort}
+                onSort={setSort}
+              />
             ))}
           </tr>
         </thead>

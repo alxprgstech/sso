@@ -5,6 +5,7 @@ import { test, expect, type Page } from "@playwright/test";
 import type { UserProfile } from "../src/types/api";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { topologyDistances } from "./helpers/topology";
 
 const themeKey = "alxprgs.ui.theme.v1";
 const brandManifest = JSON.parse(
@@ -309,59 +310,7 @@ test("infrastructure links meet the center and each card after resizing", async 
   ]) {
     await page.setViewportSize(viewport);
     await expect(page.locator(".topology-node")).toHaveCount(4);
-    const distances = await page.evaluate(() => {
-      const core = document
-        .querySelector(".topology-core")!
-        .getBoundingClientRect();
-      const nodes = [...document.querySelectorAll(".topology-node")].map(
-        (node) => node.getBoundingClientRect(),
-      );
-      const svg = document.querySelector<SVGSVGElement>(".topology-links")!;
-      const segments: { start: DOMPoint; end: DOMPoint }[] = [];
-      for (const shape of svg.querySelectorAll(
-        "path:not(.signal), line:not(.signal)",
-      )) {
-        const matrix = (shape as SVGGraphicsElement).getScreenCTM()!;
-        if (shape instanceof SVGLineElement) {
-          segments.push({
-            start: new DOMPoint(
-              shape.x1.baseVal.value,
-              shape.y1.baseVal.value,
-            ).matrixTransform(matrix),
-            end: new DOMPoint(
-              shape.x2.baseVal.value,
-              shape.y2.baseVal.value,
-            ).matrixTransform(matrix),
-          });
-        } else {
-          // Existing straight paths are included so this regression also diagnoses the old geometry.
-          const matches = shape
-            .getAttribute("d")!
-            .matchAll(/M([\d.]+)\s+([\d.]+)L([\d.]+)\s+([\d.]+)/g);
-          for (const match of matches)
-            segments.push({
-              start: new DOMPoint(
-                Number(match[1]),
-                Number(match[2]),
-              ).matrixTransform(matrix),
-              end: new DOMPoint(
-                Number(match[3]),
-                Number(match[4]),
-              ).matrixTransform(matrix),
-            });
-        }
-      }
-      return segments.map((segment, index) => ({
-        core: Math.hypot(
-          segment.start.x - (core.left + core.width / 2),
-          segment.start.y - (core.top + core.height / 2),
-        ),
-        node: Math.hypot(
-          segment.end.x - (nodes[index].left + nodes[index].width / 2),
-          segment.end.y - (nodes[index].top + nodes[index].height / 2),
-        ),
-      }));
-    });
+    const distances = await page.evaluate(topologyDistances);
     expect(distances).toHaveLength(4);
     for (const distance of distances) {
       expect(distance.core).toBeLessThan(2);

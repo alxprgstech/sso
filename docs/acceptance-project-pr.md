@@ -29,4 +29,8 @@ Node и Python запускались по абсолютным путям, fron
 
 ## Удалённые результаты
 
-PR и Actions пока не созданы. Итоговый SHA, ссылка, обязательные jobs, внешние checks и ограничения будут добавлены после фактического исполнения. GitHub connector HTTP403 заменён работающим Git/API с существующей авторизацией; visibility репозитория не изменялась. `.env`, credentials, ignored build/test artifacts не входят в commit.
+Ссылки, SHA и outcomes сохраняются в хронологии ниже по мере фактического исполнения; локальный PASS не подменяет remote CI. GitHub connector HTTP403 заменён работающим Git/API с существующей авторизацией; visibility репозитория не изменялась. `.env`, credentials, ignored build/test artifacts не входят в commit.
+
+2026-10-05T19:20:50+03:00: создан [PR7](https://github.com/alxprgstech/sso/pull/7), source089ed932ae28deb024c6ce0da28c45a1dbc6be46. [CI37339819853](https://github.com/alxprgstech/sso/actions/runs/37339819853) и CodeScene7818274 ещё выполняются;2externalSESjobs skipped по PR policy/CI03, не live delivery. Финальный local docs gate18UTF8/123links/0missing/whitespacePASS.
+
+2026-10-05T19:52:58+03:00: первый CI089ed93 завершился6requiredPASS/3FAIL/2SESskip; CodeScene7818274 failed3gates. Windows короткийTEMP path исправлен canonical resolve; PG assertion обновлён под15..128 и4invalid/no-write cases; SVG -text с CR-at-EOL и scoped re-add сохраняют exact4indexblob/manifest/worktree. UI разделён на используемые секции/lifecycle/sorting/request helpers, geometry сохраняет legacy paths и прежние4viewports/assertions. Final local lint/types/test-types, components37/17.55s/exit0, unit13, build2.61s, Windows/bootstrap27+4subtests/44.40s, full37browserUI/2.8m/exit0, Ruff/scanner135/0new/control rejected и docs links PASS. PG new regression пока не исполнялся локально; обязательный remote job проверит его. CodeScene profile/suppressions/thresholds и security invariants сохранены.

@@ -52,6 +52,8 @@ Motion: auth-step/layout, modal entry, selected navigation. CSS state/copy/succe
 
 ## Проверки
 
+`DashboardPage` сохраняет единственный account controller и выбирает конечную секцию маршрута. Используемые profile/security/sessions/privacy формы находятся в `src/features/account/AccountSections.tsx`; их view model типизирован, capability gates и lifetime секретов остаются прежними. Общий lifecycle admin-запроса сохраняет request-ID guards для success/error/loading и отмену устаревших ответов. Dialog отдельно управляет stack/inert и focus handoff; DataTable отдельно вычисляет сортировку и доступные заголовки. [Причина декомпозиции и альтернативы](adr/0021-frontend-design-platform.md), [регрессии и CI](acceptance-project-pr.md).
+
 Из `frontend/` после `npm ci`:
 
 ```text

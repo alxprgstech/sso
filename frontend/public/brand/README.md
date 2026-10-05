@@ -9,3 +9,5 @@
 Темы не перекрашивают artwork. Светлая backing surface сохраняет читаемость исходного navy wordmark и промежутков mark в Dark/Light. Функциональные иконки принадлежат Lucide; бренд ему не подменяется. Авторизационная SVG-схема не является источником доверия для OIDC.
 
 Browser regression проверяет реальные локальные response bytes по manifest, loaded image/currentSrc на desktop/mobile в обеих темах, отсутствие внешних image requests, SVG favicon и navigation hit target. SVG проверен на отсутствие script/foreignObject/image/external href/event handler/DOCTYPE/entities; CSP не менялась.
+
+`.gitattributes` отключает преобразование строк только для локальных брендовых SVG: Git сохраняет manifest bytes одинаковыми в Windows/Linux checkout. Для derived mark сохраняется его исходная сериализация; строгие browser size/SHA-256 assertions не нормализуют и не подменяют проверяемый файл.

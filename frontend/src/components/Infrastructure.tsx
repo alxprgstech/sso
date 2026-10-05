@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+  type PointerEvent,
+} from "react";
 import { useReducedMotion } from "motion/react";
 import { Box, Database, Fingerprint, Layers } from "lucide-react";
 
@@ -16,12 +22,7 @@ const nodes = [
   },
 ];
 
-export default function Infrastructure() {
-  const reduced = useReducedMotion();
-  const ref = useRef<HTMLDivElement>(null);
-  const bounds = useRef<DOMRect | null>(null);
-  const pointer = useRef({ x: 50, y: 40 });
-  const frame = useRef(0);
+function useDocumentVisibility() {
   const [visible, setVisible] = useState(
     document.visibilityState === "visible",
   );
@@ -30,43 +31,55 @@ export default function Infrastructure() {
     document.addEventListener("visibilitychange", changed);
     return () => document.removeEventListener("visibilitychange", changed);
   }, []);
+  return visible;
+}
+
+function usePointerLighting(ref: RefObject<HTMLDivElement>, running: boolean) {
+  const bounds = useRef<DOMRect | null>(null);
+  const pointer = useRef({ x: 50, y: 40 });
+  const frame = useRef(0);
   useEffect(
     () => () => {
       cancelAnimationFrame(frame.current);
       frame.current = 0;
     },
-    [reduced, visible],
+    [running],
   );
   // One measurement on entry and at most one style write per pointer frame.
   // No React render loop; hidden/reduced-motion scenes stay still.
+  return {
+    onPointerEnter: () => {
+      bounds.current = ref.current?.getBoundingClientRect() || null;
+    },
+    onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
+      const rect = bounds.current;
+      if (!running || !rect) return;
+      pointer.current = {
+        x: ((event.clientX - rect.left) / rect.width) * 100,
+        y: ((event.clientY - rect.top) / rect.height) * 100,
+      };
+      if (frame.current) return;
+      frame.current = requestAnimationFrame(() => {
+        frame.current = 0;
+        ref.current?.style.setProperty("--pointer-x", `${pointer.current.x}%`);
+        ref.current?.style.setProperty("--pointer-y", `${pointer.current.y}%`);
+      });
+    },
+  };
+}
+
+export default function Infrastructure() {
+  const reduced = useReducedMotion();
+  const visible = useDocumentVisibility();
+  const ref = useRef<HTMLDivElement>(null);
+  const running = !reduced && visible;
+  const pointerEvents = usePointerLighting(ref, running);
   return (
     <div
       ref={ref}
       className="infrastructure"
-      data-running={!reduced && visible}
-      onPointerEnter={() => {
-        bounds.current = ref.current?.getBoundingClientRect() || null;
-      }}
-      onPointerMove={(event) => {
-        const rect = bounds.current;
-        if (reduced || !visible || !rect) return;
-        pointer.current = {
-          x: ((event.clientX - rect.left) / rect.width) * 100,
-          y: ((event.clientY - rect.top) / rect.height) * 100,
-        };
-        if (frame.current) return;
-        frame.current = requestAnimationFrame(() => {
-          frame.current = 0;
-          ref.current?.style.setProperty(
-            "--pointer-x",
-            `${pointer.current.x}%`,
-          );
-          ref.current?.style.setProperty(
-            "--pointer-y",
-            `${pointer.current.y}%`,
-          );
-        });
-      }}
+      data-running={running}
+      {...pointerEvents}
     >
       <div className="topology-light" />
       <div className="topology-label">

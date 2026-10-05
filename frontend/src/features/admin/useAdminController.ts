@@ -9,6 +9,25 @@ import type {
   AuditEventItem,
   SystemStatus,
 } from "../../types/api";
+
+async function loadLatestRequest<T>(request: {
+  load: () => Promise<T>;
+  isCurrent: () => boolean;
+  success: (value: T) => void;
+  failure: (error: unknown) => void;
+  setLoading: (loading: boolean) => void;
+}) {
+  request.setLoading(true);
+  try {
+    const value = await request.load();
+    if (request.isCurrent()) request.success(value);
+  } catch (error: unknown) {
+    if (request.isCurrent()) request.failure(error);
+  } finally {
+    if (request.isCurrent()) request.setLoading(false);
+  }
+}
+
 export function useAdminController(section: string | undefined) {
   const { confirm, notify } = useFeedback();
   const [pageError, setPageError] = useState("");
@@ -75,77 +94,67 @@ export function useAdminController(section: string | undefined) {
   const [modeUpdating, setModeUpdating] = useState(false);
 
   // Загрузчики данных
-  const loadUsers = async () => {
+  const loadUsers = () => {
     const requestId = ++requestIds.current.users;
     setPageError("");
-    setUsersLoading(true);
-    try {
-      const data = await api.getAdminUsers(
-        usersOffset,
-        50,
-        search || undefined,
-      );
-      if (requestId !== requestIds.current.users) return;
-      setUsers(data);
-    } catch (err: unknown) {
-      if (requestId !== requestIds.current.users) return;
-      setUsers([]);
-      setPageError(errorMessage(err, "Ошибка загрузки пользователей"));
-    } finally {
-      if (requestId === requestIds.current.users) setUsersLoading(false);
-    }
+    return loadLatestRequest({
+      load: () => api.getAdminUsers(usersOffset, 50, search || undefined),
+      isCurrent: () => requestId === requestIds.current.users,
+      success: setUsers,
+      failure: (error) => {
+        setUsers([]);
+        setPageError(errorMessage(error, "Ошибка загрузки пользователей"));
+      },
+      setLoading: setUsersLoading,
+    });
   };
 
-  const loadClients = async () => {
+  const loadClients = () => {
     const requestId = ++requestIds.current.clients;
     setPageError("");
-    setClientsLoading(true);
-    try {
-      const data = await api.getAdminClients();
-      if (requestId !== requestIds.current.clients) return;
-      setClients(data);
-    } catch (err: unknown) {
-      if (requestId !== requestIds.current.clients) return;
-      setClients([]);
-      setPageError(errorMessage(err, "Ошибка загрузки клиентов"));
-    } finally {
-      if (requestId === requestIds.current.clients) setClientsLoading(false);
-    }
+    return loadLatestRequest({
+      load: () => api.getAdminClients(),
+      isCurrent: () => requestId === requestIds.current.clients,
+      success: setClients,
+      failure: (error) => {
+        setClients([]);
+        setPageError(errorMessage(error, "Ошибка загрузки клиентов"));
+      },
+      setLoading: setClientsLoading,
+    });
   };
 
-  const loadAudit = async () => {
+  const loadAudit = () => {
     const requestId = ++requestIds.current.audit;
     setAuditError(null);
-    setAuditLoading(true);
-    try {
-      const data = await api.getAuditEvents(auditOffset, 50, auditFilter);
-      if (requestId !== requestIds.current.audit) return;
-      setAuditEvents(data);
-    } catch (err: unknown) {
-      if (requestId !== requestIds.current.audit) return;
-      setAuditEvents([]);
-      setAuditError(errorMessage(err, "Ошибка загрузки аудита"));
-    } finally {
-      if (requestId === requestIds.current.audit) setAuditLoading(false);
-    }
+    return loadLatestRequest({
+      load: () => api.getAuditEvents(auditOffset, 50, auditFilter),
+      isCurrent: () => requestId === requestIds.current.audit,
+      success: setAuditEvents,
+      failure: (error) => {
+        setAuditEvents([]);
+        setAuditError(errorMessage(error, "Ошибка загрузки аудита"));
+      },
+      setLoading: setAuditLoading,
+    });
   };
 
-  const loadSystemStatus = async () => {
+  const loadSystemStatus = () => {
     const requestId = ++requestIds.current.system;
     setPageError("");
-    setSystemLoading(true);
-    try {
-      const data = await api.getSystemStatus();
-      if (requestId !== requestIds.current.system) return;
-      setSystemStatus(data);
-      setSelectedMode(data.registration_mode as "closed" | "open");
-    } catch (err: unknown) {
-      if (requestId !== requestIds.current.system) return;
-      setSystemStatus(null);
-      setPageError(errorMessage(err, "Ошибка загрузки состояния системы"));
-    } finally {
-      if (requestId === requestIds.current.system) setSystemLoading(false);
-    }
+    return loadLatestRequest({
+      load: () => api.getSystemStatus(),
+      isCurrent: () => requestId === requestIds.current.system,
+      success: (value) => {
+        setSystemStatus(value);
+        setSelectedMode(value.registration_mode as "closed" | "open");
+      },
+      failure: (error) => {
+        setSystemStatus(null);
+        setPageError(errorMessage(error, "Ошибка загрузки состояния системы"));
+      },
+      setLoading: setSystemLoading,
+    });
   };
 
   useEffect(() => {
