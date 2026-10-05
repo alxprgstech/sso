@@ -256,6 +256,17 @@ export function useAdminController(section: string | undefined) {
   };
 
   // Обработчики клиентов
+  const revealClientSecret = (client: {
+    client_id: string;
+    client_secret?: string | null;
+  }) => {
+    if (!client.client_secret) return;
+    setSecretModal({
+      clientId: client.client_id,
+      secret: client.client_secret,
+    });
+  };
+
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mutationBusy) return;
@@ -281,9 +292,7 @@ export function useAdminController(section: string | undefined) {
       setNewRedirectUris("");
       await loadClients();
 
-      if (res.client_secret) {
-        setSecretModal({ clientId: res.client_id, secret: res.client_secret });
-      }
+      revealClientSecret(res);
     } catch (err: unknown) {
       setPageError(errorMessage(err, "Ошибка создания клиента"));
     } finally {
@@ -300,9 +309,7 @@ export function useAdminController(section: string | undefined) {
       return;
     try {
       const res = await api.rotateClientSecret(clientId);
-      if (res.client_secret) {
-        setSecretModal({ clientId: res.client_id, secret: res.client_secret });
-      }
+      revealClientSecret(res);
     } catch (err: unknown) {
       setPageError(errorMessage(err, "Ошибка ротации секрета"));
     }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { DataTable } from "../../components/ui/DataTable";
 import { Badge } from "../../components/ui/controls";
@@ -17,6 +18,26 @@ import type { useAccountController } from "./useAccountController";
 export type AccountViewModel = ReturnType<typeof useAccountController> & {
   user: NonNullable<ReturnType<typeof useAccountController>["user"]>;
 };
+
+function FeatureStatus({
+  enabled,
+  label = "Доступно",
+  warning = false,
+}: {
+  enabled: boolean;
+  label?: string;
+  warning?: boolean;
+}) {
+  const enabledTone = warning
+    ? "bg-warning-soft text-warning"
+    : "bg-success-soft text-success";
+  const tone = enabled ? enabledTone : "bg-raised text-secondary";
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded font-medium ${tone}`}>
+      {enabled ? label : "Недоступно"}
+    </span>
+  );
+}
 
 export function AccountSecurity({
   controller,
@@ -42,10 +63,9 @@ export function AccountSecurity({
           Безопасность и второй фактор
         </h2>
         <div className="space-y-6">
-          <AccountTotp controller={controller} />
-          <AccountPasskeys controller={controller} />
-          <AccountRecoveryCodes controller={controller} />
-          <AccountEmailVerification controller={controller} />
+          {securityFeatures(controller).map((feature) => (
+            <SecurityFeature key={feature.testId} {...feature} />
+          ))}
         </div>
       </div>
     </>
@@ -368,42 +388,6 @@ export function AccountSessionTable({
   );
 }
 
-export function AccountTotp({ controller }: { controller: AccountViewModel }) {
-  const { user, capabilities } = controller;
-  return (
-    <div className="security-item space-y-4" data-testid="totp-section">
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <h3 className="font-semibold text-primary">
-          Приложение-аутентификатор (TOTP)
-        </h3>
-        <span
-          className={`text-xs px-2 py-0.5 rounded font-medium ${
-            capabilities?.totp_enabled
-              ? "bg-success-soft text-success"
-              : "bg-raised text-secondary"
-          }`}
-        >
-          {capabilities?.totp_enabled
-            ? user.has_totp
-              ? "Активен"
-              : "Доступно"
-            : "Недоступно"}
-        </span>
-      </div>
-      <p className="text-xs text-secondary">
-        Подтверждайте вход шестизначным кодом из приложения-аутентификатора.
-      </p>
-      {!capabilities?.totp_enabled ? (
-        <div className="text-xs text-tertiary italic">
-          Администратор пока не включил этот способ защиты.
-        </div>
-      ) : (
-        <TotpControls controller={controller} />
-      )}
-    </div>
-  );
-}
-
 export function TotpControls({ controller }: { controller: AccountViewModel }) {
   const {
     user,
@@ -575,41 +559,6 @@ export function TotpQrCode({ controller }: { controller: AccountViewModel }) {
   );
 }
 
-export function AccountPasskeys({
-  controller,
-}: {
-  controller: AccountViewModel;
-}) {
-  const { capabilities } = controller;
-  return (
-    <div className="security-item space-y-4" data-testid="passkeys-section">
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <h3 className="font-semibold text-primary">Ключи доступа (Passkey)</h3>
-        <span
-          className={`text-xs px-2 py-0.5 rounded font-medium ${
-            capabilities?.passkey_enabled
-              ? "bg-success-soft text-success"
-              : "bg-raised text-secondary"
-          }`}
-        >
-          {capabilities?.passkey_enabled ? "Доступно" : "Недоступно"}
-        </span>
-      </div>
-      <p className="text-xs text-secondary">
-        Вход без пароля с использованием биометрии или аппаратного ключа на
-        вашем устройстве.
-      </p>
-      {!capabilities?.passkey_enabled ? (
-        <div className="text-xs text-tertiary italic">
-          Администратор пока не включил ключи доступа.
-        </div>
-      ) : (
-        <PasskeyControls controller={controller} />
-      )}
-    </div>
-  );
-}
-
 export function PasskeyControls({
   controller,
 }: {
@@ -733,46 +682,6 @@ export function PasskeyList({ controller }: { controller: AccountViewModel }) {
   );
 }
 
-export function AccountRecoveryCodes({
-  controller,
-}: {
-  controller: AccountViewModel;
-}) {
-  const { capabilities } = controller;
-  return (
-    <div
-      className="security-item space-y-4"
-      data-testid="recovery-codes-section"
-    >
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <h3 className="font-semibold text-primary">
-          Резервные коды восстановления
-        </h3>
-        <span
-          className={`text-xs px-2 py-0.5 rounded font-medium ${
-            capabilities?.recovery_codes_enabled
-              ? "bg-success-soft text-success"
-              : "bg-raised text-secondary"
-          }`}
-        >
-          {capabilities?.recovery_codes_enabled ? "Доступно" : "Недоступно"}
-        </span>
-      </div>
-      <p className="text-xs text-secondary">
-        Одноразовые резервные коды для восстановления доступа при утрате второго
-        фактора.
-      </p>
-      {!capabilities?.recovery_codes_enabled ? (
-        <div className="text-xs text-tertiary italic">
-          Администратор пока не включил резервные коды.
-        </div>
-      ) : (
-        <RecoveryControls controller={controller} />
-      )}
-    </div>
-  );
-}
-
 export function RecoveryControls({
   controller,
 }: {
@@ -860,52 +769,6 @@ export function RecoveryCodeDisplay({
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-export function AccountEmailVerification({
-  controller,
-}: {
-  controller: AccountViewModel;
-}) {
-  const { user, capabilities } = controller;
-  return (
-    <div
-      className="security-item space-y-4"
-      data-testid="email-verification-section"
-    >
-      <div className="flex flex-wrap gap-3 justify-between items-center">
-        <h3 className="font-semibold text-primary">
-          Подтверждение адреса почты
-        </h3>
-        <span
-          className={`text-xs px-2 py-0.5 rounded font-medium ${
-            capabilities?.email_verification_enabled
-              ? user.email_verified
-                ? "bg-success-soft text-success"
-                : "bg-warning-soft text-warning"
-              : "bg-raised text-secondary"
-          }`}
-        >
-          {capabilities?.email_verification_enabled
-            ? user.email_verified
-              ? "Подтверждён"
-              : "Не подтверждён"
-            : "Недоступно"}
-        </span>
-      </div>
-      <p className="text-xs text-secondary">
-        Отправка шестизначного кода и одноразовой ссылки на адрес электронной
-        почты.
-      </p>
-      {!capabilities?.email_verification_enabled ? (
-        <div className="text-xs text-tertiary italic">
-          Не удалось загрузить доступность подтверждения почты.
-        </div>
-      ) : (
-        <EmailVerificationControls controller={controller} />
-      )}
     </div>
   );
 }
@@ -1011,4 +874,85 @@ export function AccountPrivacy() {
       </p>
     </section>
   );
+}
+
+type SecurityFeatureProps = {
+  enabled: boolean;
+  label?: string;
+  warning?: boolean;
+  testId: string;
+  title: string;
+  description: string;
+  disabledText: string;
+  children: ReactNode;
+};
+
+function SecurityFeature(feature: SecurityFeatureProps) {
+  return (
+    <div className="security-item space-y-4" data-testid={feature.testId}>
+      <div className="flex flex-wrap gap-3 justify-between items-center">
+        <h3 className="font-semibold text-primary">{feature.title}</h3>
+        <FeatureStatus
+          enabled={feature.enabled}
+          label={feature.label}
+          warning={feature.warning}
+        />
+      </div>
+      <p className="text-xs text-secondary">{feature.description}</p>
+      {feature.enabled ? (
+        feature.children
+      ) : (
+        <div className="text-xs text-tertiary italic">
+          {feature.disabledText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function securityFeatures(
+  controller: AccountViewModel,
+): SecurityFeatureProps[] {
+  const { capabilities, user } = controller;
+  return [
+    {
+      enabled: Boolean(capabilities?.totp_enabled),
+      label: user.has_totp ? "Активен" : "Доступно",
+      testId: "totp-section",
+      title: "Приложение-аутентификатор (TOTP)",
+      description:
+        "Подтверждайте вход шестизначным кодом из приложения-аутентификатора.",
+      disabledText: "Администратор пока не включил этот способ защиты.",
+      children: <TotpControls controller={controller} />,
+    },
+    {
+      enabled: Boolean(capabilities?.passkey_enabled),
+      testId: "passkeys-section",
+      title: "Ключи доступа (Passkey)",
+      description:
+        "Вход без пароля с использованием биометрии или аппаратного ключа на вашем устройстве.",
+      disabledText: "Администратор пока не включил ключи доступа.",
+      children: <PasskeyControls controller={controller} />,
+    },
+    {
+      enabled: Boolean(capabilities?.recovery_codes_enabled),
+      testId: "recovery-codes-section",
+      title: "Резервные коды восстановления",
+      description:
+        "Одноразовые резервные коды для восстановления доступа при утрате второго фактора.",
+      disabledText: "Администратор пока не включил резервные коды.",
+      children: <RecoveryControls controller={controller} />,
+    },
+    {
+      enabled: Boolean(capabilities?.email_verification_enabled),
+      label: user.email_verified ? "Подтверждён" : "Не подтверждён",
+      warning: !user.email_verified,
+      testId: "email-verification-section",
+      title: "Подтверждение адреса почты",
+      description:
+        "Отправка шестизначного кода и одноразовой ссылки на адрес электронной почты.",
+      disabledText: "Не удалось загрузить доступность подтверждения почты.",
+      children: <EmailVerificationControls controller={controller} />,
+    },
+  ];
 }

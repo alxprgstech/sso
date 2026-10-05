@@ -1156,6 +1156,8 @@ P1; done; зависимости: существующий email delivery; на�
 
 2026-10-05T19:52:58+03:00 — PROJECT-PR-01 in_progress: Windows/PG/SVG/CodeScene source fixes реализованы; all local gates и browser37PASS. Далее новыйcommit/normalpush, новыйremoteCI; успех ещё не заявлен.
 
+2026-10-05T20:08:20+03:00 — PROJECT-PR-01 in_progress: все9Actions на0828424PASS, CodeScene2dup fixes готовы, local regressionPASS. Новыйcommit/CI и финальныйdocs checkpoint остаются обязательными.
+
 ### WEB-ROBOTS-01 — robots.txt
 - P2; in_progress; начало: 2026-10-06T02:42:43.7429774+03:00; исполнитель: Codex; требования ARCH-05, DOC-TRACK-02–07; зависимость: существующая статическая сборка frontend.
 - План: добавить public/robots.txt с запретом обхода всех путей; документировать; проверить production build и HTTP-раздачу Vite preview.
@@ -1166,3 +1168,7 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-06T02:44:15.0616710+03:00 — WEB-ROBOTS-01 blocked: корректировка ошибочного done выше. Реализация и build завершены; обязательная по локальному плану HTTP-проверка заблокирована loopback socket permissions. Для завершения проверить GET /robots.txt (200, text/plain, две директивы) вне ограничения среды.
 
 2026-10-06T02:45:19.4673799+03:00 — WEB-ROBOTS-01: подготовка локального commit по поручению владельца; чужие изменения исключаются. HTTP-критерий остаётся blocked.
+
+2026-10-06T02:46:53.4226517+03:00 — PROJECT-PR-01: этап локального commit оставшихся правок in_progress по поручению владельца. Критерий: frontend lint/types/components и staged diff PASS, все оставшиеся изменения сохранены; remote CI отдельно.
+
+2026-10-06T02:49:38.3108298+03:00 — PROJECT-PR-01: этап локального commit done; все оставшиеся правки сохранены, lint/types/components37/secret135-0new/staged-whitespace PASS. Remote CI/CodeScene — отдельное продолжение, общая задача не закрыта.
