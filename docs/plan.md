@@ -1,5 +1,12 @@
 # План реализации ALXPRGS SSO
 
+### FRONTEND-REDESIGN-01: Полная миграция ALXPRGS Design Language v1
+
+- Приоритет P0; статус `done`; начало 2026-10-05T03:52:42.0367906+03:00; Codex; ветка `new/frontend-redesign`.
+- План, стабильные ID FR-01–08, зависимости и критерии: [frontend-redesign-plan.md](frontend-redesign-plan.md).
+- Завершение: 2026-10-05T14:46:25.6409088+03:00; FR-01–07 done. Итоговый full Nginx46/10, component37/unit13, PG625/16subtests/static/privacy/release/scanner/docs PASS. FR-08 planned вне обязательных критериев этой Goal; история failures в worklog/report.
+- Готовность: все 26 критериев задания владельца, включая настоящие браузерные и визуальные проверки; build сам по себе недостаточен. Без ослабления security/privacy/OIDC, без публикации/deployment.
+
 - Версия плана: 1.0.0
 - Дата создания: 2026-09-24T11:36:00+03:00
 - Статус: Активен
@@ -1105,3 +1112,13 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-05T00:40:06.4698225+03:00 — EMAIL-RESEND-01 commit/CI: implementation commit/push/draftPR6 и CI57 выполнены,9requiredPASS/2externalSES skipped. Actual container/PG/browser regressions закрыты. Финальная docs фиксацияactualresults и еёCI в процессе; failures отсутствуют.
 
 2026-10-05T00:41:16.6519935+03:00 — EMAIL-RESEND-01 commit/CI этап done по verified implementationff13c5c и CI57: commit/push/PR и9requiredjobsPASS. Docs checkpoint55054c9 отправлен; завершающий учёт не меняет приложение. Повтор CI final docs revision выполняется отдельно, его результат будет сообщён по фактическому run/SHA.
+
+2026-10-05T14:53:00.0750725+03:00 — LOCAL-RESET-01, Codex, P1, in_progress; SETUP-02/04, TEST-SETUP-04. Начало: 2026-10-05T14:53:00.0750725+03:00. План: исправить reset со старым .env, диагностику start, regression PowerShell/pwsh. Готовность: подтверждение/volume guards сохранены, тесты пройдены. Реальный сброс не выполняется.
+
+2026-10-05T14:55:22.7249366+03:00 — LOCAL-RESET-01 done; завершение 2026-10-05T14:55:22.7249366+03:00. Критерий scoped regression выполнен: 12 PASS; real Docker недоступен, не заявлен. Скрипты готовы к локальному запуску владельцем; данные сохранены.
+
+2026-10-05T15:24:53.3817979+03:00 — PROJECT-COMMIT-01 P1 in_progress; зависит от текущих LOCAL-RESET-01/FR изменений. Критерий: весь nonignored project diff сохранён одним локальным commit, secrets/whitespace checked.
+
+2026-10-05T15:28:49.0680006+03:00 — PROJECT-COMMIT-01: проверки done; локальный commit выполняется сейчас, проверка результата по git show/status; точка продолжения — review владельцем.
+
+2026-10-05T15:29:36.9404975+03:00 — PROJECT-COMMIT-01 done: проверки завершены, сохранение подготовленного проекта локальным commit выполняется следующим Git действием. Известные whitespace notices исходного reference Markdown/canonical SVG сохранены ради исходных bytes; обязательные security checks PASS. Продолжение: review commit владельцем, no push.

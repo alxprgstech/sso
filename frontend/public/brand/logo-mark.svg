@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="440 120 570 630" role="img" aria-label="ALXPRGS">
+<title>ALXPRGS</title>
+<defs>
+<linearGradient id="top" x1="590" y1="155" x2="966" y2="419" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0fcdf0"/><stop offset="1" stop-color="#0089ff"/></linearGradient>
+<linearGradient id="left" x1="468" y1="415" x2="688" y2="241" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#009cff"/><stop offset=".5" stop-color="#0061cb"/><stop offset="1" stop-color="#052b72"/></linearGradient>
+<linearGradient id="fold" x1="529" y1="474" x2="558" y2="361" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#034582"/><stop offset="1" stop-color="#006acc"/></linearGradient>
+<linearGradient id="bottom" x1="474" y1="501" x2="805" y2="698" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#00358e"/><stop offset="1" stop-color="#0097ff"/></linearGradient>
+<linearGradient id="green" x1="973" y1="424" x2="888" y2="638" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a0eb1a"/><stop offset="1" stop-color="#008714"/></linearGradient>
+<linearGradient id="bars" x1="815" y1="398" x2="687" y2="633" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#009cfa"/><stop offset=".55" stop-color="#0060bf"/><stop offset="1" stop-color="#062c71"/></linearGradient>
+</defs>
+<path fill="url(#left)" d="M458 494V317Q458 290 482 274L581 215Q619 194 650 219L753 296C704 284 655 318 643 376C596 365 545 405 549 455C514 449 482 469 458 494Z"/>
+<path fill="url(#fold)" d="M458 494V465Q458 434 491 414L606 347L643 376C593 365 544 407 549 455C517 450 483 469 458 494Z"/>
+<path fill="url(#top)" d="M581 215L692 152Q724 135 755 152L964 273Q991 289 991 316V371Q993 387 978 397L919 433Q908 441 898 429C820 352 744 287 650 219Q619 197 581 215Z"/>
+<path fill="url(#green)" d="M991 410V550Q992 582 969 597L886 647V493Q886 477 901 467Z"/>
+<path fill="url(#bars)" d="M658 402H828Q835 402 840 407L863 429Q867 432 867 442V446Q867 462 850 462H650Q627 461 627 438V433Q628 407 652 403Z M657 478H850Q866 478 866 493V521Q866 537 851 537H677L627 508V503Q628 479 657 478Z M704 554H850Q866 554 866 570V622Q866 642 847 637Z"/>
+<path fill="url(#bottom)" d="M458 534Q456 514 479 498Q519 472 561 494L856 663L756 720Q724 737 692 720L483 599Q458 585 458 555Z"/>
+</svg>

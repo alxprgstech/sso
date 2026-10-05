@@ -491,3 +491,12 @@ PR5 открыт, mergeable=true, другие ветки включены в ma
 ## EMAIL-RESEND-01 — третий selectable transport
 
 См. [отдельную матрицу и фактические проверки](acceptance-resend.md). Native Resend дополняет SES/SMTP, auth semantics сохраняются. Реальные письма и production приёмка не заявлены; full/enabled/static/build результаты фиксируются в матрице после исполнения.
+
+
+## FRONTEND-REDESIGN-01 — frontend platform: done
+
+Начало2026-10-05T03:52:42.0367906+03:00, завершение2026-10-05T14:46:25.6409088+03:00, Codex. [Матрица26, версии/команды/результаты/история failures](../FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [plan/continuation](frontend-redesign-plan.md), [ADR0021](adr/0021-frontend-design-platform.md), [brand provenance](../frontend/public/brand/README.md). Итоговый full Nginx campaign73f23772a99b42ea9c95d2873611a21c:46default/1.7m и10enabled/1.3m; component37/6.42s, unit13, ESLint/TypeScript/Ruff/mypy68/build, fullPG625/16subtests/297.08s, Sentry browser9/22.0s, offline private maps PASS. Secret scanner137/0new и synthetic control, UTF-8/local links/whitespace PASS. Сначала failed decorative chunk/Passkey loading states/focus race выявлены отрицательными assertions, исправлены; test weakening/retries отсутствуют. Исторические restricted-token failures сохранены.
+
+Визуально инспектированы dark/light desktop/mobile/short-height/dialog; canonical local assets проверены byte/hash/currentSrc/favicon/CSP. Собственный стенд остановлен с ownership и0clients guards, данные сохранены. Изменения локальные без commit/push/PR/deploy. Frontend приёмка не закрывает общую production GOAL-09; remote CI текущего diff, live HTTPS/email/Docker/Linux/hardware matrix не заявлены.
+
+2026-10-05T14:55:22.7249366+03:00 — LOCAL-RESET-01 / SETUP-02/04, TEST-SETUP-04: 12 unittest regression checks PASS (17.339s), Windows PowerShell/pwsh, bundled Python. Docker commands mocked; проверка реального Compose не выполнялась — executable отсутствует. Проверены legacy configuration, сохранность .env/отмена/volume guard/down failure и teardown rendering; защита БД/ручное подтверждение сохранены. Общая приёмка не закрывается.

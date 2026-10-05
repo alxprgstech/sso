@@ -1,14 +1,14 @@
 import type { Breadcrumb, Event, ErrorEvent } from "@sentry/react";
 import type { TransactionEvent } from "@sentry/core";
 
-const pages = new Set(["/", "/login", "/register", "/verify-email", "/admin", "/privacy", "/terms", "/cookies", "/data-consent", "/accept-terms", "/account-deletion"]);
+const pages = new Set(["/", "/login", "/register", "/verify-email", "/admin", "/privacy", "/terms", "/cookies", "/data-consent", "/accept-terms", "/account-deletion", "/account/security", "/account/sessions", "/account/privacy", "/admin/users", "/admin/applications", "/admin/sessions", "/admin/audit", "/admin/system"]);
 const apiRoutes = [
   /^\/api\/v1\/legal\/documents$/,
   /^\/api\/v1\/auth\/(legal-acceptance|account-deletion)(\/(reauthenticate|confirm-factor))?$/,
   /^\/api\/v1\/auth\/(capabilities|login|logout|me|change-password|sessions|register)$/,
   /^\/api\/v1\/auth\/register\/(confirm-code|confirm-link|preview-link|resend|confirm-gmail)$/,
   /^\/api\/v1\/(admin|mfa)\/[a-z-]+$/,
-  /^\/oauth\/(authorize|token|userinfo|revoke|logout)$/,
+  /^\/oauth\/(authorize|client-context|token|userinfo|revoke|logout)$/,
 ];
 
 export function canonicalRoute(value: string): string {

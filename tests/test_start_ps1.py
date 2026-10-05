@@ -68,7 +68,8 @@ function docker-compose {{
         for fallback in (False, True):
             with self.subTest(fallback=fallback), tempfile.TemporaryDirectory() as directory:
                 tmp_path = Path(directory)
-                (tmp_path / ".env").write_text("# Keep this file unchanged\n", encoding="utf-8")
+                (tmp_path / ".env").write_text(("SSO_RUNTIME_PASSWORD=synthetic-runtime\n"  # pragma: allowlist secret (synthetic fixture)
+                     "SSO_MIGRATOR_PASSWORD=synthetic-migrator\n")  # pragma: allowlist secret (synthetic fixture), encoding="utf-8")
                 result, log = self.run_start(tmp_path, fallback)
                 expected = (
                     "docker-compose up -d --build" if fallback else "docker compose up -d --build"
@@ -81,8 +82,23 @@ function docker-compose {{
                 self.assertNotIn("ALX_BUILD_SHA", (tmp_path / ".env").read_text(encoding="utf-8"))
                 self.assertEqual(
                     (tmp_path / ".env").read_text(encoding="utf-8"),
-                    "# Keep this file unchanged\n",
+                    ("SSO_RUNTIME_PASSWORD=synthetic-runtime\n"  # pragma: allowlist secret (synthetic fixture)
+                     "SSO_MIGRATOR_PASSWORD=synthetic-migrator\n")  # pragma: allowlist secret (synthetic fixture),
                 )
+
+    def test_legacy_env_refuses_start_with_recovery_instructions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = b"# legacy configuration\n"
+            (root / ".env").write_bytes(original)
+            result, log = self.run_start(root, False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("SSO_RUNTIME_PASSWORD", result.stdout)
+            self.assertIn("SSO_MIGRATOR_PASSWORD", result.stdout)
+            self.assertIn("docs/operations.md", result.stdout)
+            self.assertIn("reset-local.ps1", result.stdout)
+            self.assertNotIn("up -d --build", log.read_text(encoding="utf-8"))
+            self.assertEqual((root / ".env").read_bytes(), original)
 
     def test_generated_env_is_utf8_and_compose_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

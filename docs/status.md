@@ -1,3 +1,15 @@
+# LOCAL-RESET-01 — done
+
+2026-10-05T14:55:22.7249366+03:00 — Исправлен сброс старого .env без новых паролей ролей; start выдаёт инструкцию upgrade/reset и сохраняет конфигурацию. 12 regression tests PowerShell/pwsh PASS, git diff --check PASS. Docker недоступен; реальный запуск/сброс не проверены. Данные не удалены. Следующий шаг: запуск владельцем reset при ненужных данных либо сохранение БД по docs/operations.md. Чужие изменения frontend сохранены.
+
+# FRONTEND-REDESIGN-01 — done
+
+2026-10-05T14:46:25.6409088+03:00 — Codex, ветка `new/frontend-redesign`. Начало:2026-10-05T03:52:42.0367906+03:00. Выполнены все26 критериев frontend платформы ALXPRGS Design Language v1: реальный Tailwind, Router, headless/source-owned UI, themes/Geist/Lucide/Motion, account/admin/auth, локальный официальный бренд.
+
+Проверено: ESLint/TypeScript/Ruff/mypy68, component37/unit13, полный PostgreSQL625+16subtests, итоговый реальный Nginx46default/10enabled, Axe/theme/history/keyboard/CSP/UV, Sentry browser9/22.0s, offline release Debug IDs/private maps gate, scanner137/0new и synthetic control, UTF-8/links/whitespace. Пересечения не суммируются. Negative decorative chunk и Passkey GET states исправлены; обнаруженная гонка focus палитры устранена без ослабления теста. История failed запусков сохранена. [Отчёт и матрица26](../FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [план](frontend-redesign-plan.md), [brand provenance](../frontend/public/brand/README.md).
+
+Собственный PG/backend/Nginx/SMTP/Vite стенд остановлен с guards; порты свободны, данные сохранены. Изменения локальные; commit/push/PR/deploy/release/live mail не выполнялись. Следующий шаг — review рабочего diff владельцем. FR-08 planned как отдельное улучшение test cleanup diagnostics вне этой Goal. Remote CI текущего diff/production/hardware matrix не подтверждены; GOAL-09 не закрыта.
+
 # EMAIL-RESEND-01 — implementation и CI done
 
 2026-10-05T00:40:06.4698225+03:00, Codex. Commitff13c5c push, draft PR6 создан. CI57 all9requiredjobsPASS, externalSES2skipped; actual Compose и браузерные default/enabled проверки прошли. [Подробности](acceptance-resend.md), [CI](https://github.com/alxprgstech/sso/actions/runs/37236671323), [PR](https://github.com/alxprgstech/sso/pull/6). Результаты реализации и CI сохранены docs-only checkpoint; повтор CI финальной документальной ревизии проверяется через Actions API и сообщается отдельно, без приписывания этой записи результатов будущего SHA. No merge/deploy; CodeScene success не заявляется.
@@ -586,3 +598,8 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-04T19:35:09.7398701+03:00 — PR5-CI-01: quality local546tests/16subtests PASS, CI mypy61/frontend/Ruff/runtime lock/secret scan PASS. Перваягруппаготовакnormalpush; CodeScene и remote новогоSHA ещёpending.
 
 2026-10-04T19:54:47.5869966+03:00 — PR5-CI-01: вторичнаяqualityгруппа121+31+55 checks PASS, normalpushготов; CodeScene/exact-headBrowserиDocker ещёpending, in_progress.
+
+## PROJECT-COMMIT-01
+2026-10-05T15:28:49.0680006+03:00 — Все текущие изменения проекта подготовлены в new/frontend-redesign к локальному commit по поручению владельца. Secret scan137/0new/control PASS, regression12PASS, whitespacePASS; .env не включается. Результат commit и SHA проверяются после создания и сообщаются в чате. Push/PR не поручены.
+
+2026-10-05T15:29:36.9404975+03:00 — PROJECT-COMMIT-01: staged check имеет замечания к исходному reference Markdown и canonical SVG EOF; эти source bytes сохранены. Secret scan и12regressions PASS. Все файлы staged для локального commit; SHA будет в итоговом сообщении.

@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { sentryVitePlugin } from "@sentry/bundler-plugins/vite";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -19,7 +20,7 @@ const backendTarget = process.env.VITE_BACKEND_TARGET || "http://localhost:8000"
 // https://vitejs.dev/config/
 export default defineConfig({
   define: { __BUILD_IDENTITY__: JSON.stringify(identity) },
-  plugins: [react(), ...(releaseBuild ? [sentryVitePlugin({
+  plugins: [react(), tailwindcss(), ...(releaseBuild ? [sentryVitePlugin({
     org: "offline", project: "alxprgs-sso-frontend", telemetry: false, debug: false,
     sourcemaps: { disable: "disable-upload" },
     release: { name: identity.release, create: false, finalize: false },

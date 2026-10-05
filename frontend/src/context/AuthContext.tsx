@@ -14,7 +14,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -48,7 +50,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     init();
   }, []);
 
-  const login = async (username: string, password: string): Promise<LoginResponse> => {
+  const login = async (
+    username: string,
+    password: string,
+  ): Promise<LoginResponse> => {
     const res = await api.login(username, password);
     if ("user" in res) {
       await refreshUser();
@@ -57,16 +62,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    try {
-      await api.logout();
-    } finally {
-      setUser(null);
-      await refreshCapabilities();
-    }
+    await api.logout();
+    setUser(null);
+    await refreshCapabilities();
   };
 
   return (
-    <AuthContext.Provider value={{ user, capabilities, isLoading, login, logout, refreshUser, refreshCapabilities }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        capabilities,
+        isLoading,
+        login,
+        logout,
+        refreshUser,
+        refreshCapabilities,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

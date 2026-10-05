@@ -172,6 +172,21 @@ if (-not (Test-Path $envFile)) {
 }
 
 # 5. Запуск Docker Compose сервисов (SETUP-02)
+$existingConfig = [System.IO.File]::ReadAllText($envFile)
+$missingRoles = @()
+foreach ($name in @("SSO_RUNTIME_PASSWORD", "SSO_MIGRATOR_PASSWORD")) {
+    $processValue = [Environment]::GetEnvironmentVariable($name, "Process")
+    if ([string]::IsNullOrWhiteSpace($processValue) -and
+        $existingConfig -notmatch ('(?m)^\s*{0}\s*=\s*[^\s#]' -f $name)) {
+        $missingRoles += $name
+    }
+}
+if ($missingRoles.Count -gt 0) {
+    Write-Host "[ERROR] Старая или неполная конфигурация .env: отсутствуют $($missingRoles -join ', ')." -ForegroundColor Red
+    Write-Host "Для сохранения БД: docs/operations.md, раздел 'Раздельные роли БД и обновление существующего volume'."
+    Write-Host "Для новой установки с удалением всех локальных данных: .\reset-local.ps1, затем .\start.ps1."
+    exit 1
+}
 Write-Host "[5/6] Запуск контейнеров ALXPRGS SSO..."
 & $composeExe @composeArgs up -d --build
 if ($LASTEXITCODE -ne 0) {

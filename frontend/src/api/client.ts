@@ -56,6 +56,11 @@ class ApiClient {
     return this.csrfToken;
   }
 
+  async getClientContext(clientId: string, redirectUri: string): Promise<{client_name:string;redirect_origin:string}> {
+    const query=new URLSearchParams({client_id:clientId,redirect_uri:redirectUri});
+    return this.request(`/oauth/client-context?${query.toString()}`);
+  }
+
   async getLegalDocuments(): Promise<import("../types/api").LegalDocuments> {
     return this.request("/api/v1/legal/documents");
   }

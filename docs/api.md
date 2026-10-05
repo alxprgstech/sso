@@ -8,6 +8,8 @@ Discovery: `/.well-known/openid-configuration`, публичный JWKS: `/.well
 
 `GET /oauth/authorize`: response_type=code/client_id/redirect_uri/code_challenge обязательны; code_challenge_method=S256, scope/state/nonce, prompt=login|none и max_age integer0..604800. Prompt login/max_age0 требуют новой аутентификации; чтение API и refresh не меняют auth_time. Prompt none никогда не показывает UI, возвращает login_required/interaction_required. Ошибки перенаправляются с state только после проверки зарегистрированного redirect; при неизвестном client/redirect Location отсутствует.
 
+`GET /oauth/client-context`: публичная read-only метаинформация для страницы входа. Обязательны client_id (1–64) и redirect_uri (1–512); проверяются активный зарегистрированный клиент и буквальное совпадение redirect URI. Ответ содержит только client_name и redirect_origin (scheme + host/port), no-store/no-cache, без cookie/session/code/grant. Общий OAuth limiter и запрет duplicate parameters сохраняются. Query client_name/logo frontend не использует. Это не согласие OAuth и не проверка authorize-параметров вместо /authorize.
+
 `POST /oauth/token`: URL-encoded grant_type=authorization_code с code/verifier/redirect либо refresh_token с текущим refresh. Confidential client аутентифицируется Basic или form secret (один метод), public — client_id+PKCE. Code одноразовый; refresh заменяется при каждом использовании, replay отзывает семейство. UserInfo GET/POST принимает только Bearer Access Token с текущим account state. Revocation form token/client credentials: own refresh отзывает grant, unknown/SSO cookie/other-client token возвращает совместимый успех без удаления OP-сессии.
 
 `GET/POST /oauth/logout`: id_token_hint, post_logout_redirect_uri, client_id и state по применимости. Подпись/issuer/ID profile/client/subject/redirect проверяются; expired signed hint допустим только с соответствующей live OP session/auth_time. Без hint GET показывает подтверждение, POST требует её CSRF и exact Origin. Успешный logout удаляет OP session и cookie; RP самостоятельно закрывает свою локальную session. Front/back-channel logout не заявлены.
@@ -50,6 +52,7 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 | GET | `/health/live` |
 | GET | `/health/ready` |
 | GET | `/oauth/authorize` |
+| GET | `/oauth/client-context` |
 | GET | `/oauth/logout` |
 | GET | `/oauth/userinfo` |
 | PATCH | `/api/v1/admin/users/{user_id}` |

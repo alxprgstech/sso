@@ -18,3 +18,8 @@
 
 
 Обновление 2026-10-03: решение об измеряемом fixed-баннере заменено [ADR-0013](0013-pr-quality-refactoring.md) после воспроизведённого resize race в CI. Тема, CSP и управление фокусом сохраняются; баннер теперь занимает нижнюю строку CSS flex-shell без JavaScript reserve.
+
+
+## Уточнение05.10.2026 — FRONTEND-REDESIGN-01
+
+[ADR0021](0021-frontend-design-platform.md) заменяет presentation foundation SSO: SPA использует отдельный design-tokens.css и Tailwind, default identity Dark. Явный System/light/dark, privacy preference/cross-tab/no-storage и synchronous CSP-compatible bootstrap сохраняются. Два demos используют прежний palette.css/System default. Исходное решение выше сохраняется как история, но не описывает текущий CSS import/default SPA. Нижний banner/scroll/QR и focus/privacy contracts остаются.

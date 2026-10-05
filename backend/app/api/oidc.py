@@ -18,7 +18,7 @@ from app.core.security import create_jwt, decode_jwt, hash_token, valid_pkce_cha
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
-from app.schemas.oidc import TokenResponse, UserInfoResponse
+from app.schemas.oidc import ClientContextResponse, TokenResponse, UserInfoResponse
 from app.services.oidc_service import OIDCService
 
 
@@ -85,6 +85,24 @@ def _extract_client_credentials(
     if not client_id:
         raise OAuthErrorException("invalid_client", "Отсутствует client_id", 401)
     return client_id, client_secret
+
+
+@router.get("/client-context", response_model=ClientContextResponse)
+async def client_context(
+    response: Response,
+    client_id: str = Query(..., min_length=1, max_length=64),
+    redirect_uri: str = Query(..., min_length=1, max_length=512),
+    db: AsyncSession = Depends(get_db),
+) -> ClientContextResponse:
+    """Public display metadata for an active client and its exact registered URI."""
+    client = await OIDCService.get_and_validate_client(db, client_id, require_secret=False)
+    OIDCService.validate_redirect_uri(client, redirect_uri)
+    parsed = urllib.parse.urlsplit(redirect_uri)
+    response.headers["Cache-Control"] = "no-store"
+    return ClientContextResponse(
+        client_name=client.client_name,
+        redirect_origin=urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", "")),
+    )
 
 
 @router.get("/authorize")

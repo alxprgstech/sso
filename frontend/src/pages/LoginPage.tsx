@@ -2,14 +2,32 @@ import { errorMessage } from "../utils/error";
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api/client";
-import { prepareRequestOptions, serializeRequestResponse } from "../utils/webauthn";
+import {
+  prepareRequestOptions,
+  serializeRequestResponse,
+} from "../utils/webauthn";
+import { useNavigate } from "react-router";
+import { Fingerprint, ArrowRight, ShieldCheck } from "lucide-react";
+import { AuthSurface } from "../components/AuthSurface";
+import {
+  Alert,
+  Button,
+  Field,
+  Input,
+  OTPInput,
+  PasswordInput,
+} from "../components/ui/controls";
 import { sanitizeReturnTo } from "../utils/security";
+import { RelyingPartyContext } from "../components/RelyingPartyContext";
 
 interface LoginPageProps {
   onNavigateToRegister?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({
+  onNavigateToRegister,
+}) => {
+  const navigate = useNavigate();
   const { login, capabilities, refreshUser } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +42,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
 
   // Поддержка OIDC перенаправления (return_to / redirect_uri)
   const urlParams = new URLSearchParams(window.location.search);
-  const rawReturnTo = urlParams.get("return_to") || urlParams.get("redirect_uri");
+  const rawReturnTo =
+    urlParams.get("return_to") || urlParams.get("redirect_uri");
   const returnTo = sanitizeReturnTo(rawReturnTo);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,11 +54,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
     try {
       const res = await login(username, password);
       if ("mfa_required" in res && res.mfa_required) {
+        setPassword("");
         setMfaStep(true);
         setMfaToken(res.mfa_token);
         setMfaMethods(res.available_methods || []);
       } else {
-        if (returnTo && !("user" in res && res.user.session_purpose === "password_change")) {
+        if (
+          returnTo &&
+          !("user" in res && res.user.session_purpose === "password_change")
+        ) {
           window.location.href = returnTo;
         }
       }
@@ -84,7 +107,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
         await api.verifyTotpLogin(cleanCode, mfaToken);
         loginSuccess = true;
       } else {
-        throw new Error("Нет доступных методов второго фактора для данного кода");
+        throw new Error(
+          "Нет доступных методов второго фактора для данного кода",
+        );
       }
 
       if (loginSuccess) {
@@ -124,179 +149,164 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigateToRegister }) =>
   };
 
   return (
-    <div className="auth-page flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="w-12 h-12 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-2xl shadow-md">
-          A
+    <AuthSurface
+      title={mfaStep ? "Подтвердите вход" : "Вход в ALXPRGS"}
+      description={
+        mfaStep
+          ? "Подтвердите доступ с помощью настроенного второго фактора."
+          : "Одна учётная запись для сервисов инфраструктуры."
+      }
+      step={mfaStep ? "mfa" : "password"}
+    >
+      <RelyingPartyContext returnTo={returnTo} />
+      {error && (
+        <div className="mb-6" id="login-error">
+          <Alert>{error}</Alert>
         </div>
-        <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900 tracking-tight">
-          Единая система входа ALXPRGS
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Вход в учетную запись инфраструктуры <span className="font-semibold text-gray-800">alxprgs.tech</span>
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-xl sm:px-10 border border-gray-100">
-          {error && (
-            <div role="alert" id="login-error" className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          {!mfaStep ? (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="loginpage-field-1" className="block text-sm font-medium text-gray-700">
-                  Имя пользователя или Email
-                </label>
-                <div className="mt-1">
-                  <input id="loginpage-field-1" name="username" autoComplete="username"
-                    type="text"
-                    required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="user@alxprgs.tech"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="loginpage-field-2" className="block text-sm font-medium text-gray-700">Пароль</label>
-                <div className="mt-1">
-                  <input id="loginpage-field-2" name="password" autoComplete="current-password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
-                >
-                  {loading ? "Выполняется вход..." : "Войти"}
-                </button>
-              </div>
-
-              {capabilities?.passkey_enabled && (
-                <button
-                  type="button"
-                  onClick={handlePasskeyLogin}
-                  disabled={loading}
-                  className="w-full mt-3 flex justify-center py-2.5 px-4 border border-blue-600 rounded-lg shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                  data-testid="passkey-login-button"
-                >
-                  Войти с помощью Passkey (WebAuthn)
-                </button>
-              )}
-
-              {/* Ссылка на регистрацию (отображается ТОЛЬКО при открытом режиме, REG-01, REG-03) */}
-              {capabilities?.registration_mode === "open" && onNavigateToRegister && (
-                <div className="pt-2 text-center">
-                  <span className="text-sm text-gray-600">Нет учётной записи? </span>
-                  <button
-                    type="button"
-                    onClick={onNavigateToRegister}
-                    className="text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none underline"
-                  >
-                    Зарегистрироваться
-                  </button>
-                </div>
-              )}
-            </form>
-          ) : (
-            <form onSubmit={handleMfaSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="loginpage-field-3" className="block text-sm font-medium text-gray-700">
-                  Одноразовый код (TOTP или код восстановления)
-                </label>
-                <div className="mt-1">
-                  <input id="loginpage-field-3"
-                    type="text"
-                    required
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-center tracking-widest text-lg font-mono"
-                    placeholder="000000"
-                  />
-                </div>
-              </div>
-
-              <div className="flex space-x-3">
-                {(mfaMethods.includes("totp") || mfaMethods.includes("recovery_code")) && (
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                  >
-                    Подтвердить
-                  </button>
-                )}
-                {mfaMethods.includes("passkey") && (
-                  <button
-                    type="button"
-                    onClick={handlePasskeyLogin}
-                    disabled={loading}
-                    className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-                    data-testid="passkey-mfa-button"
-                  >
-                    Подтвердить через Passkey
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setMfaStep(false)}
-                  className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200"
-                >
-                  Назад
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Информационная панель флагов возможностей сервера */}
-          {capabilities && (
-            <div className="mt-6 pt-5 border-t border-gray-100 text-xs text-gray-500 space-y-1">
-              <div className="font-semibold text-gray-600 mb-1">Политика безопасности (default-профиль):</div>
-              <div className="flex justify-between">
-                <span>Парольный вход:</span>
-                <span className="text-green-600 font-medium">Активен (Argon2id)</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Регистрация пользователей:</span>
-                <span className={capabilities.registration_mode === "open" ? "text-green-600 font-medium" : "text-gray-400"}>
-                  {capabilities.registration_mode === "open" ? "Открыта" : "Закрыта (по умолчанию)"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>TOTP аутентификатор:</span>
-                <span className={capabilities.totp_enabled ? "text-green-600" : "text-gray-400"}>
-                  {capabilities.totp_enabled ? "Включено" : "Отключено по умолчанию"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Passkey (WebAuthn):</span>
-                <span className={capabilities.passkey_enabled ? "text-green-600" : "text-gray-400"}>
-                  {capabilities.passkey_enabled ? "Включено" : "Отключено по умолчанию"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Резервные коды:</span>
-                <span className={capabilities.recovery_codes_enabled ? "text-green-600" : "text-gray-400"}>
-                  {capabilities.recovery_codes_enabled ? "Включено" : "Отключено по умолчанию"}
-                </span>
+      )}
+      {!mfaStep ? (
+        <>
+          {capabilities?.passkey_enabled && (
+            <div className="mb-6 space-y-3">
+              <Button
+                variant="primary"
+                className="w-full"
+                loading={loading}
+                onClick={handlePasskeyLogin}
+                data-testid="passkey-login-button"
+              >
+                <Fingerprint size={20} aria-hidden="true" />
+                Войти с помощью ключа доступа
+              </Button>
+              <p className="text-xs text-secondary">
+                Браузер предложит подтвердить вход на устройстве или ключе
+                безопасности.
+              </p>
+              <div className="flex items-center gap-4 text-xs text-tertiary">
+                <div className="h-px flex-1 bg-line" />
+                или с паролем
+                <div className="h-px flex-1 bg-line" />
               </div>
             </div>
           )}
-        </div>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Field id="loginpage-field-1" label="Имя пользователя или Email">
+              <Input
+                id="loginpage-field-1"
+                name="username"
+                autoComplete="username"
+                required
+                maxLength={64}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="user@alxprgs.tech"
+                disabled={loading}
+              />
+            </Field>
+            <Field id="loginpage-field-2" label="Пароль">
+              <PasswordInput
+                id="loginpage-field-2"
+                name="password"
+                autoComplete="current-password"
+                required
+                maxLength={128}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+              />
+            </Field>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              className="w-full"
+            >
+              {loading ? "Выполняется вход..." : "Войти"}
+              <ArrowRight size={18} aria-hidden="true" />
+            </Button>
+          </form>
+          {capabilities?.registration_mode === "open" &&
+            onNavigateToRegister && (
+              <p className="mt-6 text-sm text-secondary">
+                Нет учётной записи?{" "}
+                <Button variant="ghost" onClick={onNavigateToRegister}>
+                  Зарегистрироваться
+                </Button>
+              </p>
+            )}
+        </>
+      ) : (
+        <form onSubmit={handleMfaSubmit} className="space-y-5">
+          {(mfaMethods.includes("totp") ||
+            mfaMethods.includes("recovery_code")) && (
+            <Field
+              id="loginpage-field-3"
+              label="Одноразовый код или код восстановления"
+            >
+              {mfaMethods.includes("recovery_code") ? (
+                <Input
+                  id="loginpage-field-3"
+                  autoComplete="one-time-code"
+                  required
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  disabled={loading}
+                />
+              ) : (
+                <OTPInput
+                  id="loginpage-field-3"
+                  required
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  disabled={loading}
+                />
+              )}
+            </Field>
+          )}
+          {(mfaMethods.includes("totp") ||
+            mfaMethods.includes("recovery_code")) && (
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              className="w-full"
+            >
+              Подтвердить
+            </Button>
+          )}
+          {mfaMethods.includes("passkey") && (
+            <Button
+              variant="primary"
+              onClick={handlePasskeyLogin}
+              loading={loading}
+              className="w-full"
+              data-testid="passkey-mfa-button"
+            >
+              <Fingerprint size={18} />
+              Подтвердить через ключ доступа
+            </Button>
+          )}
+          <Button
+            className="w-full"
+            disabled={loading}
+            onClick={() => {
+              setMfaStep(false);
+              setMfaToken("");
+              setMfaCode("");
+              setError(null);
+              navigate(window.location.pathname + window.location.search, {
+                replace: true,
+              });
+            }}
+          >
+            Назад
+          </Button>
+        </form>
+      )}
+      <div className="mt-8 flex items-center gap-2 text-xs text-secondary">
+        <ShieldCheck size={16} aria-hidden="true" />
+        Единая система входа ALXPRGS
       </div>
-    </div>
+    </AuthSurface>
   );
 };
