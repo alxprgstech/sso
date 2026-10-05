@@ -86,3 +86,8 @@ def admin(user: UserClaims = Depends(security.require_role("admin"))):
 Прямая OIDC интеграция на других языках использует discovery `/.well-known/openid-configuration`, JWKS `/.well-known/jwks.json`, authorize/token/userinfo/revoke/logout из [API](api.md). Настройки клиента, redirect URI и allowed_scopes задаёт администратор. `openid` обязателен; profile/email/roles отсутствуют без соответствующих scopes. OAuth errors на callback необходимо обработать до обмена code; cookie-auth mutations требуют CSRF/exact Origin. Нельзя использовать ID Token вместо Access Token.
 
 Два запускаемых примера — [client1](../examples/client1/app.py), [client2](../examples/client2/app.py). Команды и переменные приведены в [README](../README.md); память демонстрационного процесса не предназначена для multiworker production.
+
+
+## Frontend и маршрутизация
+
+Frontend использует Router7/Tailwind4, source-owned headless UI и семантические tokens; разделы имеют реальные маршруты, а server-state gates сохраняют приоритет. Не добавляйте произвольные route IDs/query в telemetry: новые страницы включаются только в конечный allowlist с негативным тестом. GET `/oauth/client-context` — no-store name/origin после exact registered redirect validation; он не заменяет `/oauth/authorize`. Tokens/proofs/passwords/one-time secrets не помещаются в browser storage/logs. [Структура, команды и CSP dialog contract](frontend.md), [ADR0021](adr/0021-frontend-design-platform.md).

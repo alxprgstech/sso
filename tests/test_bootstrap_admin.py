@@ -178,8 +178,17 @@ async def test_bootstrap_refuses_to_elevate_existing_user():
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_rejects_short_password():
-    """SETUP-03: Пароль менее 8 символов отклоняется."""
+@pytest.mark.parametrize(
+    "password, message",
+    [
+        ("short", "от 15 до 128"),
+        ("EightChars12!", "от 15 до 128"),
+        ("X" * 129, "от 15 до 128"),
+        ("password123456789", "слишком распространён"),
+    ],
+)
+async def test_bootstrap_rejects_invalid_password(password, message):
+    """SETUP-03: Invalid passwords fail before writes using the server policy."""
     mock_session = AsyncMock(spec=AsyncSession)
 
     config = SystemConfiguration(
@@ -206,12 +215,15 @@ async def test_bootstrap_rejects_short_password():
         session=mock_session,
         username="admin",
         email="admin@alxprgs.tech",
-        password="short",
+        password=password,
         registration_mode="closed",
     )
 
     assert code == 1
-    assert "не менее 8 символов" in msg
+    assert message in msg
+    mock_session.add.assert_not_called()
+    mock_session.flush.assert_not_awaited()
+    mock_session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -319,3 +331,46 @@ async def test_bootstrap_non_interactive_with_env_vars_success():
         assert code == 0
         assert config.bootstrap_completed is True
         assert config.registration_mode == "open"
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_interactive_retries_invalid_password(capsys):
+    session = AsyncMock(spec=AsyncSession)
+    config_result = MagicMock()
+    config_result.scalar_one_or_none.return_value = None
+    admins_result = MagicMock()
+    admins_result.scalars.return_value.all.return_value = []
+    session.execute.side_effect = [config_result, admins_result]
+    with (
+        patch("app.cli.bootstrap_admin.sys.stdin.isatty", return_value=True),
+        patch.dict(os.environ, {"ADMIN_INITIAL_PASSWORD": ""}),
+        patch(
+            "app.cli.bootstrap_admin.getpass.getpass",
+            side_effect=[
+                "EightChars12!",
+                "password123456789",
+                "ValidPassword123!",
+                "ValidPassword123!",
+            ],
+        ) as prompt,
+        patch(
+            "app.cli.bootstrap_admin.execute_bootstrap",
+            new_callable=AsyncMock,
+            return_value=(0, "created"),
+        ) as execute,
+    ):
+        code = await bootstrap_admin(
+            username="admin",
+            email="admin@example.test",
+            registration_mode="closed",
+            session=session,
+        )
+    assert code == 0
+    assert prompt.call_count == 4
+    assert "от 15 до 128" in prompt.call_args_list[0].args[0]
+    assert execute.await_args.args[3] == "ValidPassword123!"
+    output = capsys.readouterr()
+    assert "от 15 до 128" in output.err
+    assert "слишком распространён" in output.err
+    assert "Traceback" not in output.err
+    assert "EightChars12!" not in output.err

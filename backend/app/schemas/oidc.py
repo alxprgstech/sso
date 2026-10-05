@@ -3,6 +3,11 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+class ClientContextResponse(BaseModel):
+    client_name: str
+    redirect_origin: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "Bearer"

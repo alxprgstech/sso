@@ -19,8 +19,27 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 # Фиксированный проект исключает влияние COMPOSE_PROJECT_NAME из окружения.
 # Новые тома требуют отдельного просмотра и явного изменения этого скрипта.
 $composeArgs = @("compose", "-f", $composeFile, "-p", "sso")
-$volumes = @(& docker @composeArgs config --volumes)
-if ($LASTEXITCODE -ne 0 -or $volumes.Count -ne 1 -or $volumes[0].Trim() -ne "sso_db_data") {
+# Temporary values render teardown only; never persist or start services with them.
+function Invoke-ResetCompose {
+    param([string[]]$Operation)
+    $saved = @{}
+    try {
+        foreach ($name in @("SSO_RUNTIME_PASSWORD", "SSO_MIGRATOR_PASSWORD", "ALX_BUILD_SHA")) {
+            $saved[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+            if ([string]::IsNullOrEmpty($saved[$name])) {
+                [Environment]::SetEnvironmentVariable($name, "reset-render-only-$name", "Process")
+            }
+        }
+        & docker @composeArgs @Operation
+        $script:composeExit = $LASTEXITCODE
+    } finally {
+        foreach ($name in $saved.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
+        }
+    }
+}
+$volumes = @(Invoke-ResetCompose -Operation @("config", "--volumes"))
+if ($composeExit -ne 0 -or $volumes.Count -ne 1 -or $volumes[0].Trim() -ne "sso_db_data") {
     Write-Error "Не удалось проверить единственный том sso_db_data. Сброс остановлен."
     exit 1
 }
@@ -39,8 +58,8 @@ if ($confirmation -cne "УДАЛИТЬ SSO") {
     exit 1
 }
 
-& docker @composeArgs down --volumes
-if ($LASTEXITCODE -ne 0) {
+Invoke-ResetCompose -Operation @("down", "--volumes")
+if ($composeExit -ne 0) {
     Write-Error "Docker Compose не завершил сброс. .env сохранён; проверьте состояние контейнеров и тома."
     exit 1
 }

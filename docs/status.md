@@ -1,3 +1,35 @@
+# PROJECT-PR-01 — in_progress
+
+Обновление2026-10-05T19:51:34+03:00: [PR7](https://github.com/alxprgstech/sso/pull/7) создан; source089ed932ae28deb024c6ce0da28c45a1dbc6be46. Первый [CI](https://github.com/alxprgstech/sso/actions/runs/37339819853):6обязательныхPASS/3FAIL/2externalSESskip, CodeScene3gatesFAIL. Причины:8dot3 path assertion, устаревший PG password assert8 вместо15..128, CRLF derived SVG против manifest, сложность UI. Исправления подготовлены без bypass: canonical test paths,4PG invalid/no-write cases, exact SVG Git bytes и декомпозиция реально используемых компонентов/helpers. Повтор local lint/types/components37/build/Windows27+4subtests/brand index/docs PASS; полный UI browser37PASS/2.8m/exit0. Следующий шаг — commit исправлений, новый CI точного SHA и финальный checkpoint. Общая GOAL-09 не закрыта; merge/deploy/release/live mail не выполнялись. Ниже история этого дня.
+
+2026-10-05T19:04:38+03:00, Codex. По поручению владельца готовится commit всего рабочего diff ветки `new/frontend-redesign`, PR в main и проверка CI итогового SHA. В HEAD уже есть редизайн, 18 файлов изменены после него. План: review/scans/локальные проверки → commit/push/PR → диагностика Actions и сторонних checks → evidence/точка продолжения. GitHub connector HTTP403; обычный Git/API требует выхода из sandbox. Успех CI текущего diff пока не подтверждён; общий GOAL-09 не закрыт.
+
+2026-10-05T19:14:45+03:00: локальные проверки PASS; [матрица и история отказов](acceptance-project-pr.md). BOOTSTRAP-PASSWORD-01 unit-блокер снят, критерий реализации done; реальные user bootstrap/общая production-приёмка отдельно не подтверждены. Passkey component fixture синхронизирована с настоящим вызовом API, полный набор37PASS/exit0. Git/API работает, PR ветки отсутствует. Следующий шаг commit/push/PR, затем CI точного SHA. Исторические статусы ниже относятся к своим датам.
+
+# UI-LAYOUT-01 — done
+
+2026-10-05T18:42:42+03:00, Codex; начало 18:20:35+03:00. Футер и геометрия схемы исправлены; targeted2PASS, production UI browser37PASS/1.1m, components37PASS, lint/types/build PASS; desktop/mobile PNG инспектированы. GOAL/frontend/operator/ADR/report/acceptance согласованы; UTF-8 10 документов/75 локальных ссылок/0 ошибок и git diff --check PASS. Собственные Vite dev/preview остановлены. Продолжение: review локального diff, при необходимости пересборка frontend владельцем в его локальном Compose. Commit/push/deployment не выполнялись. Исходные изменения сохранены; ограничения BOOTSTRAP-PASSWORD-01 ниже относятся к другой задаче, общая GOAL-09 не закрыта.
+
+# BOOTSTRAP-PASSWORD-01 — implementation ready, tests blocked
+
+2026-10-05T18:10:53.9596707+03:00 — User Docker build/healthy/migration прошли, bootstrap CLI ошибочно принимал8chars перед server15..128. Исправлен общий validator и TTY retry; unit regressions добавлены. RuffPASS; pytest blocked native ABI/libpq, успех не заявлен. Следующее: start с подходящим паролем без reset, unit verification в совместимой среде. Изменения локальные, данные сохранены.
+
+# LOCAL-START-02 — implementation done, runtime unverified
+
+2026-10-05T17:00:49.6539127+03:00 — Fresh env содержит оба role passwords (64chars), UTF8noBOM. start теперь задаёт explicit --env-file/-f; тестовый syntax defect исправлен. PowerShell/pwsh16PASS, env selection2PASS, RuffPASS. Docker недоступен; точная причина user automatic loading failure и actual start не доказаны. .env/БД не изменены. Продолжение: повтор start владельцем, reset не нужен.
+
+# LOCAL-RESET-01 — done
+
+2026-10-05T14:55:22.7249366+03:00 — Исправлен сброс старого .env без новых паролей ролей; start выдаёт инструкцию upgrade/reset и сохраняет конфигурацию. 12 regression tests PowerShell/pwsh PASS, git diff --check PASS. Docker недоступен; реальный запуск/сброс не проверены. Данные не удалены. Следующий шаг: запуск владельцем reset при ненужных данных либо сохранение БД по docs/operations.md. Чужие изменения frontend сохранены.
+
+# FRONTEND-REDESIGN-01 — done
+
+2026-10-05T14:46:25.6409088+03:00 — Codex, ветка `new/frontend-redesign`. Начало:2026-10-05T03:52:42.0367906+03:00. Выполнены все26 критериев frontend платформы ALXPRGS Design Language v1: реальный Tailwind, Router, headless/source-owned UI, themes/Geist/Lucide/Motion, account/admin/auth, локальный официальный бренд.
+
+Проверено: ESLint/TypeScript/Ruff/mypy68, component37/unit13, полный PostgreSQL625+16subtests, итоговый реальный Nginx46default/10enabled, Axe/theme/history/keyboard/CSP/UV, Sentry browser9/22.0s, offline release Debug IDs/private maps gate, scanner137/0new и synthetic control, UTF-8/links/whitespace. Пересечения не суммируются. Negative decorative chunk и Passkey GET states исправлены; обнаруженная гонка focus палитры устранена без ослабления теста. История failed запусков сохранена. [Отчёт и матрица26](../FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [план](frontend-redesign-plan.md), [brand provenance](../frontend/public/brand/README.md).
+
+Собственный PG/backend/Nginx/SMTP/Vite стенд остановлен с guards; порты свободны, данные сохранены. Изменения локальные; commit/push/PR/deploy/release/live mail не выполнялись. Следующий шаг — review рабочего diff владельцем. FR-08 planned как отдельное улучшение test cleanup diagnostics вне этой Goal. Remote CI текущего diff/production/hardware matrix не подтверждены; GOAL-09 не закрыта.
+
 # EMAIL-RESEND-01 — implementation и CI done
 
 2026-10-05T00:40:06.4698225+03:00, Codex. Commitff13c5c push, draft PR6 создан. CI57 all9requiredjobsPASS, externalSES2skipped; actual Compose и браузерные default/enabled проверки прошли. [Подробности](acceptance-resend.md), [CI](https://github.com/alxprgstech/sso/actions/runs/37236671323), [PR](https://github.com/alxprgstech/sso/pull/6). Результаты реализации и CI сохранены docs-only checkpoint; повтор CI финальной документальной ревизии проверяется через Actions API и сообщается отдельно, без приписывания этой записи результатов будущего SHA. No merge/deploy; CodeScene success не заявляется.
@@ -586,3 +618,8 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-04T19:35:09.7398701+03:00 — PR5-CI-01: quality local546tests/16subtests PASS, CI mypy61/frontend/Ruff/runtime lock/secret scan PASS. Перваягруппаготовакnormalpush; CodeScene и remote новогоSHA ещёpending.
 
 2026-10-04T19:54:47.5869966+03:00 — PR5-CI-01: вторичнаяqualityгруппа121+31+55 checks PASS, normalpushготов; CodeScene/exact-headBrowserиDocker ещёpending, in_progress.
+
+## PROJECT-COMMIT-01
+2026-10-05T15:28:49.0680006+03:00 — Все текущие изменения проекта подготовлены в new/frontend-redesign к локальному commit по поручению владельца. Secret scan137/0new/control PASS, regression12PASS, whitespacePASS; .env не включается. Результат commit и SHA проверяются после создания и сообщаются в чате. Push/PR не поручены.
+
+2026-10-05T15:29:36.9404975+03:00 — PROJECT-COMMIT-01: staged check имеет замечания к исходному reference Markdown и canonical SVG EOF; эти source bytes сохранены. Secret scan и12regressions PASS. Все файлы staged для локального commit; SHA будет в итоговом сообщении.

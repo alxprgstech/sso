@@ -54,20 +54,11 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await page.goto("/");
 
     // Проверяем ключевые элементы страницы входа
-    await expect(page.getByRole("heading", { name: "Единая система входа ALXPRGS" })).toBeVisible();
-    await expect(page.getByText("alxprgs.tech", { exact: false })).toBeVisible();
-
-    // Проверяем отображение флагов отложенных возможностей (все 4 выключены по умолчанию)
-    const policyBlock = page.locator("text=Политика безопасности (default-профиль)");
-    await expect(policyBlock).toBeVisible();
-
-    await expect(page.getByText("TOTP аутентификатор:")).toBeVisible();
-    await expect(page.getByText("Passkey (WebAuthn):")).toBeVisible();
-    await expect(page.getByText("Резервные коды:")).toBeVisible();
-
-    // Парольный вход активен
-    await expect(page.getByText("Парольный вход:")).toBeVisible();
-    await expect(page.getByText("Активен (Argon2id)")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible();
+    const caps=await (await page.request.get("/api/v1/auth/capabilities")).json();
+    expect(caps.totp_enabled).toBe(false); expect(caps.passkey_enabled).toBe(false); expect(caps.recovery_codes_enabled).toBe(false);
+    await expect(page.getByTestId("passkey-login-button")).toHaveCount(0);
+    await expect(page.getByLabel("Пароль",{exact:true})).toBeEditable();
   });
 
   test("02. Admin Login, Dashboard, and Switch Registration Mode to Open", async ({ page }) => {
@@ -85,11 +76,11 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await expect(page.locator("header").getByText("Admin", { exact: true })).toBeVisible();
 
     // Переходим в панель администрирования
-    await page.click('button:has-text("Администрирование")');
+    await page.click('a:has-text("Администрирование")');
     await expect(page.getByText("Административная панель")).toBeVisible();
 
     // Переключаемся на вкладку "Конфигурация"
-    await page.click('button:has-text("Конфигурация")');
+    await page.click('a:has-text("Конфигурация")');
     await expect(page.getByText("Управление политикой самостоятельной регистрации")).toBeVisible();
     await expect(page.getByText("Закрыта (closed)")).toBeVisible();
 
@@ -110,7 +101,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
 
     // Выходим из системы
     await page.click('button:has-text("Выйти")');
-    await expect(page.getByRole("heading", { name: "Единая система входа ALXPRGS" })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible({ timeout: 10000 });
   });
 
   test("03. Open Mode: Self-Registration of New User and Standard User Access", async ({ page }) => {
@@ -157,7 +148,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await page.getByRole("button", { name: "Подтвердить адрес" }).click();
     await expect(page.getByText("Адрес подтверждён, учётная запись создана. Теперь можно войти.")).toBeVisible();
     await page.getByRole("button", { name: "Перейти ко входу" }).click();
-    const loginHeader = page.getByRole("heading", { name: "Единая система входа ALXPRGS" });
+    const loginHeader = page.getByRole("heading", { name: "Вход в ALXPRGS" });
     await expect(loginHeader).toBeVisible();
 
     // Входим созданным пользователем
@@ -171,11 +162,11 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await expect(page.locator("header").getByText(testUsername, { exact: true })).toBeVisible();
 
     // Проверяем RBAC: кнопка "Администрирование" НЕ должна отображаться для обычного пользователя
-    await expect(page.getByRole("button", { name: "Администрирование" })).not.toBeVisible();
+    await expect(page.getByRole("link", { name: "Администрирование" })).not.toBeVisible();
 
     // Выходим
     await page.click('button:has-text("Выйти")');
-    await expect(page.getByRole("heading", { name: "Единая система входа ALXPRGS" })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible({ timeout: 10000 });
   });
 
   test("04. Restore Default Closed Registration Mode as Admin", async ({ page }) => {
@@ -191,8 +182,8 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await expect(page.locator("header").getByText("compose_admin", { exact: true })).toBeVisible();
 
     // Переходим в админку -> Конфигурация
-    await page.click('button:has-text("Администрирование")');
-    await page.click('button:has-text("Конфигурация")');
+    await page.click('a:has-text("Администрирование")');
+    await page.click('a:has-text("Конфигурация")');
     await expect(page.getByText("Управление политикой самостоятельной регистрации")).toBeVisible();
     await expect(page.getByText("Открыта (open)")).toBeVisible();
 
@@ -208,7 +199,7 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
 
     // Выходим
     await page.click('button:has-text("Выйти")');
-    await expect(page.getByRole("heading", { name: "Единая система входа ALXPRGS" })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible({ timeout: 10000 });
 
     // Проверяем, что ссылка на регистрацию снова скрыта
     await expect(page.getByRole("button", { name: "Зарегистрироваться" })).not.toBeVisible();

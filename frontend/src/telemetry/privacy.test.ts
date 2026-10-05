@@ -31,3 +31,11 @@ test("unrecognized path content cannot become a transaction", () => {
   assert.equal(canonicalRoute(`/private/${secret}`), "unmatched");
   assert.equal(canonicalRoute(`/api/v1/admin/users/${secret}?search=${secret}`), "/api/v1/admin/users/{id}");
 });
+
+test("redesign routes stay finite and discard query/hash and unknown identifiers", () => {
+  for (const path of ["/account/security", "/account/sessions", "/account/privacy", "/admin/users", "/admin/applications", "/admin/sessions", "/admin/audit", "/admin/system", "/oauth/client-context"]) {
+    assert.equal(canonicalRoute(`${path}?search=${secret}#${secret}`), path);
+  }
+  assert.equal(canonicalRoute(`/admin/users/${secret}`), "unmatched");
+  assert.equal(canonicalRoute(`/account/${secret}`), "unmatched");
+});

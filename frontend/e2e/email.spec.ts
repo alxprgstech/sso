@@ -16,8 +16,8 @@ async function login(page: Page, username: string, password: string) {
 
 async function registrationMode(page: Page, mode: "open" | "closed") {
   await login(page, "compose_admin", adminPassword);
-  await page.getByRole("button", { name: "Администрирование", exact: true }).click();
-  await page.getByRole("button", { name: "Конфигурация", exact: true }).click();
+  await page.getByRole("link", { name: "Администрирование", exact: true }).click();
+  await page.getByRole("link", { name: "Конфигурация", exact: true }).click();
   await page.locator(`input[value="${mode}"]`).check();
   await page.getByPlaceholder("Введите ваш пароль", { exact: false }).fill(adminPassword);
   await page.getByRole("button", { name: "Применить режим регистрации" }).click();
@@ -56,7 +56,7 @@ for (const mode of ["code", "link"] as const) {
       }
       await login(page, username, userPassword);
       await expect(page.locator("header").getByText(username, { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Администрирование", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Администрирование", exact: true })).toHaveCount(0);
     } finally {
       try { await registrationMode(adminPage, "closed"); }
       finally { await adminContext.close(); }

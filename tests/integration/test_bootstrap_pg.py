@@ -183,9 +183,20 @@ async def test_bootstrap_refuses_to_elevate_existing_user_postgres(pg_session: A
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_bootstrap_password_validation_postgres(pg_session: AsyncSession):
+@pytest.mark.parametrize(
+    "password, message",
+    [
+        ("short", "от 15 до 128"),
+        ("EightChars12!", "от 15 до 128"),
+        ("X" * 129, "от 15 до 128"),
+        ("password123456789", "слишком распространён"),
+    ],
+)
+async def test_bootstrap_password_validation_postgres(
+    pg_session: AsyncSession, password: str, message: str
+):
     """
-    QA-04, SETUP-03: Валидация минимальной длины пароля администратора (>= 8 символов).
+    QA-04, SETUP-03: The common 15–128 policy rejects invalid bootstrap input before writes.
     """
     await pg_session.execute(
         text(
@@ -198,8 +209,18 @@ async def test_bootstrap_password_validation_postgres(pg_session: AsyncSession):
         session=pg_session,
         username="admin_short",
         email="admin_short@alxprgs.tech",
-        password="short",  # < 8
+        password=password,
         registration_mode="closed",
     )
     assert code == 1
-    assert "не менее 8 символов" in msg
+    assert message in msg
+    assert (
+        await pg_session.scalar(text("SELECT count(*) FROM users WHERE username = 'admin_short'"))
+        == 0
+    )
+    assert (
+        await pg_session.scalar(
+            text("SELECT bootstrap_completed FROM system_configuration WHERE id = 1")
+        )
+        is False
+    )

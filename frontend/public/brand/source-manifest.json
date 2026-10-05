@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/alxprgstech/assets",
+  "commit": "9b0eec08898a2eb2a02a66d895055c6ec7d97051", "commit_note": "// pragma: allowlist secret -- public upstream Git commit SHA",
+  "files": {
+    "logo.svg": {
+      "sha256": "fc70db024a5d0f9e57e0be436f2cb02b6cd764525094fdcfbfeea27b9e0e609f", "checksum_note": "// pragma: allowlist secret -- public canonical artwork SHA256",
+      "bytes": 74251
+    },
+    "logo-avatar-full.png": {
+      "sha256": "8f18443d7a0a192155e245e95ebaaef89267c5c4d80ecab1f69ef28e58899502", "checksum_note": "// pragma: allowlist secret -- public canonical artwork SHA256",
+      "bytes": 314003
+    },
+    "logo-avatar-icon.png": {
+      "sha256": "d18db6e21517e9c538414649434090309bfce12ae669db8ae8d84060b3b84a24", "checksum_note": "// pragma: allowlist secret -- public canonical artwork SHA256",
+      "bytes": 311477
+    },
+    "logo-mark.svg": {
+      "sha256": "fabc6e84d27c6c7e7472d23f89649dd2b06199b5fa1fce77ae6684ee6c55a51a", "checksum_note": "// pragma: allowlist secret -- public derived artwork SHA256",
+      "bytes": 2355,
+      "derived_from": "logo.svg: original defs and first six icon paths, cropped viewport only"
+    }
+  }
+}

@@ -1,3 +1,13 @@
+import { AuthSurface } from "../components/AuthSurface";
+import {
+  Alert,
+  Button,
+  Field,
+  Input,
+  OTPInput,
+  PasswordInput,
+  Skeleton,
+} from "../components/ui/controls";
 import { errorMessage } from "../utils/error";
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
@@ -9,7 +19,9 @@ interface RegisterPageProps {
   onNavigateToLogin: () => void;
 }
 
-export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin }) => {
+export const RegisterPage: React.FC<RegisterPageProps> = ({
+  onNavigateToLogin,
+}) => {
   const { capabilities } = useAuth();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -25,30 +37,38 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
   const [terms, setTerms] = useState(false);
   const [consent, setConsent] = useState(false);
 
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isClosed = capabilities && capabilities.registration_mode !== "open";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setFieldErrors({});
     if (!documents || !terms || !consent) {
-      setError("Прочитайте документы и подтвердите условия и согласие на обработку данных.");
+      setError(
+        "Прочитайте документы и подтвердите условия и согласие на обработку данных.",
+      );
       return;
     }
 
     // Валидация на клиенте
     if (username.trim().length < 3) {
-      setError("Имя пользователя должно содержать не менее 3 символов.");
+      setFieldErrors({
+        username: "Имя пользователя должно содержать не менее 3 символов.",
+      });
       return;
     }
 
     if (password.length < 15) {
-      setError("Длина пароля должна быть не менее 15 символов.");
+      setFieldErrors({
+        password: "Длина пароля должна быть не менее 15 символов.",
+      });
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Введенные пароли не совпадают.");
+      setFieldErrors({ confirmation: "Введенные пароли не совпадают." });
       return;
     }
 
@@ -68,7 +88,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
       setChallenge(res);
       setPassword("");
       setConfirmPassword("");
-      setSuccess("Письмо отправлено. Введите код из 6 цифр или откройте ссылку в письме.");
+      setSuccess(
+        "Письмо отправлено. Введите код из 6 цифр или откройте ссылку в письме.",
+      );
     } catch (err: unknown) {
       setError(errorMessage(err, "Ошибка при регистрации учётной записи."));
     } finally {
@@ -85,7 +107,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
       await api.confirmRegistrationCode(challenge.challenge_id, code);
       setVerified(true);
       setCode("");
-      setSuccess("Адрес подтверждён, учётная запись создана. Теперь можно войти.");
+      setSuccess(
+        "Адрес подтверждён, учётная запись создана. Теперь можно войти.",
+      );
     } catch (err: unknown) {
       setError(errorMessage(err, "Неверный или просроченный код."));
     } finally {
@@ -99,7 +123,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
     setError(null);
     try {
       setChallenge(await api.resendRegistration(challenge.challenge_id));
-      setSuccess("Новый код отправлен. Предыдущий код и ссылка больше не действуют.");
+      setSuccess(
+        "Новый код отправлен. Предыдущий код и ссылка больше не действуют.",
+      );
       setCode("");
     } catch (err: unknown) {
       setError(errorMessage(err, "Не удалось повторно отправить письмо."));
@@ -109,166 +135,221 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigateToLogin })
   };
 
   return (
-    <div className="auth-page flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="w-12 h-12 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-2xl shadow-md">
-          A
+    <AuthSurface
+      title={
+        verified
+          ? "Адрес подтверждён"
+          : challenge
+            ? "Проверьте вашу почту"
+            : "Регистрация в ALXPRGS SSO"
+      }
+      description={
+        challenge
+          ? "Введите код из письма, чтобы завершить создание учётной записи."
+          : "Создайте учётную запись для сервисов инфраструктуры."
+      }
+      step={verified ? "success" : challenge ? "verification" : "registration"}
+    >
+      {!capabilities ? (
+        <Skeleton label="Проверка доступности регистрации" />
+      ) : isClosed ? (
+        <div className="space-y-5">
+          <Alert tone="info">
+            Самостоятельная регистрация закрыта. Для получения доступа
+            обратитесь к администратору организации.
+          </Alert>
+          <Button className="w-full" onClick={onNavigateToLogin}>
+            Вернуться на страницу входа
+          </Button>
         </div>
-        <h2 className="mt-4 text-center text-3xl font-extrabold text-gray-900 tracking-tight">
-          Регистрация в ALXPRGS SSO
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Создание новой учётной записи для сервисов экосистемы{" "}
-          <span className="font-semibold text-gray-800">alxprgs.tech</span>
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-xl sm:rounded-xl sm:px-10 border border-gray-100">
-          {isClosed ? (
-            <div className="text-center py-6 space-y-4">
-              <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-xl">
-                !
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Самостоятельная регистрация закрыта
-              </h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                В настоящий момент свободная регистрация пользователей отключена администратором системы.
-                Для получения доступа обратитесь к администратору организации.
-              </p>
-              <div className="pt-4">
-                <button
-                  type="button"
-                  onClick={onNavigateToLogin}
-                  className="w-full inline-flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+      ) : (
+        <>
+          {(error || documentError) && (
+            <div id="registration-error" className="mb-5">
+              <Alert>{error || documentError}</Alert>
+            </div>
+          )}
+          {success && (
+            <div className="mb-5">
+              <Alert tone="success">{success}</Alert>
+            </div>
+          )}
+          {verified ? (
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={onNavigateToLogin}
+            >
+              Перейти ко входу
+            </Button>
+          ) : challenge ? (
+            <div className="space-y-5">
+              <form onSubmit={handleVerify} className="space-y-4">
+                <Field id="registration-code" label="Код из письма">
+                  <OTPInput
+                    id="registration-code"
+                    value={code}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                    required
+                    disabled={loading}
+                  />
+                  <p className="field-description">Код действует 10 минут.</p>
+                </Field>
+                <Button
+                  variant="primary"
+                  className="w-full"
+                  type="submit"
+                  loading={loading}
+                  disabled={code.length !== 6}
                 >
-                  Вернуться на страницу входа
-                </button>
-              </div>
+                  Подтвердить адрес
+                </Button>
+              </form>
+              <Button variant="ghost" disabled={loading} onClick={handleResend}>
+                Отправить новый код
+              </Button>
+              <details className="text-xs text-secondary">
+                <summary className="cursor-pointer py-2">
+                  Сведения о запросе
+                </summary>
+                <dl className="space-y-2">
+                  {Object.entries(challenge.request_details).map(
+                    ([key, value]) => (
+                      <div key={key}>
+                        <dt>
+                          {(
+                            {
+                              ip: "IP-адрес",
+                              os: "Система",
+                              browser: "Браузер",
+                              device: "Устройство",
+                              time: "Время",
+                            } as Record<string, string>
+                          )[key] || key}
+                        </dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ),
+                  )}
+                </dl>
+              </details>
             </div>
           ) : (
-            <>
-              {(error || documentError) && (
-                <div role="alert" id="registration-error" className="mb-4 bg-red-50 border-l-4 border-red-500 p-3 rounded text-sm text-red-700">
-                  {error || documentError}
-                </div>
-              )}
-
-              {success && (
-                <div className="mb-4 bg-green-50 border-l-4 border-green-500 p-3 rounded text-sm text-green-700">
-                  {success}
-                </div>
-              )}
-
-              {verified ? (
-                <button type="button" onClick={onNavigateToLogin} className="w-full rounded bg-blue-600 px-4 py-3 text-white">Перейти ко входу</button>
-              ) : challenge ? (
-                <div className="space-y-4">
-                  <form onSubmit={handleVerify} className="space-y-3">
-                    <label htmlFor="registration-code" className="block text-sm font-medium text-gray-700">Код из письма</label>
-                    <input id="registration-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required className="w-full rounded border p-3 text-center text-2xl tracking-widest" />
-                    <button type="submit" disabled={loading || code.length !== 6} className="w-full rounded bg-blue-600 px-4 py-3 text-white disabled:opacity-50">Подтвердить адрес</button>
-                  </form>
-                  <button type="button" disabled={loading} onClick={handleResend} className="text-sm text-blue-700 underline disabled:opacity-50">Отправить новый код</button>
-                  <details className="rounded border p-3 text-sm"><summary className="cursor-pointer">Сведения о запросе</summary>
-                    <dl className="mt-2 space-y-1">{Object.entries(challenge.request_details).map(([key, value]) => <div key={key}><dt className="inline font-medium">{key}: </dt><dd className="inline">{value}</dd></div>)}</dl>
-                  </details>
-                </div>
-              ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="registerpage-field-1" className="block text-sm font-medium text-gray-700">
-                    Имя пользователя (логин)
-                  </label>
-                  <div className="mt-1">
-                    <input id="registerpage-field-1" name="username" autoComplete="username"
-                      type="text"
-                      required
-                      minLength={3}
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      placeholder="alex_ivanov"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    От 3 до 50 символов (латинские буквы, цифры, _, -, .)
-                  </p>
-                </div>
-
-                <div>
-                  <label htmlFor="registerpage-field-2" className="block text-sm font-medium text-gray-700">Email адрес</label>
-                  <div className="mt-1">
-                    <input id="registerpage-field-2" name="email" autoComplete="email"
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                      placeholder="alex@alxprgs.tech"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="registerpage-field-3" className="block text-sm font-medium text-gray-700">Пароль</label>
-                  <div className="mt-1">
-                    <input id="registerpage-field-3" name="password" autoComplete="new-password"
-                      type="password"
-                      required
-                      minLength={15}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Не менее 15 символов</p>
-                </div>
-
-                <div>
-                  <label htmlFor="registerpage-field-4" className="block text-sm font-medium text-gray-700">
-                    Подтверждение пароля
-                  </label>
-                  <div className="mt-1">
-                    <input id="registerpage-field-4" name="password_confirmation" autoComplete="new-password"
-                      type="password"
-                      required
-                      minLength={15}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    />
-                  </div>
-                </div>
-
-                <ConsentFields terms={terms} consent={consent} onTerms={setTerms} onConsent={setConsent} />
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={loading || Boolean(success) || !documents || !terms || !consent}
-                    className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
-                  >
-                    {loading ? "Регистрация..." : "Зарегистрироваться"}
-                  </button>
-                </div>
-              </form>
-              )}
-
-              <div className="mt-6 text-center">
-                <span className="text-sm text-gray-600">Уже есть учётная запись? </span>
-                <button
-                  type="button"
-                  onClick={onNavigateToLogin}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-500 focus:outline-none underline"
-                >
-                  Войти
-                </button>
-              </div>
-            </>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <Field
+                id="registerpage-field-1"
+                label="Имя пользователя (логин)"
+                description="От 3 до 64 символов: латинские буквы, цифры, _ и -."
+                error={fieldErrors.username}
+              >
+                <Input
+                  id="registerpage-field-1"
+                  name="username"
+                  autoComplete="username"
+                  required
+                  minLength={3}
+                  maxLength={64}
+                  pattern="[a-zA-Z0-9_-]+"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="alex_ivanov"
+                  aria-invalid={Boolean(fieldErrors.username)}
+                  aria-describedby={
+                    fieldErrors.username
+                      ? "registerpage-field-1-error"
+                      : "registerpage-field-1-description"
+                  }
+                  disabled={loading}
+                />
+              </Field>
+              <Field id="registerpage-field-2" label="Email адрес">
+                <Input
+                  id="registerpage-field-2"
+                  name="email"
+                  autoComplete="email"
+                  type="email"
+                  required
+                  maxLength={255}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="alex@alxprgs.tech"
+                  disabled={loading}
+                />
+              </Field>
+              <Field
+                id="registerpage-field-3"
+                label="Пароль"
+                description="Не менее 15 символов."
+                error={fieldErrors.password}
+              >
+                <PasswordInput
+                  id="registerpage-field-3"
+                  name="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={15}
+                  maxLength={128}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loading}
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={
+                    fieldErrors.password
+                      ? "registerpage-field-3-error"
+                      : "registerpage-field-3-description"
+                  }
+                />
+              </Field>
+              <Field
+                id="registerpage-field-4"
+                label="Подтверждение пароля"
+                error={fieldErrors.confirmation}
+              >
+                <PasswordInput
+                  id="registerpage-field-4"
+                  name="password_confirmation"
+                  autoComplete="new-password"
+                  required
+                  minLength={15}
+                  maxLength={128}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={loading}
+                  aria-invalid={Boolean(fieldErrors.confirmation)}
+                  aria-describedby={
+                    fieldErrors.confirmation
+                      ? "registerpage-field-4-error"
+                      : undefined
+                  }
+                />
+              </Field>
+              <ConsentFields
+                terms={terms}
+                consent={consent}
+                onTerms={setTerms}
+                onConsent={setConsent}
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                className="w-full"
+                loading={loading}
+                disabled={Boolean(success) || !documents || !terms || !consent}
+              >
+                Зарегистрироваться
+              </Button>
+            </form>
           )}
-        </div>
-      </div>
-    </div>
+          <p className="mt-6 text-secondary">
+            Уже есть учётная запись?{" "}
+            <Button variant="ghost" onClick={onNavigateToLogin}>
+              Войти
+            </Button>
+          </p>
+        </>
+      )}
+    </AuthSurface>
   );
 };

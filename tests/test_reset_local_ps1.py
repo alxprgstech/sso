@@ -26,9 +26,19 @@ class ResetLocalPowerShellTests(unittest.TestCase):
             self.assertIsNotNone(shell)
             script = f"""
 $callLog = '{str(call_log).replace("'", "''")}'
+$env:SSO_RUNTIME_PASSWORD = $null
+$env:SSO_MIGRATOR_PASSWORD = $null
+$env:ALX_BUILD_SHA = $null
 function docker {{
+    if ($args[0] -eq 'compose' -and
+        (-not $env:SSO_RUNTIME_PASSWORD -or -not $env:SSO_MIGRATOR_PASSWORD -or -not $env:ALX_BUILD_SHA)) {{
+        $global:LASTEXITCODE = 19; return
+    }}
     Add-Content -LiteralPath $callLog -Value ($args -join ' ') -Encoding UTF8
-    if ($args[0] -eq 'context') {{ $global:LASTEXITCODE = 0; return 'default' }}
+    if ($args[0] -eq 'context') {{
+        if ($env:SSO_RUNTIME_PASSWORD -or $env:SSO_MIGRATOR_PASSWORD -or $env:ALX_BUILD_SHA) {{ throw 'Reset environment leaked' }}
+        $global:LASTEXITCODE = 0; return 'default'
+    }}
     if ($args[-2] -eq 'config') {{ $global:LASTEXITCODE = 0; return '{volume}' }}
     if ($args[-2] -eq 'down') {{ $global:LASTEXITCODE = {down_exit}; return }}
     $global:LASTEXITCODE = 1

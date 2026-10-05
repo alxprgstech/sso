@@ -266,3 +266,12 @@
 ## Уточнение EMAIL-RESEND-01 от 05.10.2026
 
 По прямому поручению владельца дополнительно поддерживается native Resend API. EMAIL_PROVIDER=smtp(default)/ses/resend; RESEND_API_KEY из существующего Settings, SMTP_FROM_EMAIL и имя ALXPRGS по выбору владельца. SES/SMTP настройки, реализации, тесты и auth semantics сохраняются. Только Resend выбранная конфигурация требует key/sender validation; отсутствие AMP в published API документируется. Новых auth flags, fallback, retries, webhooks и DB migrations нет. Приёмка и проверки: [EMAIL-RESEND-01](docs/acceptance-resend.md).
+
+
+## Дополнение владельца05.10.2026 — FRONTEND-REDESIGN-01
+
+В рамках текущего задания frontend полностью перестраивается по [ALXPRGS Design Language v1](ALXPRGS%20Design%20Language.md): real Tailwind/tokens, Router/history/deep links, source-owned accessible primitives, local Geist/Mono/Lucide/Motion, first-class passkey, account/admin shell/tables/palette/states, dark/light/system/responsive/reduced-motion и фактическая visual/browser/security приёмка. Dark — исходная тема SSO; System остаётся явно выбираемым, demo default System сохраняется. Visual/interaction source имеет приоритет для presentation, работающие backend/security contracts — для protocol/auth/privacy/reauth. Самостоятельная регистрация с обязательным email и три MFA default-off не меняются.
+
+Стабильные account/admin адреса и минимальный trusted client-context API описаны в [frontend architecture](docs/frontend.md) и [API](docs/api.md). Официальный artwork должен быть локально включён из канонического источника, произвольная замена запрещена. Все26 критериев задания проверяются в [implementation report](FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md). План FR-01–07 и DOC-TRACK учёт сохраняются. Это дополнение не поручает production/deploy/release/commit/PR и не заменяет общую приёмку раздела8.
+
+Уточнение владельца 05.10.2026, UI-LAYOUT-01: общий футер с документами, настройками cookies и контактом располагается у нижнего края короткой страницы; на длинной странице следует за содержимым и доступен прокруткой. Высота футера и баннера учитывается автоматически, без перекрытия форм и фиксированного вычета пикселей. Требование действует для всех маршрутов и состояний сессии. В декоративной схеме входа линии точно соединяют центр ALXPRGS SSO с соответствующими карточками при изменении размера панели; координаты карточек и соединений имеют единый источник. Проверять desktop/mobile, баннер/настройки cookies и длинные документы браузерными геометрическими regression tests.

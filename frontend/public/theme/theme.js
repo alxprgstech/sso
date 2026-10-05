@@ -3,9 +3,10 @@
   if (window.alxprgsTheme) return;
   const key = "alxprgs.ui.theme.v1";
   const valid = value => ["system", "light", "dark"].includes(value);
+  const defaultPreference = document.documentElement.dataset.themeDefault === "dark" ? "dark" : "system";
   const read = () => {
-    try { const value = localStorage.getItem(key); return valid(value) ? value : "system"; }
-    catch { return "system"; }
+    try { const value = localStorage.getItem(key); return valid(value) ? value : defaultPreference; }
+    catch { return defaultPreference; }
   };
   let preference = read();
   const media = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;

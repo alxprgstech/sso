@@ -85,7 +85,7 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     });
     await page.goto(clientOrigins[0]);
     await page.click("#btn-login");
-    await expect(page.getByRole("heading", { name: "Единая система входа ALXPRGS" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible();
     await page.fill('input[placeholder="user@alxprgs.tech"]', process.env.E2E_USERNAME!);
     await page.fill('input[type="password"]', process.env.E2E_PASSWORD!);
     await page.click('button[type="submit"]');

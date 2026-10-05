@@ -7,7 +7,7 @@ test("proxy enforces CSP while the production login UI remains functional", asyn
   expect(headers["content-security-policy"]).toContain("script-src 'self'");
   expect(headers["content-security-policy-report-only"]).toBeUndefined();
   expect(headers["content-security-policy"]).not.toMatch(/unsafe-inline|unsafe-eval/);
-  await expect(page.getByRole("heading", { name: "Единая система входа ALXPRGS" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible();
   await expect(page.getByLabel("Имя пользователя или Email")).toBeEditable();
   let foreignRequests = 0;
   await page.route("https://csp-injected.example/**", route => { foreignRequests++; return route.abort(); });

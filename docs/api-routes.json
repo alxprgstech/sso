@@ -99,6 +99,10 @@
     ],
     [
       "GET",
+      "/oauth/client-context"
+    ],
+    [
+      "GET",
       "/oauth/logout"
     ],
     [

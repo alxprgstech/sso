@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+  --canvas:#090a0c; --surface-1:#0f1115; --surface-2:#14171d; --surface-3:#1a1e26; --surface-hover:#20252e;
+  --border-subtle:#20242c; --border-default:#2a303a; --control-border:#606c80;
+  --text-primary:#f5f7fa; --text-secondary:#b6bec9; --text-tertiary:#929caa;
+  --brand:#3b82f6; --brand-hover:#5594f8; --brand-active:#2563eb; --on-brand:#090a0c; --accent-cyan:#22d3ee;
+  --success:#4ade80; --warning:#fbbf24; --danger:#f87171; --focus:#60a5fa;
+  --info-surface:#11213a; --success-surface:#10271a; --warning-surface:#29200d; --danger-surface:#2c171b;
+  --font-sans:'Geist',Arial,sans-serif; --font-mono:'Geist Mono',monospace;
+  --radius-xs:6px; --radius-sm:8px; --radius-md:10px; --radius-lg:14px; --radius-xl:18px;
+  --shadow-surface:0 2px 8px rgb(0 0 0 / .12); --shadow-dialog:0 20px 60px rgb(0 0 0 / .25);
+  --control-height:44px; --compact-height:36px; --motion-micro:120ms; --motion-state:160ms; --motion-enter:220ms; --motion-layout:280ms;
+  --ease-standard:cubic-bezier(.2,.8,.2,1); --layer-nav:10; --layer-cookie:20; --layer-dialog:70; --layer-toast:80;
+  --width-auth:440px; --width-reading:832px; --width-content:1280px; --width-sidebar:240px;
+  --brand-artwork-background:#fff; --brand-auth-width:112px; --brand-auth-height:84px; --brand-mark-size:40px; --brand-compact-size:44px;
+}
+:root[data-theme='light'] {
+  color-scheme:light;
+  --canvas:#f7f8fa; --surface-1:#fff; --surface-2:#f1f3f5; --surface-3:#e9edf2; --surface-hover:#e7ebf0;
+  --border-subtle:#e2e6eb; --border-default:#cbd2da; --control-border:#788493;
+  --text-primary:#111318; --text-secondary:#4b5563; --text-tertiary:#606b78;
+  --brand:#2563eb; --brand-hover:#1d4ed8; --brand-active:#1e40af; --on-brand:#fff; --accent-cyan:#0891b2;
+  --success:#15803d; --warning:#9a5b00; --danger:#b91c1c; --focus:#2563eb;
+  --info-surface:#eaf1ff; --success-surface:#eaf7ee; --warning-surface:#fff4d6; --danger-surface:#fff0f0;
+}

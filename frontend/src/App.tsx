@@ -1,92 +1,246 @@
-import React, { useState } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router";
+import { MotionConfig } from "motion/react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { Navbar } from "./components/Navbar";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { AdminPage } from "./pages/AdminPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
-import { navigationBreadcrumb } from "./telemetry/sentry";
-import { AppShell } from "./components/AppShell";
 import { AcceptancePage, LegalPage } from "./pages/LegalPage";
 import { AccountDeletionPage } from "./pages/AccountDeletionPage";
-import { ReauthenticationDialog } from "./components/ReauthenticationDialog";
 import { ForcedPasswordPage } from "./pages/ForcedPasswordPage";
-
-const MainContent: React.FC = () => {
-  const { user, isLoading } = useAuth();
-  const [currentPage, setCurrentPage] = useState<"dashboard" | "admin" | "login">("dashboard");
-  const [authView, setAuthView] = useState<"login" | "register">(
-    window.location.pathname === "/register" ? "register" : "login"
-  );
-
-  if (window.location.pathname === "/verify-email") {
-    return <VerifyEmailPage />;
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 py-12">
-        <div className="text-gray-500 text-sm font-medium">Загрузка данных сессии...</div>
-      </div>
+import { ReauthenticationDialog } from "./components/ReauthenticationDialog";
+import { AppShell } from "./components/AppShell";
+import { Navbar } from "./components/Navbar";
+import { FeedbackProvider } from "./components/ui/Feedback";
+import { Skeleton } from "./components/ui/controls";
+import { navigationBreadcrumb } from "./telemetry/sentry";
+import { sessionGate } from "./routing/gates";
+const DashboardPage = lazy(() =>
+  import("./pages/DashboardPage").then((module) => ({
+    default: module.DashboardPage,
+  })),
+);
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })),
+);
+const CommandPalette = lazy(() =>
+  import("./components/CommandPalette").then((module) => ({
+    default: module.CommandPalette,
+  })),
+);
+const publicDocuments = ["/privacy", "/terms", "/cookies", "/data-consent"];
+function RouteFocus() {
+  const location = useLocation();
+  const mounted = useRef(false);
+  useEffect(() => {
+    const shouldFocus = mounted.current;
+    mounted.current = true;
+    let previousTitle = "";
+    let focusedHeading: HTMLElement | null = null;
+    navigationBreadcrumb(
+      location.pathname.startsWith("/admin")
+        ? "admin"
+        : location.pathname === "/register"
+          ? "register"
+          : location.pathname === "/login"
+            ? "login"
+            : "dashboard",
     );
-  }
-
-  if (user?.session_purpose === "password_change") return <ForcedPasswordPage />;
-  if (window.location.pathname === "/login" && new URLSearchParams(window.location.search).get("force_login") === "1") {
-    return <LoginPage onNavigateToRegister={() => setAuthView("register")} />;
-  }
-
-  if (!user) {
-    if (authView === "register") {
-      return (
-        <RegisterPage
-          onNavigateToLogin={() => {
-            window.history.pushState({}, "", "/login");
-            setAuthView("login");
-            navigationBreadcrumb("login");
-          }}
-        />
-      );
-    }
-    return (
-      <LoginPage
-        onNavigateToRegister={() => {
-          window.history.pushState({}, "", "/register");
-          setAuthView("register");
-          navigationBreadcrumb("register");
-        }}
-      />
-    );
-  }
-
-  const isAdmin = user.is_superuser || user.roles.includes("admin");
-
-  if (user.deletion_pending || user.session_purpose === "deletion_management" || window.location.pathname === "/account-deletion") return <AccountDeletionPage />;
-  if (user.legal_acceptance_required !== false) return <AcceptancePage />;
-
+    const main = document.getElementById("main-content");
+    const focusHeading = () => {
+      const heading = document.querySelector<HTMLElement>("#main-content h1");
+      if (!heading) return false;
+      if (heading.textContent !== previousTitle) {
+        previousTitle = heading.textContent || "";
+        document.title = `${heading.textContent} — ALXPRGS SSO`;
+        focusedHeading = null;
+      }
+      heading.tabIndex = -1;
+      if (
+        shouldFocus &&
+        focusedHeading !== heading &&
+        !document.querySelector('[role="dialog"]')
+      ) {
+        heading.focus({ preventScroll: true });
+        if (document.activeElement === heading) focusedHeading = heading;
+      }
+      return true;
+    };
+    // Lazy routes and legal/session gates may resolve after this effect.
+    const observer = new MutationObserver(focusHeading);
+    if (main)
+      observer.observe(main, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    const frame = requestAnimationFrame(focusHeading);
+    window.addEventListener("alxprgs-dialog-closed", focusHeading);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("alxprgs-dialog-closed", focusHeading);
+    };
+  }, [location.pathname]);
+  return null;
+}
+function NotFound() {
   return (
-    <div className="flex-1 bg-gray-50 flex flex-col">
-      <Navbar currentPage={currentPage} setCurrentPage={page => { navigationBreadcrumb(page); setCurrentPage(page); }} />
-      <div className="flex-1">
-        {currentPage === "admin" && isAdmin ? (
-          <AdminPage />
-        ) : (
-          <DashboardPage />
-        )}
-      </div>
-    </div>
+    <section className="legal-page">
+      <h1>Страница не найдена</h1>
+      <p>Проверьте адрес или вернитесь к своей учётной записи.</p>
+      <Link className="ui-button ui-secondary" to="/">
+        На главную
+      </Link>
+    </section>
   );
-};
-
-export const App: React.FC = () => {
-  const publicDocument = ["/privacy", "/terms", "/cookies", "/data-consent"].includes(window.location.pathname);
-  if (publicDocument) return <AppShell><LegalPage path={window.location.pathname} /></AppShell>;
+}
+function SessionRoutes() {
+  const { user, isLoading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const gate = sessionGate(user, isLoading, location.pathname, location.search);
+  const registration = () => navigate(`/register${location.search}`);
+  if (gate === "loading")
+    return (
+      <section className="legal-page">
+        <Skeleton label="Загрузка данных сессии" />
+      </section>
+    );
+  if (gate === "password") return <ForcedPasswordPage />;
+  if (gate === "login")
+    return (
+      <Routes>
+        <Route
+          path="/register"
+          element={
+            <RegisterPage
+              onNavigateToLogin={() => navigate(`/login${location.search}`)}
+            />
+          }
+        />
+        <Route
+          path="/"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route
+          path="/login"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route
+          path="/admin/*"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route
+          path="/account/*"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route
+          path="/account-deletion"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route
+          path="/accept-terms"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route
+          path="/change-password"
+          element={<LoginPage onNavigateToRegister={registration} />}
+        />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    );
+  if (gate === "deletion") return <AccountDeletionPage />;
+  if (gate === "legal") return <AcceptancePage />;
+  const admin = Boolean(
+    user && (user.is_superuser || user.roles.includes("admin")),
+  );
+  return (
+    <>
+      <Navbar />
+      <Suspense fallback={null}>
+        <CommandPalette />
+      </Suspense>
+      <Suspense
+        fallback={
+          <section className="legal-page">
+            <Skeleton />
+          </section>
+        }
+      >
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/account/:section" element={<DashboardPage />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/register" element={<Navigate to="/" replace />} />
+          <Route path="/accept-terms" element={<Navigate to="/" replace />} />
+          <Route
+            path="/change-password"
+            element={<Navigate to="/" replace />}
+          />
+          <Route
+            path="/admin"
+            element={
+              admin ? (
+                <AdminPage />
+              ) : (
+                <section className="legal-page">
+                  <h1>Доступ ограничен</h1>
+                  <p>Этот раздел доступен администратору.</p>
+                </section>
+              )
+            }
+          />
+          <Route
+            path="/admin/:section"
+            element={
+              admin ? (
+                <AdminPage />
+              ) : (
+                <section className="legal-page">
+                  <h1>Доступ ограничен</h1>
+                  <p>Этот раздел доступен администратору.</p>
+                </section>
+              )
+            }
+          />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </>
+  );
+}
+function Content() {
+  const { pathname } = useLocation();
+  if (publicDocuments.includes(pathname)) return <LegalPage path={pathname} />;
+  if (pathname === "/verify-email") return <VerifyEmailPage />;
   return (
     <AuthProvider>
-      <AppShell><MainContent /><ReauthenticationDialog /></AppShell>
+      <SessionRoutes />
+      <ReauthenticationDialog />
     </AuthProvider>
   );
-};
-
+}
+export function App() {
+  return (
+    <BrowserRouter>
+      <MotionConfig reducedMotion="user" transition={{ duration: 0.22 }}>
+        <FeedbackProvider>
+          <AppShell>
+            <RouteFocus />
+            <Content />
+          </AppShell>
+        </FeedbackProvider>
+      </MotionConfig>
+    </BrowserRouter>
+  );
+}
 export default App;

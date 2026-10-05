@@ -67,8 +67,9 @@ async function requireSilentAgePolicy(page: Page, origin: string, me: { id?: str
 }
 
 async function changePasswordWithAccessibleProof(page: Page) {
+  await page.goto("/account/security");
   await page.getByRole("button", { name: "Изменить пароль", exact: true }).click();
-  const dialog = page.locator('[role="dialog"][aria-label="Смена пароля"]');
+  const dialog = page.getByRole("dialog",{name:"Смена пароля",includeHidden:true});
   await dialog.getByLabel("Текущий пароль").fill(password);
   await dialog.getByLabel("Новый пароль (мин. 15 символов)").fill("NewProtocolBrowserSynthetic2026!");
   await dialog.getByLabel("Подтверждение нового пароля").fill("NewProtocolBrowserSynthetic2026!");

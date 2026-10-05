@@ -66,3 +66,8 @@
 ## Внешняя email-группа (TASK-103)
 
 Существующие unit/fake SES и PostgreSQL SMTP проверки сохраняются. Opt-in email_external проверяет пять реальных API-сценариев через SES/testmail; отдельный Playwright config — два независимых registration code/link flow. Общий helper живёт только в tests/helpers. На main/manual-main/release группа обязательна, PR её не запускает. Подробности, безопасные credentials, DB guard, ограничения параллельности и live-блокеры: [email.md](email.md). MOCK/SMTP успех не засчитывается как доставка SES; восемь live писем и release dry-run требуют отдельного фактического результата.
+
+
+## FRONTEND-REDESIGN-01
+
+[Актуальная матрица и результат](../../FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [архитектура/команды](../frontend.md). Appearance fixtures проверяют dark/light/system/initial theme, layout/resizes/320px/short-height, history/deep links, keyboard palette/menu/dialog, reduced motion и Axe всех основных страниц. Они не заменяют real backend/PG/default-off/enabled/WebAuthn/OIDC/privacy suites. Axe WCAG2A/AA/2.1AA/best-practice запускается без отключения правил; enforcing CSP проверяется только за Nginx. Screenshots с fixture data используются для manual visual inspection, не для доказательства аутентификации. Текущие окончательные results публикуются в report после фактического исполнения, не по одному build.
