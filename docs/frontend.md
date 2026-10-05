@@ -56,6 +56,8 @@ Motion: auth-step/layout, modal entry, selected navigation. CSS state/copy/succe
 
 Из `frontend/` после `npm ci`:
 
+`frontend/public/robots.txt` запрещает обход всех путей SSO для всех поисковых роботов (`User-agent: *`, `Disallow: /`). Vite копирует его в корень production build; существующая конфигурация Nginx раздаёт файл по `/robots.txt`. Это рекомендация роботам и не замена аутентификации или контроля доступа.
+
 ```text
 npm run lint
 npm run typecheck

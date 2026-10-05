@@ -623,3 +623,11 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-05T15:28:49.0680006+03:00 — Все текущие изменения проекта подготовлены в new/frontend-redesign к локальному commit по поручению владельца. Secret scan137/0new/control PASS, regression12PASS, whitespacePASS; .env не включается. Результат commit и SHA проверяются после создания и сообщаются в чате. Push/PR не поручены.
 
 2026-10-05T15:29:36.9404975+03:00 — PROJECT-COMMIT-01: staged check имеет замечания к исходному reference Markdown и canonical SVG EOF; эти source bytes сохранены. Secret scan и12regressions PASS. Все файлы staged для локального commit; SHA будет в итоговом сообщении.
+
+2026-10-06T02:42:43.7429774+03:00 — WEB-ROBOTS-01 in_progress: robots.txt для SSO; далее production build и локальная HTTP-проверка. Текущая PROJECT-PR-01 не изменяется.
+
+2026-10-06T02:43:57.9511831+03:00 — WEB-ROBOTS-01 done: robots.txt готов, production build и локальная HTTP-раздача проверены. Production не проверен; продолжение — review локальных правок, текущая PROJECT-PR-01 сохраняется.
+
+2026-10-06T02:44:15.0616710+03:00 — WEB-ROBOTS-01 blocked по HTTP-проверке: loopback sockets запрещены средой. Исправляет ошибочный done выше; файл готов, build/source-dist/diff PASS, HTTP и production не проверены. Продолжение: проверить /robots.txt в локальном окружении владельца.
+
+2026-10-06T02:45:19.4673799+03:00 — WEB-ROBOTS-01: сохраняется локальный scoped commit; далее review владельцем, HTTP-проверка blocked; push не поручен.
