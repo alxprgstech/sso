@@ -1,5 +1,7 @@
 # ADR 0009 — testmail.app как инфраструктура тестов
 
+> Сверка 06.10.2026: сохранено решение на дату принятия; это не новый результат приёмки. Действующий профиль: [архитектура](../architecture.md), [API](../api.md), [статус](../status.md).
+
 - Дата: 02.10.2026. Статус: принято владельцем, реализация TASK-103.
 - Контекст: нужна настоящая проверка доставки и погашения verification code/link; SMTP capture не подтверждает SES delivery.
 - Решение: Essential namespace, существующий SES raw MIME sender, общий Python GraphQL helper в tests/helpers, PostgreSQL fixtures и асинхронный JSON pipe для Playwright. Production runtime не импортирует helper. Settings наследует существующий pydantic-settings механизм; секреты — SecretStr, корневой игнорируемый .env / GitHub Secrets.

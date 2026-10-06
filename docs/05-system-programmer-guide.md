@@ -1,5 +1,7 @@
 # Руководство системного программиста ALXPRGS SSO
 
+Актуализация: 06.10.2026 (DOC-REFRESH-01). Дата первоначального утверждения ниже сохранена; [реестр и пределы сверки](index.md).
+
 - **Обозначение документа**: ЕСПД.ГОСТ 19.503-79.РСП-05
 - **Проект**: ALXPRGS SSO
 - **Версия документа**: 1.0.0
@@ -45,9 +47,9 @@
 | `JWT_PREVIOUS_PUBLIC_KEY_PEM`, `JWT_PREVIOUS_KEY_ID`, `JWT_PREVIOUS_KEY_VALID_UNTIL` | Public key перекрытия, kid и timezone-aware deadline | Пусто | Все вместе при rotation |
 | `BASE_URL` | Базовый внешний URL сервера | `http://localhost:8000` | Да (`https://auth.alxprgs.tech`) |
 | `OIDC_ISSUER` | Идентификатор эмитента OIDC | `https://auth.alxprgs.tech` | Да |
-| `FEATURE_TOTP_ENABLED` | Флаг поддержки TOTP | `false` | Обязательно `false` |
-| `FEATURE_PASSKEY_ENABLED` | Флаг поддержки Passkey | `false` | Обязательно `false` |
-| `FEATURE_RECOVERY_CODES_ENABLED` | Флаг резервных кодов | `false` | Обязательно `false` |
+| `FEATURE_TOTP_ENABLED` | Флаг поддержки TOTP | `false` | Default `false`; enabled только явно |
+| `FEATURE_PASSKEY_ENABLED` | Флаг поддержки Passkey | `false` | Default `false`; enabled только явно |
+| `FEATURE_RECOVERY_CODES_ENABLED` | Флаг резервных кодов | `false` | Default `false`; enabled только явно |
 | `FEATURE_EMAIL_VERIFICATION_ENABLED` | Обязательная проверка email до самостоятельной регистрации | `true` | `false` отвергается |
 | `REQUIRE_VERIFIED_EMAIL` | Политика входа существующих/admin users | `false` | Явный выбор владельца |
 
@@ -56,7 +58,7 @@
 ## 5. Эксплуатационные регламенты
 
 ### 5.1. Резервное копирование
-Выполняется ежедневно с помощью скрипта:
+Ежедневный запуск настраивает оператор; встроенного scheduler нет. После проверки целевого контейнера:
 ```bash
 python scripts/backup_db.py --docker --output-dir backups/
 ```
@@ -77,3 +79,7 @@ Session и TOTP генерируются отдельно с `--kind session`/`-
 и restart всех workers. `TOTP_ENCRYPTION_KEY` меняется только после транзакционной migration
 существующих ciphertext в offline maintenance. Значения не выводятся в консоль. Порядок backup,
 rollback, startup validation и verified SMTP описан в [operations.md](operations.md).
+
+## Подготовка и сопровождение
+
+Ресурсы выше — исходный ориентир, не проверенная нижняя граница текущей сборки. Нужен Git для identity. Раздельные роли PostgreSQL обязательны; DDL из backend runtime запрещён. Подробные процедуры: [operations](operations.md). Все Settings и отличия Compose: [configuration](configuration.md).

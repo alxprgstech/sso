@@ -1,5 +1,7 @@
 # ADR-0007 — выбираемый SES v2 transport для подтверждения email
 
+> Сверка 06.10.2026: сохранено решение на дату принятия; это не новый результат приёмки. Действующий профиль: [архитектура](../architecture.md), [API](../api.md), [статус](../status.md). Старые email default-off, немедленная регистрация и параметры пароля заменены [ADR-0008](0008-registration-after-email-verification.md), [ADR-0011](0011-privacy-and-deletion.md) и [ADR-0015](0015-security-revision-and-reauth.md): обязательный email/согласия, пароль 15–128, одноразовый proof.
+
 - Дата: 2026-09-29T03:39:27+03:00. Статус: принято для TASK-094.
 
 Уточнение 02.10.2026 (TASK-103): ниже сохранено историческое решение. GOAL 1.3 отменил default-off email; самостоятельная регистрация требует подтверждения до создания пользователя. Отправка теперь использует общий verification_email.build_message/deliver_message и SES Content.Raw с plain/AMP/HTML. Обычный CI сохраняет mocks/SMTP; отдельный обязательный main/release job проверяет реальный SES через testmail.app ([ADR 0009](0009-testmail-email-testing.md)). Live-приёмка ждёт production access и credentials.

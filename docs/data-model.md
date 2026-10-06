@@ -1,5 +1,7 @@
 # Модель данных ALXPRGS SSO
 
+Сверка документации: 06.10.2026, продукт 0.2.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
+
 - Обозначение документа: ALXPRGS.SSO.DATA-01
 - Версия документа: 1.0.0
 - Дата: 2026-09-24T11:38:00+03:00
@@ -237,3 +239,7 @@ erDiagram
 | `privacy_rate_windows` | Общая PostgreSQL инфраструктура quotas с отдельными namespaces/HMAC identifiers; DB timestamp и атомарный counter, независимый quota commit до expensive Argon2 |
 
 Email verification привязана к точному адресу и revision. Pending user change не меняет прежний подтверждённый адрес до атомарного подтверждения; admin email change сразу очищает verified и прежние challenges. Уникальность адреса защищена PostgreSQL, concurrent collision возвращает безопасный отказ. Процедура перехода схемы и отдельных ролей — [migration](migration.md), [operations](operations.md).
+
+## Полнота модели
+
+Диаграмма основных сущностей не заменяет DDL. Перечень — backend/app/models и десять Alembic migrations, head 0010_registration_session. pending_registrations предшествуют users; email_verification_tokens обслуживают существующие аккаунты. Дополнительные таблицы: authentication_steps, security_authorizations, webauthn_challenges, legal_acceptances, deletion_authorizations, deleted_subjects, privacy_rate_windows. DDL drift проверяется на PostgreSQL, не статической сверкой.

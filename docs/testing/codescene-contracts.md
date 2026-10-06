@@ -31,3 +31,7 @@
 ## Проверенный результат — 2026-10-04T23:31:35.029980+03:00
 
 На `94298ed4cfd05362b08b9b5d778013346554c06c` все **9 обязательных [Actions jobs](https://github.com/alxprgstech/sso/actions/runs/37232030605) успешны**; [CodeScene7806490](https://codescene.io/projects/85555/delta/results/7806490) — success, все3qualitygates прошли. ДваSESjobs skipped поCI03 безAWS; реальнаядоставка не проверена. Настройки подтверждены настоящим анализомPR; все3gates/profile сохранены. Архивнаяpolicy содержит только2фактическихrule names, callbackdirective одна. Последующийdocs-onlyhead не меняетpolicy/runtime/tests и проверяетсяотдельно.
+
+## Актуальная трактовка
+
+Указанные success/pending относятся к своим историческим SHA и моментам. Два разрешённых исключения сохраняют точные paths/rules; DOC-REFRESH-01 не менял CodeScene policy и не запускал удалённый анализ. Текущий статус нового SHA нужно подтвердить отдельным прогоном, а не записью документа.

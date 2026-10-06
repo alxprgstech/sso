@@ -85,3 +85,7 @@ def admin(user: UserClaims = Depends(security.require_role("admin"))):
 
 При max_age SDK требует auth_time integer и проверяет его возраст. Для max_age=0 предусмотрено строго ограниченное окно доставки callback5s с целочисленной точностью NumericDate; auth_time старше5s отвергается. Это локальное решение о доставке, не разрешение OP переиспользовать прежний login: сервер связывает fresh request и новую аутентификацию, nonce остаётся обязательным. Для ненулевого max_age дополнительных5s нет. JWKS загружается потоково до64KiB, набор1–16 уникальных public RSA≥2048 проверяется до кэширования. Некорректный ответ не заменяет последний проверенный набор; после max_stale_seconds сеть должна восстановиться, иначе отказ.
 Основание auth_time/max_age — [OpenID Connect Core, раздел3.1.3.7](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation); NumericDate и ограничение окна доставки учитываются явно.
+
+## Сборка и границы проверки
+
+Версия — корневой VERSION, публичная публикация пакета не подтверждается README. Полный поток start_authorization/handle_web_callback, настройка expected_issuer и сборка wheel описаны в [SDK](../../docs/sdk.md). Интеграция требует установленного пакета, без импорта backend. [Чистая среда и проверки](../../docs/testing/README.md). Прежние результаты читаются с датой/SHA.

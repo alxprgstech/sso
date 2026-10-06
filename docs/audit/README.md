@@ -31,3 +31,7 @@ python -m pytest -p tests.conftest docs/audit/test_readiness_probes.py -q --juni
 - Raw local logs/captures/private maps/DSN/packages игнорируются и не публикуются; даже synthetic failures могут содержать JWT. Guard/test DB не отключать, рабочую БД/SQLite не использовать.
 - Actual local PG/races/backup, Nginx/Chromium SSO/admin/default-off/enabled и TLS loopback PASS. Telemetry uses actual SDK/rrweb/intercepted ingestion, не live Sentry. Production Replay hard-off.
 - Exact code SHA local bundle clean/source_tree_dirty=false PASS, tag=null, никаких published artifacts. Actual Linux images/Trivy/remoteCI/publicHTTPS/provider/ops/OIF/owner review требуют E01…E07 и не считаются пройденными.
+
+## Актуальная подготовка
+
+Исторические evidence и baseline сохраняются без изменения результатов. Для новых прогонов используйте [текущую подготовку тестирования](../testing/README.md) и обязательный DB guard. Последующие CI/CodeScene результаты зафиксированы в acceptance.md; список внешних условий в историческом отчёте не переносится автоматически на нынешний SHA.

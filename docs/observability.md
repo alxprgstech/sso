@@ -1,5 +1,7 @@
 # Наблюдаемость Sentry
 
+Сверка документации: 06.10.2026, продукт 0.2.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
+
 Реализация SENTRY-01..07, ADR-0010. По решению владельца используются два проекта одной организации EU/DE: `alxprgs-sso-backend` (FastAPI) и `alxprgs-sso-frontend` (React). Browser отправляет данные напрямую. SDK закреплены: Python 2.71.0, JavaScript/bundler plugins 11.2.0, CLI 3.8.0. Отдельный Python SDK и demo clients не зависят от Sentry.
 
 ## Конфигурация и включение
@@ -87,7 +89,7 @@ pytest tests/integration/test_sentry_pg.py
 npm --prefix frontend run test:telemetry:browser
 ```
 
-PG тест требует `TEST_DATABASE_URL` и существующий safety marker из [testing/plan.md](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/testing/plan.md). Он реально выполняет SQLAlchemy query и проверяет timings/очистку spans. Подмена SQLite/mock не засчитывается. Browser harness перехватывает real SDK envelopes; decompression mandatory, production hard-off и missing-worker fallback проверяются отрицательно. Обычные SSO browser suites/default-off/enabled и SES/testmail checks остаются обязательными.
+PG тест требует `TEST_DATABASE_URL` и существующий safety marker из [подготовка тестирования](testing/README.md). Он реально выполняет SQLAlchemy query и проверяет timings/очистку spans. Подмена SQLite/mock не засчитывается. Browser harness перехватывает real SDK envelopes; decompression mandatory, production hard-off и missing-worker fallback проверяются отрицательно. Обычные SSO browser suites/default-off/enabled и SES/testmail checks остаются обязательными.
 
 Staging acceptance: проверенный artifact и maps upload до запуска → временный synthetic harness вне production artifact → один controlled backend и frontend failure → проверить Issue release/environment/исходную TSX location → вручную просмотреть error/trace и decompressed Replay → реальные PG/mail/distributed tracing → сравнение disabled/enabled на одном стенде. Предлагаемые overhead gates: backend p95 рост ≤max(5 ms,5%); основной frontend gzip рост ≤100 KiB; в production startup отсутствуют recorder/worker downloads. Размер bundle сам по себе не подтверждает p95 или production smoke.
 
@@ -110,3 +112,7 @@ Rollback: flags компонента false → SDK не инициализиру
 Браузерный Sentry дополнительно требует diagnostics consent; Replay — отдельный consent, diagnostics и server staging. Отзыв выключает client/transport, stop Replay с flush:false; изменения storage синхронизируют вкладки. Отказ и недоступный storage не блокируют SSO. Выбор 180 дней без user identity, malformed/expired fail-closed. Серверные errors остаются отдельным очищенным каналом.
 
 Worker проверяет due erasure при startup и раз в минуту; ошибка пишет фиксированную категорию privacy_maintenance_failed без payload/exception text/PII и повторяется на следующем tick. Для эксплуатационного alert проверяйте `SELECT count(*), min(deletion_scheduled_for) FROM users WHERE deletion_scheduled_for <= clock_timestamp()`; растущая задержка требует проверки DB/worker, а не переноса срока. Audit retention 90d, journal 30d, краткие rate-limit windows независимы. Log/backup quotas и фактические сроки Sentry SaaS до production подтверждает оператор.
+
+## Статус тарифных ориентиров
+
+Student quota и бюджеты выше — исторические/расчётные ориентиры, не подтверждённые условия текущего аккаунта. До включения оператор сверяет фактический план и usage в SaaS. Default .env.example/Compose задаёт SENTRY_ENVIRONMENT=local; для production/staging это значение нужно выбрать явно, автоматический вывод Settings работает только при отсутствии override.

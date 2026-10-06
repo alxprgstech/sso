@@ -1,5 +1,7 @@
 # Архитектура ALXPRGS SSO
 
+Актуализация: 06.10.2026 (DOC-REFRESH-01). Дата первоначального утверждения ниже сохранена; [реестр и пределы сверки](index.md).
+
 - Обозначение документа: ALXPRGS.SSO.ARCH-01
 - Версия документа: 1.0.0
 - Дата: 2026-09-24T11:38:00+03:00
@@ -27,18 +29,18 @@ flowchart TB
     end
 
     subgraph Edge ["Периметр сети (Reverse Proxy / TLS)"]
-        Nginx["Reverse Proxy (Nginx / Caddy)\nTLS termination (auth.alxprgs.tech)"]
+        Nginx["Reverse Proxy (Nginx)\nTLS termination (auth.alxprgs.tech)"]
     end
 
     subgraph SSOSystem ["ALXPRGS SSO Core"]
-        Frontend["Frontend SPA (React + TypeScript)\n/login, /register, /admin, /profile"]
+        Frontend["Frontend SPA (React + TypeScript)\n/login, /register, /admin, /"]
         BackendAPI["FastAPI Backend\nAPI Transport Layer"]
         
         subgraph AppLayers ["Слои Backend"]
             Transport["API Endpoints & Routers\n(/oauth, /api/v1/auth, /api/v1/admin)"]
-            Services["Application Services\n(AuthService, SystemService, OIDCService,\nMFAService, AuditService, TokenService)"]
+            Services["Application Services\n(AuthService, SystemService, OIDCService,\nMFAService, AuditService, RegistrationService)"]
             Domain["Domain Logic & Security Invariants\n(Argon2id, PKCE S256, Feature Flags,\nRBAC Policy, Registration Policy)"]
-            DataLayer["Data Access & Repositories\n(SQLAlchemy 2.0 Async / Alembic)"]
+            DataLayer["Data Access\n(SQLAlchemy 2.0 Async / Alembic)"]
         end
     end
 
@@ -76,18 +78,18 @@ flowchart TB
 ## 3. Модель разграничения сред и сессий
 
 ### 3.1. Браузерная сессия SSO (Кабинет и Аутентификация)
-- **Механизм**: Серверные сессии, идентификатор сессии хранится в подписанной защищённой cookie `__Host-alx_session`.
-- **Флаги Cookie**: `Secure=true`, `HttpOnly=true`, `SameSite=Lax`, `Path=/`, без указания атрибута `Domain` (Host-Only cookie). Это предотвращает утечку cookie на соседние поддомены `*.alxprgs.tech`.
-- **Защита от CSRF**: Двойная отправка токена (Double Submit Cookie) либо заголовок `X-CSRF-Token`, связанный со значением в сессии для всех мутирующих запросов (POST, PUT, DELETE, PATCH).
+- **Механизм**: Серверные сессии PostgreSQL: cookie содержит случайный непрозрачный секрет, БД — SHA-256. Cookie не является подписанным JWT.
+- **Флаги Cookie в production**: `Secure=true`, `HttpOnly=true`, `SameSite=Lax`, `Path=/`, без указания атрибута `Domain` (Host-Only cookie). Это предотвращает утечку cookie на соседние поддомены `*.alxprgs.tech`.
+- **Защита от CSRF**: Заголовок `X-CSRF-Token` с HMAC от UUID сессии и серверного ключа, плюс exact Origin для всех мутирующих запросов (POST, PUT, DELETE, PATCH).
 - **Срок жизни**:
   - Idle timeout: 12 часов неактивности.
   - Absolute timeout: 7 суток с момента создания.
 
 ### 3.2. Токены API и OIDC
 - **Access Token**: JWT асимметричной подписи RS256, срок действия 5 минут (300 секунд).
-  - Claims: `iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`, `scope`, `roles`.
+  - Claims включают iss/sub/aud/exp/nbf/iat/jti/scope/token_use и security_revision; roles выдаются только при profile scope.
 - **ID Token**: JWT асимметричной подписи RS256, срок действия 5 минут. Выдаётся клиенту вместе с access token при запросе scope `openid`.
-  - Claims: `iss`, `sub`, `aud`, `exp`, `iat`, `nonce` (если был передан), `email`, `email_verified`, `preferred_username`.
+  - Claims: `iss`, `sub`, `aud`, `exp`, `iat`, `nonce` (если был передан), `auth_time`, `token_use`; `email/email_verified` только при email scope, `preferred_username/roles` только при profile scope.
 - **Authorization Code**: 60 секунд, одноразовый (single-use), привязан к `client_id`, `redirect_uri`, `code_challenge` (S256), `nonce`.
 - **Refresh Token**: Ротируемый токен, срок жизни 7 дней. При каждом обмене старый токен отзывается, выпускается новый. При попытке повторного использования старого токена (Replay Attack) автоматически отзывается всё семейство токенов (Token Family).
 
@@ -136,7 +138,7 @@ sequenceDiagram
 
 ## 5. Архитектура отложенных возможностей (Feature Flags)
 
-Согласно требованиям GOAL.md и AGENTS.md, в системе предусмотрены 4 флага возможностей:
+Три MFA-флага управляют доступностью функций; email-параметр сохранён для совместимости:
 - `FEATURE_TOTP_ENABLED` (по умолчанию `false`)
 - `FEATURE_PASSKEY_ENABLED` (по умолчанию `false`)
 - `FEATURE_RECOVERY_CODES_ENABLED` (по умолчанию `false`)
@@ -154,8 +156,14 @@ sequenceDiagram
 
 ## Sentry (ADR-0010)
 
-FastAPI и React отправляют application errors в отдельные проекты EU; shared immutable VERSION/SHA release. Runtime browser config не обращается к PostgreSQL и не содержит backend DSN/credentials/user data. Transaction/static mode позволяет очищать complete traces; outgoing backend propagation выключена, browser ограничен same-origin API/OAuth. Security audit остаётся PostgreSQL, stdout использует безопасный JSON formatter. Replay — отдельный staging-only chunk/worker; все чувствительные views blocked. Private maps отделены от deploy output, token доступен единственному trusted release step. Подробности и ограничения: [observability.md](observability.md).
+При включённой диагностике FastAPI и React отправляют application errors в отдельные проекты EU; shared immutable VERSION/SHA release. Runtime browser config не обращается к PostgreSQL и не содержит backend DSN/credentials/user data. Transaction/static mode позволяет очищать complete traces; outgoing backend propagation выключена, browser ограничен same-origin API/OAuth. Security audit остаётся PostgreSQL, stdout использует безопасный JSON formatter. Replay — отдельный staging-only chunk/worker; все чувствительные views blocked. Private maps отделены от deploy output, token доступен единственному trusted release step. Подробности и ограничения: [observability.md](observability.md).
 
 ## Третий email transport — Resend
 
 По EMAIL-RESEND-01 существующий verification_email dispatcher поддерживает native Resend через отдельный async HTTPX adapter. Settings/ошибка доставки/API сценарии прежние; selector smtp(default)/ses/resend. Resend использует RESEND_API_KEY и SMTP_FROM_EMAIL/ALXPRGS, передаёт text/HTML, без AMP, retry/fallback/queue/webhooks. SES raw MIME, boto3 credentials/retry и SMTP MIME/verified STARTTLS сохранены. finite provider allowlists в аудите и Sentry дополнены resend без снятия scrubbing. См. [ADR 0020](adr/0020-resend-email-provider.md), [приёмка](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md).
+
+## Границы реализации
+
+Authlib используется для scope/PKCE helpers; API/OIDCService реализуют HTTP-профиль и транзакционные grants; JWT — PyJWT/cryptography. Наличие Authlib не означает готовый AuthorizationServer или сертификацию. Compose — локальный HTTP на loopback, HTTPS-схема выше описывает целевую топологию. [API](api.md), [status](status.md).
+
+Claims email/email_verified выдаются только при email scope, preferred_username/roles — при profile. ID Token включает token_use/id-профиль и auth_time; полный контракт описан в API. Бесшовный вход возможен только при допустимой OP session и отсутствии требования fresh login/согласий/смены пароля/удаления; prompt=login/none и max_age соблюдаются.

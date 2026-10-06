@@ -16,7 +16,7 @@
 ## Сценарий бесшовного единого входа (Single Sign-On)
 
 1. Пользователь открывает **Сервис 1** (`http://localhost:8001/`) и нажимает «Войти».
-2. Сервис 1 генерирует PKCE `code_verifier` и перенаправляет пользователя на сервер SSO (`http://localhost:8000/oauth/authorize`).
+2. Сервис 1 генерирует PKCE `code_verifier` и перенаправляет пользователя на сервер SSO (Compose: `http://localhost:3000/oauth/authorize`; standalone — выбранный SSO_SERVER_URL).
 3. Пользователь вводит логин и пароль на сервере SSO.
 4. Сервер SSO выпускает одноразовый authorization code и возвращает пользователя в Сервис 1 (`/callback`). Сервис 1 обменивает код на Access/ID токены, проверяет issuer/audience/nonce и создаёт локальную серверную сессию. Браузер получает только случайный ID в host-only cookie.
 5. Пользователь открывает **Сервис 2** (`http://localhost:8002/`) и нажимает «Войти».
@@ -29,3 +29,7 @@
 ## Запуск примеров
 
 Из корня репозитория после установки backend и **собранного wheel SDK** в изолированную среду задайте `CLIENT_SECRET` отдельно для каждого зарегистрированного confidential клиента (без значения по умолчанию), `OIDC_ISSUER` строго равный issuer сервера и `DEMO_ALLOW_HTTP_LOCALHOST=1` только для локального HTTP. Используйте синтетические credentials лишь в явно выбранном E2E профиле; не подставляйте их в рабочий запуск. Для первого процесса выполните `python -m uvicorn examples.client1.app:app --host 127.0.0.1 --port 8001 --workers 1`, для второго — `python -m uvicorn examples.client2.app:app --host 127.0.0.1 --port 8002 --workers 1`. Сервер SSO должен быть доступен по `SSO_SERVER_URL`, а callback URI зарегистрированы точно. Без установленного SDK или явного секрета confidential callback отклоняется.
+
+## Локальный профиль
+
+В штатном Compose SSO_SERVER_URL=http://localhost:3000, OIDC_ISSUER буквально равен issuer OP. Start scripts не заменяют OIDC_ISSUER из .env.example: по умолчанию он остаётся https://auth.alxprgs.tech, тогда как transport — localhost:3000. Existing .env не переписывается. У каждого процесса собственный CLIENT_SECRET и точный callback. DEMO_ALLOW_HTTP_LOCALHOST=1 допускается только для локального HTTP. [SDK](../docs/sdk.md) описывает независимую установку; текущая документационная сверка не запускала live callback.
