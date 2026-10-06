@@ -537,6 +537,9 @@ Commit/PR и последующие локальные/remote проверки �
 
 Footer regression проверяет13 public/account/admin сценариев и320/390/1440/1908px, один select в footer/отсутствие appearance-bar, короткие/длинные страницы и открытый banner без перекрытия. Остальные browser сценарии проверяют natural Tab/arrows/focus ring, темы/хранилище/ранний bootstrap, geometry/Axe/CSP. Визуально просмотрены локальные PNG frontend/test-results/theme-footer-desktop.png (1908) и theme-footer-mobile.png (390). Документация UTF-8/local links и git whitespace проверены. Backend/PG auth не проверялись: browser auth fixtures синтетические; production/общая GOAL не закрываются. Commit/push не выполнялись. npm audit: существующий high source-map-js1.2.1, GHSA-68fv-2mgg-jv7q; отдельный patch planned, dependencies текущего diff не изменены.
 
+### DEP-SOURCEMAP-01 — 2026-10-06T11:49:37.2634609+03:00
+Патч source-map-js1.2.1→1.2.2 из npm registry для GHSA-68fv-2mgg-jv7q. package.json и workflow неизменны; только version/resolved/integrity одной lock записи. Node24.20.0/npm11.19.0: окончательный npm ci exit0 (2min), npm audit --audit-level=high0vulnerabilities/exit0, npm ls source-map-js1.2.2 во всех цепочках; lint/typecheck/typecheck:tests/unit13/components39(43.76s)/build(2.93s) PASS. Secret scan135/0new и git diff --check PASS. Начало записано в плане; remote новогоdiff, Linux/Docker/browser повтор не выполнялись, общая GOAL не закрывается. Первоначальный npm update добавил unrelated optional metadata, удалённые из финального diff; повторная чистая установка именно минимального lock PASS.
+
 ## BUILD-PERF-01 — локальная Docker-сборка
 
 2026-10-06T12:24:48.0060880+03:00: новый SHA backend253,16s→25,07s на отдельном builder; unit21/cache18/scenarios11/pip check/image/runtime/изолированные Compose миграции иreadiness PASS. [Методика, команды и ограничения](acceptance-build-perf.md). Это не общая GOAL-09 и не production/remoteCI приёмка.
