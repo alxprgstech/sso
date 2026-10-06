@@ -62,9 +62,11 @@ python scripts/rotate_keys.py --kind rsa --output-dir <новый-защищён
 
 После миграции 0003 клиенты `/api/v1/auth/register` должны обрабатывать HTTP 202 и `challenge_id`; HTTP 201 и немедленного `user_id` больше нет. В открытом режиме без работающей почты заявка остаётся в БД, пользователь не создаётся, а API возвращает 503. Повторная отправка по `challenge_id` выдаёт новый код/ссылку (не более трёх писем за час), срок каждого — 10 минут. Для диагностики смотрите категории `email_delivery_failed` в аудите и технический `ses_email_accepted message_id` в логе backend; не выводите сам код, токен, тело или AWS credentials.
 
-Город и страна остаются «Неизвестно», пока доверенный ingress не удаляет исходные клиентские `X-ALX-Geo-*` и сам не передаёт проверенные значения. Поставляемые Nginx-конфигурации удаляют эти заголовки. AMP и Schema.org в письме не гарантируют интерфейсную карточку Gmail: отправитель должен отдельно зарегистрироваться в Google для AMP и email markup, а для Gmail action запросить bearer token и проверить его на сервере. Обычные HTML, текст, код и ссылка работают без одобрения Google.
+Geo headers игнорируются даже от доверенного ingress; город/страна не сохраняются после privacy-изменений. Поставляемые Nginx-конфигурации удаляют эти заголовки. AMP и Schema.org в письме не гарантируют интерфейсную карточку Gmail: отправитель должен отдельно зарегистрироваться в Google для AMP и email markup, а для Gmail action запросить bearer token и проверить его на сервере. Обычные HTML, текст, код и ссылка работают без одобрения Google.
 
 ```bash
+# В Bash; PowerShell: $env:ALX_BUILD_SHA = git rev-parse HEAD
+export ALX_BUILD_SHA=$(git rev-parse HEAD)
 # Сборка и запуск контейнеров в фоновом режиме
 docker compose up -d --build
 
@@ -93,21 +95,14 @@ alx-admin --username admin --email admin@alxprgs.tech
 
 ## 3. Управление миграциями базы данных
 
-Миграции схемы БД выполняются с использованием Alembic:
+Миграции выполняются job migrate как sso_migrator; backend работает как sso_runtime без DDL. После подготовки .env и ALX_BUILD_SHA из корня:
 
 ```bash
-# Применение всех миграций
-docker compose exec backend alembic upgrade head
-
-# Проверка текущей ревизии базы данных
-docker compose exec backend alembic current
-
-# Создание новой миграции при изменении моделей
-docker compose exec backend alembic revision --autogenerate -m "describe_changes"
-
-# Откат на одну ревизию назад (в случае необходимости)
-docker compose exec backend alembic downgrade -1
+docker compose run --rm migrate alembic upgrade head
+docker compose run --rm migrate alembic current
 ```
+
+Новая миграция создаётся разработчиком в checkout и отдельной dev-БД с DDL-правами: `python -m alembic -c backend/alembic.ini revision --autogenerate -m "describe_changes"`. Generated DDL проверяется до применения. Read-only runtime не подходит для codegen. Универсальный downgrade не является процедурой отката: нужен анализ миграции, backup и свежий deletion journal по [migration](migration.md).
 
 ---
 
@@ -277,7 +272,7 @@ backup в maintenance, актуального deletion journal и совмест
 
 ## Реальные email-тесты
 
-SES остаётся существующим отправителем; testmail.app применяется только как получатель тестовых писем. Владелец отдельно обеспечивает SES production access и выделенные IAM credentials; приложение не меняет account/DNS/configuration sets. Main/release CI требует четыре scoped Secrets (session token optional) и TESTMAIL_NAMESPACE Variable. Обычная рабочая Compose БД для внешней группы не используется. [Запуск, безопасность artifacts, IAM и troubleshooting](testing/email.md).
+SES остаётся существующим отправителем; testmail.app применяется только как получатель тестовых писем. Владелец отдельно обеспечивает SES production access и выделенные IAM credentials; приложение не меняет account/DNS/configuration sets. Внешняя группа требует scoped Secrets и TESTMAIL_NAMESPACE Variable; обычный main CI допускает пропуск без AWS credentials, release с run_email_tests=true — нет. Обычная рабочая Compose БД для внешней группы не используется. [Запуск, безопасность artifacts, IAM и troubleshooting](testing/email.md).
 
 ## Эксплуатация Sentry
 
@@ -307,3 +302,7 @@ Backup скрипт удаляет только собственные файл�
 Клиент обращается к native HTTPS API через уже установленный async HTTPX: проверка сертификатов, network timeout 5 секунд, без redirects, автоматического retry и fallback. При выбранном Resend пустой/некорректный ключ или sender отвергается при загрузке Settings. Отправляются исходные text и HTML общего шаблона, включая код, ссылку и Schema.org; опубликованный Resend API не имеет AMP/raw MIME поля, поэтому AMP доступен по прежним SES/SMTP путям. Provider ID означает принятие запроса, не доставку. Текущий проект не обрабатывает bounce/complaint/webhooks.
 
 Локальная разработка по умолчанию остаётся SMTP; обычные Resend tests работают с fake HTTP и синтетическими ключами, без внешних писем. Перед реальным использованием владелец проверяет домен/его DNS и права sending key в Resend, HTTPS-доступ к `api.resend.com`, а также оставляет open/click tracking выключенным для authentication писем. Реальная отправка и DNS не выполнялись в этой задаче. [Официальная настройка доменов](https://resend.com/docs/dashboard/domains/introduction), [ADR](adr/0020-resend-email-provider.md), [результаты проверок](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md).
+
+## Конфигурация и проверенность
+
+Start scripts требуют Git и сами задают identity. Default Settings и Compose различаются: [configuration](configuration.md). Копия .env.example содержит placeholders. Изменённый frontend требует пересборки/пересоздания. DOC-REFRESH-01 не запускал backup/restore или пользовательский стенд.

@@ -1,5 +1,7 @@
 # Описание программы ALXPRGS SSO
 
+Актуализация: 06.10.2026 (DOC-REFRESH-01). Дата первоначального утверждения ниже сохранена; [реестр и пределы сверки](index.md).
+
 - **Обозначение документа**: ЕСПД.ГОСТ 19.402-78.ОП-02
 - **Проект**: ALXPRGS SSO
 - **Версия документа**: 1.0.0
@@ -16,7 +18,7 @@
    - Backend: Python 3.13, фреймворк FastAPI, асинхронный ORM SQLAlchemy 2.0 (`psycopg` async driver);
    - СУБД: PostgreSQL 16;
    - Frontend: TypeScript, React 18, Vite;
-   - Программный SDK: Python пакет `alxprgs-sso` (PyPI / wheel).
+   - Программный SDK: Python пакет `alxprgs-sso` (локальные wheel/sdist; публичная публикация не подтверждена).
 
 ---
 
@@ -27,7 +29,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Пользовательский агент                   │
-│        (React 18 SPA + Nginx Proxy на порту 3000 / 80)      │
+│        (React 18 SPA + Nginx: loopback 3000 → container 8080)      │
 └───────────────────────────────┬─────────────────────────────┘
                                 │ HTTPS / Host-only Cookies
 ┌───────────────────────────────▼─────────────────────────────┐
@@ -86,3 +88,7 @@
   - Структурированные ответы JSON со строгой схемой Pydantic;
   - Host-only cookies с идентификаторами сессий;
   - Заголовки ответов безопасности (HSTS, nosniff, DENY, CSP).
+
+## Текущий состав
+
+Регистрация создаёт pending заявку; email-confirmation атомарно создаёт пользователя. Privacy/security revision/reauthentication — отдельные сервисы. Frontend: Router 7, Tailwind 4, Vite 8; SDK независим. Head: 0010_registration_session. [Архитектура](architecture.md), [API](api.md), [данные](data-model.md), [frontend](frontend.md).

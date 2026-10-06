@@ -38,3 +38,7 @@
 | `test_required_email_applies_to_existing_grant_token_issue` | `integration/test_verified_email_policy_pg.py::test_required_email_rejects_legacy_refresh_access_and_code_issue` |
 
 Положительные и отрицательные assertions сохранены по смыслу. Возникшие при переносе неверные тестовые предпосылки и failed попытки записываются в worklog; не меняют критерий безопасности. Окончательные команды и результаты находятся в новом re-audit и `docs/acceptance.md`.
+
+## Результаты нового прогона
+
+Карта сохраняет исходные критерии и связь с постоянными tests. Запуск требует [текущей подготовки PostgreSQL](../testing/README.md); в DOC-REFRESH-01 эти PG-пробы не повторялись. Исторический результат не является PASS нынешней ревизии.

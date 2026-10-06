@@ -9,7 +9,7 @@ python -m build --no-isolation packages/python-sdk --outdir dist/sdk
 python -m pip install dist/sdk/alxprgs_sso-0.2.0-py3-none-any.whl
 ```
 
-Зависимости и их точные версии находятся в `packages/python-sdk/pyproject.toml` и `requirements-lock.txt`. Для проверки примеров устанавливайте wheel в чистую среду; `PYTHONPATH` не должен подменять установленный SDK исходниками.
+Диапазоны зависимостей и зафиксированный набор находятся в `packages/python-sdk/pyproject.toml` и `requirements-lock.txt`. Для проверки примеров устанавливайте wheel в чистую среду; `PYTHONPATH` не должен подменять установленный SDK исходниками.
 
 `SSOClient` загружает `/.well-known/jwks.json`, кэширует публичные RSA ключи и проверяет RS256, issuer, audience, обязательные claims, их типы и времена. Некорректный или чрезмерный `kid` отвергается до загрузки JWKS. `verify_access_token` принимает только Access Token; `verify_id_token` проверяет отдельный ID-профиль и ожидаемый nonce. ID Token не используется как Bearer для API.
 
@@ -78,3 +78,7 @@ def admin(user: UserClaims = Depends(security.require_role("admin"))):
 
 При max_age SDK требует auth_time integer и проверяет его возраст. Для max_age=0 предусмотрено строго ограниченное окно доставки callback5s с целочисленной точностью NumericDate; auth_time старше5s отвергается. Это локальное решение о доставке, не разрешение OP переиспользовать прежний login: сервер связывает fresh request и новую аутентификацию, nonce остаётся обязательным. Для ненулевого max_age дополнительных5s нет. JWKS загружается потоково до64KiB, набор1–16 уникальных public RSA≥2048 проверяется до кэширования. Некорректный ответ не заменяет последний проверенный набор; после max_stale_seconds сеть должна восстановиться, иначе отказ.
 Основание auth_time/max_age — [OpenID Connect Core, раздел3.1.3.7](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation); NumericDate и ограничение окна доставки учитываются явно.
+
+## Условия сборки и локальный issuer
+
+Для --no-isolation заранее установите requirements-lock.txt (включает build/setuptools/wheel); requirements-build-lock.txt предназначен для backend builder и не содержит setuptools/wheel; wheel проверяйте после установки в отдельную среду с зависимостями SDK. README пакета показывает FastAPI helper, этот документ — полный callback. SSOClient.expected_issuer задаётся явно, когда transport server_url отличается от issuer. Срок/лимиты JWKS и fallback не отключайте ради тестов. [Тестирование](testing/README.md), [примеры](../examples/README.md).

@@ -1,5 +1,7 @@
 # ALXPRGS Design Language v1
 
+> Сверка 06.10.2026: исходный английский дизайн-стандарт сохраняется как нормативный документ владельца. Реализованная платформа, исключения и границы проверок описаны по-русски в [frontend](docs/frontend.md), [ADR-0021](docs/adr/0021-frontend-design-platform.md) и [ADR-0022](docs/adr/0022-frontend-critical-loading.md). Этот стандарт сам по себе не является актом приёмки или утверждением о полной реализации каждого пункта.
+
 **Status:** Draft specification  
 **Target:** ALXPRGS SSO and future ALXPRGS infrastructure interfaces  
 **Primary surfaces:** Authentication, Account, Security, Administration, Developer/Internal Tools  

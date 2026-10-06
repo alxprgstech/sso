@@ -1,5 +1,9 @@
 # Акт и матрица приёмки программного комплекса ALXPRGS SSO
 
+## Текущая трактовка приёмки
+
+Продукт 0.2.0; DOC-REFRESH-01 сверяет документацию с исходниками, не повторяет общую приёмку. Все прежние PASS/счётчики/окружения ниже относятся к своим датам и ревизиям. Текущий срез — [status](status.md); актуальная методика — [03-test-procedure](03-test-procedure.md), [подготовка](testing/README.md). Новые результаты документационной проверки добавляются отдельной записью, история сохраняется.
+
 ## UI-LAYOUT-01: футер и линии схемы (05.10.2026)
 
 Локальная проверка с Node24.20.0/Vite8.3.1/Chromium; API — явно обозначенные UI fixtures. Общая приёмка backend/PG/OIDC/production этой задачей не повторялась.
@@ -543,3 +547,29 @@ Footer regression проверяет13 public/account/admin сценариев �
 ## BUILD-PERF-01 — локальная Docker-сборка
 
 2026-10-06T12:24:48.0060880+03:00: новый SHA backend253,16s→25,07s на отдельном builder; unit21/cache18/scenarios11/pip check/image/runtime/изолированные Compose миграции иreadiness PASS. [Методика, команды и ограничения](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-build-perf.md). Это не общая GOAL-09 и не production/remoteCI приёмка.
+
+## DOC-REFRESH-01 — приёмка документации
+
+2026-10-06T19:01:30.930078+03:00 — Codex; база исходников979424b, ветка new/documentation-refresh, версия0.2.0. Это документационная сверка, не общая runtime/production-приёмка.
+
+| Проверка | Фактический результат |
+| --- | --- |
+| Реестр | 63Markdown+13supporting files; полный список в index.md |
+| UTF-8, fences, links/anchors | 357 локальные ссылки, 0 ошибок |
+| Python snippets | 4 AST parse PASS; live callbacks не выполнялись |
+| Исторические ссылки | 16 unique commit:path подтверждены git cat-file -e |
+| API/build/security static tests | 22 passed/4.85s |
+| bump_version check / build_lock --check | PASS в .venv-sentry |
+| Alembic heads | 0010_registration_session; без подключения к БД |
+| CLI help | backup_db, restore_db, rotate_keys, run_e2e_suite — exit0, без исполнения операций |
+| Brand manifest | 4 files, bytes/SHA-256 совпадают |
+| Secret scan | python -m detect_secrets1.5.0:129signals/0new; synthetic control detected; plugins/filters как baseline |
+| Code scope | git diff только Markdown; manifests/source/dependencies не изменены |
+
+Команда тестов: `.venv-sentry/Scripts/python.exe -m pytest tests/test_documented_api_contract.py tests/test_build_lock.py tests/test_ci_security_policy.py -m "not postgres" --basetemp=artifacts/docs-refresh/pytest-final -q`. Python3.12.14; DB tests этой командой не заявлены.
+
+Первоначальная .venv не имела sentry_sdk/hatchling; первый compatible run имел tmp_path error из-за отсутствия родительского каталога. После создания собственного artifacts/docs-refresh и выбора существующей .venv-sentry повтор22PASS. Штатный detect-secrets.exe не запускается (uv trampoline failed to canonicalize script path), script --self-test failed; эквивалентные scan/контроль/сравнение выполнены через модуль без изменения scanner policy или baseline. Результат baseline не является live credential review.
+
+DOC-DEF-01 воспроизведён в отдельной временной копии: bump0.2.1 изменил package.json, npm lock остался0.2.0; исходные manifests не изменены. Код исправляется отдельной planned задачей. Полная PG/Compose/E2E/SDK-install/live email/Sentry/HTTPS/OIF приёмка не выполнялась. Новые safe summaries находятся в игнорируемом artifacts/docs-refresh; старые акты/ADR/worklog сохранены.
+
+Финальная сверка 2026-10-06T19:06:10.226840+03:00:357local links/anchors0errors; проверка сохранения исходной истории plan/worklog/acceptance/manual,22ADR,CHANGELOG/audit JSON PASS относительно HEAD. После последней редакторской правки git diff --check PASS, изменения только Markdown.

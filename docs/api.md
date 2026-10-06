@@ -1,6 +1,6 @@
 # API ALXPRGS SSO
 
-Версия продукта0.2.0. Целевой HTTPS issuer `https://auth.alxprgs.tech` — проектный адрес, не свидетельство существующего production. Local HTTP разрешён только выбранному development/testing профилю. Нормативный machine-readable интерфейс — FastAPI OpenAPI из данной ревизии; список ниже проверяется `tests/test_documented_api_contract.py`.
+Версия продукта 0.2.0. Целевой HTTPS issuer `https://auth.alxprgs.tech` — проектный адрес, не свидетельство существующего production. Local HTTP разрешён только выбранному development/testing профилю. Нормативный machine-readable интерфейс — FastAPI OpenAPI из данной ревизии; список ниже проверяется `tests/test_documented_api_contract.py`.
 
 Cookie API использует host-only HttpOnly cookie (`__Host-alx_session`/Secure в production); mutations требуют `X-CSRF-Token` и точный Origin. OAuth client/grant authentication не подменяется browser cookie. JSON errors не отражают raw inputs/SQL/secrets. OAuth errors имеют `error/error_description`; responses `/oauth/*` включают `Cache-Control:no-store`, `Pragma:no-cache`, Basic/Bearer challenges при применимости. Duplicate query/form parameters отвергаются.
 
@@ -92,3 +92,7 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 | POST | `/oauth/revoke` |
 | POST | `/oauth/token` |
 | POST | `/oauth/userinfo` |
+
+## Источники контракта
+
+[api-routes.json](api-routes.json) сверяется с app.openapi() существующим тестом. Поля — backend/app/schemas и handlers. Login/me возвращают csrf_token в JSON; клиент отправляет его в X-CSRF-Token. OpenAPI не доказывает транзакционную политику; [методика](03-test-procedure.md) описывает проверки.

@@ -1,5 +1,7 @@
 # ADR-0016 — Уточнённый протокольный и эксплуатационный профиль
 
+> Сверка 06.10.2026: сохранено решение на дату принятия; это не новый результат приёмки. Действующий профиль: [архитектура](../architecture.md), [API](../api.md), [статус](../status.md).
+
 Дата04.10.2026; принято для AUDIT-FIX-03/04/05. Решения сформулированы по фактически реализованному исправлению F-07…F-23. Их начало и проверки отмечены в worklog, этот документ не заменяет доказательства.
 
 OP сохраняет Authorization Code + обязательный PKCE S256. `prompt=login`/`max_age=0` связывают новый login с точным запросом signed short-lived interaction cookie; last_activity не является authentication time. `prompt=none` даёт зарегистрированному callback protocol error и никогда не показывает UI. Scope policy хранится у клиента, применяется до выдачи code и к claims; roles и scopes независимы. Альтернативы implicit/hybrid, DCR, introspection, PAR, DPoP и back-channel logout не требуются подтверждёнными находками и не добавляются.

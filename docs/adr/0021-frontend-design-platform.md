@@ -1,5 +1,7 @@
 # ADR 0021 — frontend ALXPRGS Design Language v1
 
+> Сверка 06.10.2026: сохранено решение на дату принятия; это не новый результат приёмки. Действующий профиль: [архитектура](../architecture.md), [API](../api.md), [статус](../status.md).
+
 Дата: 2026-10-05. Статус: принято для FRONTEND-REDESIGN-01; основная реализация и локальные проверки выполнены; официальный artwork найден через GitHub organization API и включён локально; итоговая browser проверка46default/10enabled и прежняя scoped brand2 и visual inspection прошла.
 
 ## Решение

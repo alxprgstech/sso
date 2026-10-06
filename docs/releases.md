@@ -1,5 +1,7 @@
 # Регламент версионирования, релизов и развёртывания ALXPRGS SSO
 
+Актуализация: 06.10.2026 (DOC-REFRESH-01). Дата первоначального утверждения ниже сохранена; [реестр и пределы сверки](index.md).
+
 - Обозначение документа: ALXPRGS.SSO.REL-01
 - Версия: 1.0.0
 - Дата: 2026-09-24T11:40:00+03:00
@@ -74,9 +76,9 @@ python scripts/bump_version.py set 0.2.0
   - Отсутствие доступа PR к production-секретам.
   - Concurrency group с отменой устаревших прогонов (`cancel-in-progress: true`).
 - **Состав проверок**:
-  1. `lint-and-typecheck`: Ruff (линтер и форматтер Python), Mypy / Pyright, ESLint, TypeScript typecheck (`tsc --noEmit`).
+  1. `lint-and-typecheck`: Ruff (линтер и форматтер Python), Mypy, ESLint, TypeScript typecheck (`tsc --noEmit`).
   2. `backend-unit-and-integration`: запуск pytest с реальным сервисом PostgreSQL 16 в контейнере, применение миграций Alembic, тестирование гонок и атомарности.
-  3. `mfa-feature-profiles`: тесты в профиле default-off (все 4 флага `false`, проверка 404 на API) и тесты в профиле enabled (`TEST_PROFILE=enabled`).
+  3. `mfa-feature-profiles`: тесты в профиле default-off (три MFA-флага `false`, проверка 404 на API; email обязателен) и тесты в профиле enabled (`TEST_PROFILE=enabled`).
   4. `sdk-package`: сборка `sdist` и `wheel` пакета `alxprgs-sso`, установка в чистую виртуальную среду, тестирование примеров.
   5. `frontend-build`: сборка production-бандла Vite (`npm run build`).
 
@@ -97,7 +99,7 @@ python scripts/bump_version.py set 0.2.0
    - Создается черновик релиза (Draft Release).
    - Загружаются все собранные артефакты и контрольные суммы.
    - После загрузки проверяются все имена и контрольные суммы; релиз остаётся **draft**. Публикация требует отдельного поручения владельца.
-   - Права на запись (`contents: write`) изолированы исключительно в финальном шаге публикации.
+   - Права `contents: write` изолированы в job publish-release; checkout/build tagged-кода в этом job отсутствует.
 
 Локальная проверка без публикации: `python scripts/build_release_artifacts.py build --outdir <пустая-директория>`, затем `python scripts/build_release_artifacts.py verify --outdir <та-же-директория>`. Она не заменяет теговый запуск: manifest dirty-дерева имеет `source_tree_dirty=true`. На 26.09.2026 нынешний код прошёл только такой нетегированный dry-run; удалённый workflow и полный PostgreSQL/browser CI не запускались. Границы доказательств — в [акте GOAL-09](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-09.md).
 
@@ -124,8 +126,18 @@ python scripts/bump_version.py set 0.2.0
 
 `prepare-sentry-release` зависит от build и блокирует draft при включённом неуспешном upload. Trusted workflow checkout и fixed CLI installation выполняются без token; единственный upload step получает protected `SENTRY_AUTH_TOKEN`. Требуются `SENTRY_ORG`, оба `SENTRY_PROJECT_*`, `SENTRY_URL=https://de.sentry.io/`, opt-in `SENTRY_RELEASE_UPLOAD_ENABLED`. Dry-run/upload-disabled всегда offline, даже если credentials присутствуют. Dirty/untagged local bundles не допускаются к upload. Runtime release override не используется. Build не создаёт deployment record; CD остаётся неактивным. Полный порядок: [observability.md](observability.md).
 
-## Миграция следующего релиза: 0004_privacy
+## Миграции текущей реализации: 0004_privacy…0010_registration_session
 
 Новый контракт регистрации требует `terms_accepted=true`, `data_processing_consent=true` и актуальные `legal_versions` из публичного API. Обновите сторонние формы и API-клиенты вместе с frontend. Старые пользователи подтверждают документы после входа; новые SSO codes/tokens до этого не выдаются.
 
 До запуска нового приложения выполните миграцию. Очистка старой геолокации/полного User-Agent необратима при downgrade; согласия и состояния удаления при downgrade теряются. Для отката восстанавливайте совместимую копию только со свежим журналом удалений и закрытым доступом (operations.md). Нельзя открывать старый backend поверх новой схемы как способ обхода consent/deletion gate. Версия и релиз этой задачей не выпускаются.
+
+## Действующий workflow и границы формата
+
+Release запускается только workflow ref main по существующему тегу, проверяет его SHA и повторяет CI через target_sha/run_email_tests=true. Публикация остаётся draft после загрузки и повторного скачивания/проверки набора; успешный workflow не развёртывает продукт. Inputs: tag и dry_run.
+
+Build identity/release workflow допускают stable X.Y.Z и rc.N. bump_version умеет более общий SemVer и преобразование alpha/beta, но это не означает поддержки таких тегов release pipeline. Требуется отдельное решение до их использования. bump_version не обновляет package-lock.json: при изменении версии есть зарегистрированный дефект DOC-DEF-01, текущие версии 0.2.0 совпадают.
+
+Реальные CI jobs: windows-safety, email-e2e-credentials/email-e2e, telemetry-container-check, verify-cd-template, security-and-deps-scan, version-consistency, backend-lint-and-test, sdk-build-and-test, frontend-build, playwright-e2e. Названия выше в описании направлений не являются идентификаторами jobs. CI использует Python 3.12/Node 24; закреплённые Actions проверяются в workflow.
+
+Будущие infrastructure/secrets в секции CD — предварительные placeholders, не выбранная схема. Активация требует отдельного поручения, анализа целевого контура, проверки артефактов, backup/миграции/health/rollback. Документационная задача release workflow не запускала; результаты прежних SHA — [acceptance](acceptance.md).
