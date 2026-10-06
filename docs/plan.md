@@ -1242,3 +1242,9 @@ BUILD-PERF-01 — done; завершение 2026-10-06T12:24:48.0060880+03:00. 
 P1; зависимость BUILD-PERF-01 done. Начало: 2026-10-06T16:10:46.6833471+03:00. Критерий: commit всех изменений задачи, push и PR в main с реальными evidence; далее review/CI владельцем.
 
 BUILD-PERF-PR-01 — done; завершение2026-10-06T16:15:50.0464712+03:00. Commitfcf57ef, main syncf201f0a, push и [PR10](https://github.com/alxprgstech/sso/pull/10) выполнены; критерий выполнен. RemoteCI/review/merge — следующий шаг владельца.
+
+
+### BRANCH-CLEANUP-01 — in_progress
+2026-10-06T16:22:09.8600057+03:00 — Codex; DOC-TRACK-01..07. Начало: 2026-10-06T16:22:09.8600057+03:00. Поручение: анализ локальных веток, удаление слитых локально и на origin, PR для уникальных изменений. Проверено: исходное дерево чистое; fetch/prune успешен; обе new/local-build-cache и new/source-map-js-security-fix являются предками origin/main3603d57, уникальных коммитов нет, PR10 merged подтверждён GitHub API. План: fast-forward main, удалить обе слитые ветки на origin и локально, проверить refs; сохранить отчёт. Критерий: main актуален, слитые refs отсутствуют, пользовательские изменения сохранены.
+
+BRANCH-CLEANUP-01 — done; завершение: 2026-10-06T16:22:55.9363441+03:00; Codex. Main fast-forward до3603d57; две слитые ветки new/local-build-cache и new/source-map-js-security-fix удалены на origin и локально. Проверено git branch -vv и git ls-remote --heads: обе отсутствуют; исходных незакоммиченных/уникальных изменений не было. Остальные remote-only ветки вне порученного анализа локальных веток сохранены. Отчёт в plan/status/worklog сохраняется отдельным документационным PR; runtime tests не нужны для удаления Git refs. Далее review отчёта владельцем.
