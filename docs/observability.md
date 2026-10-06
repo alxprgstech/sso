@@ -87,7 +87,7 @@ pytest tests/integration/test_sentry_pg.py
 npm --prefix frontend run test:telemetry:browser
 ```
 
-PG тест требует `TEST_DATABASE_URL` и существующий safety marker из [testing/plan.md](testing/plan.md). Он реально выполняет SQLAlchemy query и проверяет timings/очистку spans. Подмена SQLite/mock не засчитывается. Browser harness перехватывает real SDK envelopes; decompression mandatory, production hard-off и missing-worker fallback проверяются отрицательно. Обычные SSO browser suites/default-off/enabled и SES/testmail checks остаются обязательными.
+PG тест требует `TEST_DATABASE_URL` и существующий safety marker из [testing/plan.md](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/testing/plan.md). Он реально выполняет SQLAlchemy query и проверяет timings/очистку spans. Подмена SQLite/mock не засчитывается. Browser harness перехватывает real SDK envelopes; decompression mandatory, production hard-off и missing-worker fallback проверяются отрицательно. Обычные SSO browser suites/default-off/enabled и SES/testmail checks остаются обязательными.
 
 Staging acceptance: проверенный artifact и maps upload до запуска → временный synthetic harness вне production artifact → один controlled backend и frontend failure → проверить Issue release/environment/исходную TSX location → вручную просмотреть error/trace и decompressed Replay → реальные PG/mail/distributed tracing → сравнение disabled/enabled на одном стенде. Предлагаемые overhead gates: backend p95 рост ≤max(5 ms,5%); основной frontend gzip рост ≤100 KiB; в production startup отсутствуют recorder/worker downloads. Размер bundle сам по себе не подтверждает p95 или production smoke.
 

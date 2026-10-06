@@ -99,7 +99,7 @@ python scripts/bump_version.py set 0.2.0
    - После загрузки проверяются все имена и контрольные суммы; релиз остаётся **draft**. Публикация требует отдельного поручения владельца.
    - Права на запись (`contents: write`) изолированы исключительно в финальном шаге публикации.
 
-Локальная проверка без публикации: `python scripts/build_release_artifacts.py build --outdir <пустая-директория>`, затем `python scripts/build_release_artifacts.py verify --outdir <та-же-директория>`. Она не заменяет теговый запуск: manifest dirty-дерева имеет `source_tree_dirty=true`. На 26.09.2026 нынешний код прошёл только такой нетегированный dry-run; удалённый workflow и полный PostgreSQL/browser CI не запускались. Границы доказательств — в [акте GOAL-09](acceptance-goal-09.md).
+Локальная проверка без публикации: `python scripts/build_release_artifacts.py build --outdir <пустая-директория>`, затем `python scripts/build_release_artifacts.py verify --outdir <та-же-директория>`. Она не заменяет теговый запуск: manifest dirty-дерева имеет `source_tree_dirty=true`. На 26.09.2026 нынешний код прошёл только такой нетегированный dry-run; удалённый workflow и полный PostgreSQL/browser CI не запускались. Границы доказательств — в [акте GOAL-09](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-09.md).
 
 ---
 

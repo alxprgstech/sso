@@ -43,15 +43,15 @@
 
 Эта запись не меняет общую приёмку GOAL-09 и не объявляет SES-доставку в AWS проверенной.
 
-> Коррекция 2026-09-26, GOAL-09 / TASK-078: приведённый ниже акт GOAL-08 — исторический отчёт, **не действующая общая приёмка**. Обнаружены опасный backup/restore test, фиктивный callback двух клиентов, небезопасные cookie-сессии примеров, неполные CI/release проверки и ошибочные связи FINAL-02/03 в JSON. Значение `local_test_coverage_rate: 1.0` не имеет измеренной основы; `tests/test_db_guard.py` не существует (фактический файл — `tests/test_database_guard.py`). Текущие результаты и незакрытые критерии ведутся в [GOAL-09](acceptance-goal-09.md). Пока новые проверки не выполнены, общая оценка — `in_progress`/`blocked`, а прежние `PASSED` относятся только к указанным историческим запускам.
+> Коррекция 2026-09-26, GOAL-09 / TASK-078: приведённый ниже акт GOAL-08 — исторический отчёт, **не действующая общая приёмка**. Обнаружены опасный backup/restore test, фиктивный callback двух клиентов, небезопасные cookie-сессии примеров, неполные CI/release проверки и ошибочные связи FINAL-02/03 в JSON. Значение `local_test_coverage_rate: 1.0` не имеет измеренной основы; `tests/test_db_guard.py` не существует (фактический файл — `tests/test_database_guard.py`). Текущие результаты и незакрытые критерии ведутся в [GOAL-09](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-09.md). Пока новые проверки не выполнены, общая оценка — `in_progress`/`blocked`, а прежние `PASSED` относятся только к указанным историческим запускам.
 
 - **Текущая версия продукта**: 0.2.0 (GOAL-08 Final)
 - **Дата актуализации**: 2026-09-26T01:50:00+03:00
 - **Статус**: Полная приёмка завершена (100% требований ТЗ, аудит FINAL-01..11 закрыт)
-- **Итоговый приёмочный документ**: [docs/acceptance-goal-08.md](acceptance-goal-08.md)
+- **Итоговый приёмочный документ**: [docs/acceptance-goal-08.md](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-08.md)
 - **Предыдущие акты приёмки**:
-  - [Акт приёмки GOAL-07 (Ночная кампания)](acceptance-goal-07.md)
-  - [Акт приёмки GOAL-06 (WebAuthn и безопасность)](acceptance-goal-06.md)
+  - [Акт приёмки GOAL-07 (Ночная кампания)](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-07.md)
+  - [Акт приёмки GOAL-06 (WebAuthn и безопасность)](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-06.md)
   - Исторический акт v0.1.0 (см. ниже)
 
 ---
@@ -59,7 +59,7 @@
 ## Итоговая приёмка программы GOAL-08 (версия 0.2.0)
 
 Подробная покомпонентная матрица сопоставления всех требований (`DOC-TRACK`, `ARCH`, `SSO`, `USR`, `SEC-FLAG`, `SDK`, `UI`, `CI`, `REL`, `CD`, `OPS`, `REG`, `SETUP`, `FINAL`) с фактическими командами, результатами и артефактами представлена в:
-👉 **[docs/acceptance-goal-08.md](acceptance-goal-08.md)**
+👉 **[docs/acceptance-goal-08.md](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-goal-08.md)**
 
 ### Краткая сводка результатов GOAL-08:
 - **Безопасность (G8-SEC / FINAL-01..04)**: Устранены все нарушения доверия; 4 отложенные возможности выключены по умолчанию (`false`); криптографическая валидация токенов, kid, RS256, обязательный user verification WebAuthn, Argon2id, AES-256-GCM шифрование TOTP, защита тестовой базы через `tests/db_guard.py`.
@@ -317,7 +317,7 @@
 
 Backend `ruff check` passed, полный `ruff format --check` failed: 11 файлов/131 formatted. Локальная read-only проверка воспроизвела оба результата. Уточнение: последнее локальное format подтверждение относилось к четырём UI-related Python файлам; оно не было доказательством полного CI format scope. Backend mypy/migrations/tests в этом job skipped.
 
-Default-off browser: 26 passed/1 failed (appearance light resize, reserve mismatch 105.18787499999999 px); enabled skipped. Неизменённый целевой тест в диагностической серии 8 passed, отдельный mocked UI probe 22/30 transient mismatches, после двух кадров mismatch 0. Ни тот ни другой не считается исправленным CI или реальной auth/PG проверкой. Подробности и следующие проверки: [анализ CI](reviews/pr-2-ci.md).
+Default-off browser: 26 passed/1 failed (appearance light resize, reserve mismatch 105.18787499999999 px); enabled skipped. Неизменённый целевой тест в диагностической серии 8 passed, отдельный mocked UI probe 22/30 transient mismatches, после двух кадров mismatch 0. Ни тот ни другой не считается исправленным CI или реальной auth/PG проверкой. Подробности и следующие проверки: [анализ CI](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/reviews/pr-2-ci.md).
 
 
 ## PR-FIX-02 — промежуточные проверки 2026-10-03T21:02:45.617407+03:00
@@ -392,7 +392,7 @@ Merge HEAD54220f2 с incoming4484fe7: четыре trailing conflicts в accepta
 
 ### AUDIT-PROD-01 — production-readiness аудит, 2026-10-04T02:08:51.7543440+03:00
 
-Исполнитель Codex; исходный SHA7e857ab80398f8084169ee29b141c6edc6794fe8 /0.2.0. [Полный русский отчёт](PRODUCTION_READINESS_AUDIT.md), [32 check с SHA-256 журналов](audit/evidence.json), [reproduction](audit/README.md). Verdict NOT READY,27 open findings:8HIGH/15MEDIUM/4LOW. Это завершение аудита, не приёмки GOAL-09. Production source не менялся.
+Исполнитель Codex; исходный SHA7e857ab80398f8084169ee29b141c6edc6794fe8 /0.2.0. [Полный русский отчёт](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT.md), [32 check с SHA-256 журналов](audit/evidence.json), [reproduction](audit/README.md). Verdict NOT READY,27 open findings:8HIGH/15MEDIUM/4LOW. Это завершение аудита, не приёмки GOAL-09. Production source не менялся.
 
 | Проверка | Нынешний фактический результат |
 | --- | --- |
@@ -504,14 +504,14 @@ PR5 открыт, mergeable=true, другие ветки включены в ma
 
 ## EMAIL-RESEND-01 — третий selectable transport
 
-См. [отдельную матрицу и фактические проверки](acceptance-resend.md). Native Resend дополняет SES/SMTP, auth semantics сохраняются. Реальные письма и production приёмка не заявлены; full/enabled/static/build результаты фиксируются в матрице после исполнения.
+См. [отдельную матрицу и фактические проверки](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md). Native Resend дополняет SES/SMTP, auth semantics сохраняются. Реальные письма и production приёмка не заявлены; full/enabled/static/build результаты фиксируются в матрице после исполнения.
 
 
 ## FRONTEND-REDESIGN-01 — frontend platform: done
 
-Commit/PR и последующие локальные/remote проверки по поручению05.10.2026: [PROJECT-PR-01](acceptance-project-pr.md); результаты разных SHA не смешиваются.
+Commit/PR и последующие локальные/remote проверки по поручению05.10.2026: [PROJECT-PR-01](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-project-pr.md); результаты разных SHA не смешиваются.
 
-Начало2026-10-05T03:52:42.0367906+03:00, завершение2026-10-05T14:46:25.6409088+03:00, Codex. [Матрица26, версии/команды/результаты/история failures](../FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [plan/continuation](frontend-redesign-plan.md), [ADR0021](adr/0021-frontend-design-platform.md), [brand provenance](../frontend/public/brand/README.md). Итоговый full Nginx campaign73f23772a99b42ea9c95d2873611a21c:46default/1.7m и10enabled/1.3m; component37/6.42s, unit13, ESLint/TypeScript/Ruff/mypy68/build, fullPG625/16subtests/297.08s, Sentry browser9/22.0s, offline private maps PASS. Secret scanner137/0new и synthetic control, UTF-8/local links/whitespace PASS. Сначала failed decorative chunk/Passkey loading states/focus race выявлены отрицательными assertions, исправлены; test weakening/retries отсутствуют. Исторические restricted-token failures сохранены.
+Начало2026-10-05T03:52:42.0367906+03:00, завершение2026-10-05T14:46:25.6409088+03:00, Codex. [Матрица26, версии/команды/результаты/история failures](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md), [plan/continuation](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/frontend-redesign-plan.md), [ADR0021](adr/0021-frontend-design-platform.md), [brand provenance](../frontend/public/brand/README.md). Итоговый full Nginx campaign73f23772a99b42ea9c95d2873611a21c:46default/1.7m и10enabled/1.3m; component37/6.42s, unit13, ESLint/TypeScript/Ruff/mypy68/build, fullPG625/16subtests/297.08s, Sentry browser9/22.0s, offline private maps PASS. Secret scanner137/0new и synthetic control, UTF-8/local links/whitespace PASS. Сначала failed decorative chunk/Passkey loading states/focus race выявлены отрицательными assertions, исправлены; test weakening/retries отсутствуют. Исторические restricted-token failures сохранены.
 
 Визуально инспектированы dark/light desktop/mobile/short-height/dialog; canonical local assets проверены byte/hash/currentSrc/favicon/CSP. Собственный стенд остановлен с ownership и0clients guards, данные сохранены. Изменения локальные без commit/push/PR/deploy. Frontend приёмка не закрывает общую production GOAL-09; remote CI текущего diff, live HTTPS/email/Docker/Linux/hardware matrix не заявлены.
 
@@ -528,7 +528,7 @@ Commit/PR и последующие локальные/remote проверки �
 До исправления localhost3000/llms.txt200text/plain без charset при корректном UTF8source. После charsetutf8 в static Nginx local/production: localfrontend Docker build/recreate exit0, nginx-tPASS, HTTP200text/plain;charset=utf-8/exactsource PASS; Playwright e2e/csp.spec.ts 2PASS/2.9s (browserRussian/H1/link/charset/nosniff и existingCSP denial assertions). Lint/test-types/whitespace PASS. Production template runtime не проверен; backend/DB не пересоздавались.
 
 ### WEB-PERF-01 — 2026-10-06T03:44:55.6268903+03:00
-Локальная оптимизация выполнена: hash-cache/mutable-revalidation, tokensCSS/preloadfont, parallelbootstrap, DeferredDialog, conditionalSentry with consent/generation guards. Docker/build/nginx-t/lint/test-types/unit13/components39/telemetrybrowser9/UI-cache-CSP-UTF8browser40/secret135-0new PASS. Медианы3mobileCDP coldsamples FCP/LCP2204→1796ms, JS273164→144854bytes; это не Lighthouse score. Полный отчёт/методика: [acceptance-web-perf.md](acceptance-web-perf.md). Production/fullPG-OIDC-E2E/Lighthouse не запускались.
+Локальная оптимизация выполнена: hash-cache/mutable-revalidation, tokensCSS/preloadfont, parallelbootstrap, DeferredDialog, conditionalSentry with consent/generation guards. Docker/build/nginx-t/lint/test-types/unit13/components39/telemetrybrowser9/UI-cache-CSP-UTF8browser40/secret135-0new PASS. Медианы3mobileCDP coldsamples FCP/LCP2204→1796ms, JS273164→144854bytes; это не Lighthouse score. Полный отчёт/методика: [acceptance-web-perf.md](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-web-perf.md). Production/fullPG-OIDC-E2E/Lighthouse не запускались.
 
 ### UI-THEME-FOOTER-01 — 2026-10-06T11:15:40.3494411+03:00
 Начало 2026-10-06T11:05:51.4668735+03:00, завершение 2026-10-06T11:15:40.3494411+03:00, Codex. ThemeControl перенесён из AppShell в LegalFooter; desktop contacts справа, ниже640 отдельная строка после links. API/bootstrap/preferences не изменены; DesignLanguage53 обновлён.
@@ -542,4 +542,4 @@ Footer regression проверяет13 public/account/admin сценариев �
 
 ## BUILD-PERF-01 — локальная Docker-сборка
 
-2026-10-06T12:24:48.0060880+03:00: новый SHA backend253,16s→25,07s на отдельном builder; unit21/cache18/scenarios11/pip check/image/runtime/изолированные Compose миграции иreadiness PASS. [Методика, команды и ограничения](acceptance-build-perf.md). Это не общая GOAL-09 и не production/remoteCI приёмка.
+2026-10-06T12:24:48.0060880+03:00: новый SHA backend253,16s→25,07s на отдельном builder; unit21/cache18/scenarios11/pip check/image/runtime/изолированные Compose миграции иreadiness PASS. [Методика, команды и ограничения](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-build-perf.md). Это не общая GOAL-09 и не production/remoteCI приёмка.

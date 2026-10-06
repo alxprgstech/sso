@@ -26,4 +26,4 @@ Resend через SMTP отклонён: требуется native API. Пере
 
 Проверены 05.10.2026: [HTTP/authentication/User-Agent](https://resend.com/docs/api-reference/introduction), [Send Email](https://resend.com/docs/api-reference/emails/send-email), [errors](https://resend.com/docs/api-reference/errors), [usage/rate limits](https://resend.com/docs/api-reference/rate-limit), [idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys), [domains](https://resend.com/docs/dashboard/domains/introduction), [events](https://resend.com/docs/webhooks/event-types), [official Python SDK async](https://github.com/resend/resend-python).
 
-Проверки и ограничения: [приёмка Resend](../acceptance-resend.md).
+Проверки и ограничения: [приёмка Resend](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md).

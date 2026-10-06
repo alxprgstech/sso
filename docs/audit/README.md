@@ -1,10 +1,10 @@
 # Воспроизведение исходного и повторного аудита
 
-Историческое локальное evidence в [отчёте](../PRODUCTION_READINESS_AUDIT.md) относится к code SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, версия0.2.0, ветка `new/production-readiness-remediation`: Первоначальный snapshot CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Последующее реальное CI подтверждение E01/F18 даёт23CLOSED/4PARTIALLY VERIFIED; текущие PR/quality gates описаны в начале отчёта. [Summary](../REMEDIATION_SUMMARY.md), [новые безопасные evidence](remediation-evidence.json).
+Историческое локальное evidence в [отчёте](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT.md) относится к code SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, версия0.2.0, ветка `new/production-readiness-remediation`: Первоначальный snapshot CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Последующее реальное CI подтверждение E01/F18 даёт23CLOSED/4PARTIALLY VERIFIED; текущие PR/quality gates описаны в начале отчёта. [Summary](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/REMEDIATION_SUMMARY.md), [новые безопасные evidence](remediation-evidence.json).
 
 ## Сохранённый baseline
 
-[Первоначальный отчёт](../PRODUCTION_READINESS_AUDIT_BASELINE.md), source SHA `7e857ab80398f8084169ee29b141c6edc6794fe8`, NOT READY/27 findings; [архив исходных probes](readiness_probes_baseline.py) неизменён. На исходном SHA было27 failed/9passed; эти результаты не переписаны. Baseline doubles были явно unit, не доказательством PG locks/crypto/E2E.
+[Первоначальный отчёт](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT_BASELINE.md), source SHA `7e857ab80398f8084169ee29b141c6edc6794fe8`, NOT READY/27 findings; [архив исходных probes](readiness_probes_baseline.py) неизменён. На исходном SHA было27 failed/9passed; эти результаты не переписаны. Baseline doubles были явно unit, не доказательством PG locks/crypto/E2E.
 
 ## Текущий replay
 
@@ -22,7 +22,7 @@ python -m pytest -p tests.conftest docs/audit/test_readiness_probes.py -q --juni
 
 ## Git-история без вывода значений
 
-`python docs/audit/inspect_history.py` читает refs/blobs и пишет только paths/lines/types/fingerprints, не candidate values. Detect-secrets1.5.0 закреплён; offline network provider verification не является live credential check. [Исторический summary](history-summary.json) сохранён; новая28-candidate context assessment — [secret review](../testing/secret-review-remediation.md). Первоначальное owner решение по58 историческим signals остаётся E07, не объявлено автоматически выполненным.
+`python docs/audit/inspect_history.py` читает refs/blobs и пишет только paths/lines/types/fingerprints, не candidate values. Detect-secrets1.5.0 закреплён; offline network provider verification не является live credential check. [Исторический summary](history-summary.json) сохранён; новая28-candidate context assessment — [secret review](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/testing/secret-review-remediation.md). Первоначальное owner решение по58 историческим signals остаётся E07, не объявлено автоматически выполненным.
 
 ## Evidence и границы
 

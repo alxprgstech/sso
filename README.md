@@ -5,7 +5,7 @@
 - **Целевой домен**: `alxprgs.tech`
 - **Идентификатор поставщика (Issuer)**: `https://auth.alxprgs.tech`
 - **Версия продукта**: `0.2.0` (SemVer, единый источник истины — `VERSION`)
-- **Статус**: **CONDITIONALLY READY** по [повторному аудиту от 04.10.2026](docs/PRODUCTION_READINESS_AUDIT.md), code SHA `ae700d7`: все локальные исправления F-01…F-27 готовы; реальные Docker/Trivy E01 и обязательные Actions подтверждены в PR5; CodeScene E02 и внешние HTTPS/provider/ops/OIF/owner review E03…E07 остаются незавершёнными. [Карта исправлений](docs/REMEDIATION_SUMMARY.md), [актуальный статус](docs/status.md). Общая приёмка GOAL-09 ещё не закрыта.
+- **Статус**: **CONDITIONALLY READY** по [повторному аудиту от 04.10.2026](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT.md), code SHA `ae700d7`: все локальные исправления F-01…F-27 готовы; реальные Docker/Trivy E01 и обязательные Actions подтверждены в PR5; CodeScene E02 и внешние HTTPS/provider/ops/OIF/owner review E03…E07 остаются незавершёнными. [Карта исправлений](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/REMEDIATION_SUMMARY.md), [актуальный статус](docs/status.md). Общая приёмка GOAL-09 ещё не закрыта.
 
 ---
 
@@ -270,7 +270,7 @@ commit SHA, поэтому новый коммит не сбрасывает к�
 они ускоряют повторную установку при изменении lock-файлов. Для обычного запуска
 сохраняйте build cache: `--no-cache` и очистка builder отменяют часть ускорения.
 Первая сборка всё ещё зависит от сети. Методика и фактические результаты:
-[проверка ускорения сборки](docs/acceptance-build-perf.md).
+[проверка ускорения сборки](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-build-perf.md).
 
 ## Конфиденциальность и удаление
 
@@ -285,7 +285,7 @@ Frontend использует React Router7, Tailwind4 и семантическ
 
 На всех страницах SSO, включая вход, регистрацию, документы, удаление, личный кабинет и администрирование, доступен выбор «Как в системе / Светлая / Тёмная». Оба demo поддерживают тот же выбор. Настройка сохраняется только в браузере без идентификатора пользователя; между разными адресами сайтов она независима. Cookies закреплены у нижней границы, содержимое прокручивается в свободной области над баннером. [Решение](docs/adr/0012-web-theme-and-cookie-layout.md), [проверки](docs/acceptance.md).
 
-Личный кабинет: `/` (профиль), `/account/security`, `/account/sessions`, `/account/privacy`; управление удалением — `/account-deletion`. Администратор: `/admin`, `/admin/users`, `/admin/applications`, `/admin/sessions`, `/admin/audit`, `/admin/system`. Ctrl/Cmd+K открывает команды навигации/темы в авторизованном приложении. Доступ и приоритет password-change/legal/deletion определяет серверное состояние. [Архитектура и проверки frontend](docs/frontend.md), [отчёт миграции](FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md). Официальный artwork локально включён из ALXPRGS assets; финальные brand/browser проверки прошли; подробности — в отчёте миграции.
+Личный кабинет: `/` (профиль), `/account/security`, `/account/sessions`, `/account/privacy`; управление удалением — `/account-deletion`. Администратор: `/admin`, `/admin/users`, `/admin/applications`, `/admin/sessions`, `/admin/audit`, `/admin/system`. Ctrl/Cmd+K открывает команды навигации/темы в авторизованном приложении. Доступ и приоритет password-change/legal/deletion определяет серверное состояние. [Архитектура и проверки frontend](docs/frontend.md), [отчёт миграции](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md). Официальный artwork локально включён из ALXPRGS assets; финальные brand/browser проверки прошли; подробности — в отчёте миграции.
 
 ### Отправка через native Resend
 
@@ -293,4 +293,4 @@ Frontend использует React Router7, Tailwind4 и семантическ
 
 Клиент обращается к native HTTPS API через уже установленный async HTTPX: проверка сертификатов, network timeout 5 секунд, без redirects, автоматического retry и fallback. При выбранном Resend пустой/некорректный ключ или sender отвергается при загрузке Settings. Отправляются исходные text и HTML общего шаблона, включая код, ссылку и Schema.org; опубликованный Resend API не имеет AMP/raw MIME поля, поэтому AMP доступен по прежним SES/SMTP путям. Provider ID означает принятие запроса, не доставку. Текущий проект не обрабатывает bounce/complaint/webhooks.
 
-Локальная разработка по умолчанию остаётся SMTP; обычные Resend tests работают с fake HTTP и синтетическими ключами, без внешних писем. Перед реальным использованием владелец проверяет домен/его DNS и права sending key в Resend, HTTPS-доступ к `api.resend.com`, а также оставляет open/click tracking выключенным для authentication писем. Реальная отправка и DNS не выполнялись в этой задаче. [Официальная настройка доменов](https://resend.com/docs/dashboard/domains/introduction), [ADR](docs/adr/0020-resend-email-provider.md), [результаты проверок](docs/acceptance-resend.md).
+Локальная разработка по умолчанию остаётся SMTP; обычные Resend tests работают с fake HTTP и синтетическими ключами, без внешних писем. Перед реальным использованием владелец проверяет домен/его DNS и права sending key в Resend, HTTPS-доступ к `api.resend.com`, а также оставляет open/click tracking выключенным для authentication писем. Реальная отправка и DNS не выполнялись в этой задаче. [Официальная настройка доменов](https://resend.com/docs/dashboard/domains/introduction), [ADR](docs/adr/0020-resend-email-provider.md), [результаты проверок](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md).

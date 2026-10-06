@@ -7,7 +7,7 @@
 - План: проверить весь diff и отсутствие секретов, выполнить доступные локальные проверки, закоммитить все рабочие изменения, push и PR в main, проверить обязательные Actions и сторонние checks именно итогового SHA; исправить выявленные сбои и сохранить evidence.
 - Готовность: рабочие изменения сохранены в commit, существующий либо новый PR содержит полный diff, обязательный CI итогового SHA успешен либо конкретный внешний блокер документирован. Merge/release/deployment не поручены.
 - Начальные ограничения: GitHub connector отвечает HTTP 403; shell network и запись .git требуют разрешённого выхода из sandbox. Проверяется доступ обычными Git/API инструментами; чужие изменения и локальные секреты сохраняются.
-- 2026-10-05T19:14:45+03:00: Git/API доступ восстановлен; локальные Ruff/types/unit/build/secret/config/version/docs PASS. Passkey mock rejection race исправлена без ослабления assertions, components37PASS/exit0. [Матрица](acceptance-project-pr.md). Далее commit/push/PR и обязательный CI.
+- 2026-10-05T19:14:45+03:00: Git/API доступ восстановлен; локальные Ruff/types/unit/build/secret/config/version/docs PASS. Passkey mock rejection race исправлена без ослабления assertions, components37PASS/exit0. [Матрица](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-project-pr.md). Далее commit/push/PR и обязательный CI.
 
 ### UI-LAYOUT-01: футер и соединения схемы входа
 
@@ -20,7 +20,7 @@
 ### FRONTEND-REDESIGN-01: Полная миграция ALXPRGS Design Language v1
 
 - Приоритет P0; статус `done`; начало 2026-10-05T03:52:42.0367906+03:00; Codex; ветка `new/frontend-redesign`.
-- План, стабильные ID FR-01–08, зависимости и критерии: [frontend-redesign-plan.md](frontend-redesign-plan.md).
+- План, стабильные ID FR-01–08, зависимости и критерии: [frontend-redesign-plan.md](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/frontend-redesign-plan.md).
 - Завершение: 2026-10-05T14:46:25.6409088+03:00; FR-01–07 done. Итоговый full Nginx46/10, component37/unit13, PG625/16subtests/static/privacy/release/scanner/docs PASS. FR-08 planned вне обязательных критериев этой Goal; история failures в worklog/report.
 - Готовность: все 26 критериев задания владельца, включая настоящие браузерные и визуальные проверки; build сам по себе недостаточен. Без ослабления security/privacy/OIDC, без публикации/deployment.
 
@@ -872,7 +872,7 @@ PR-NEW-01 завершён 2026-10-03T19:42:32.387204+03:00; PR [#2](https://git
 
 План: получить inline-комментарии PR, прочитать отмеченные функции и официальные определения метрик, проверить связанное покрытие, сохранить выводы и порядок дальнейшей работы.
 
-REVIEW-PR-02-01 завершён 2026-10-03T19:59:32.538575+03:00; [анализ](reviews/pr-2-codescene.md): 35 inline-замечаний, 13 файлов, приоритеты и сохранение инвариантов. Проверены ссылки/UTF-8/whitespace/отсутствие новых секретов. Исправления и повтор CodeScene остаются следующей возможной задачей; реализация и PR не изменены.
+REVIEW-PR-02-01 завершён 2026-10-03T19:59:32.538575+03:00; [анализ](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/reviews/pr-2-codescene.md): 35 inline-замечаний, 13 файлов, приоритеты и сохранение инвариантов. Проверены ссылки/UTF-8/whitespace/отсутствие новых секретов. Исправления и повтор CodeScene остаются следующей возможной задачей; реализация и PR не изменены.
 
 
 ## REVIEW-CI-02-01 — анализ двух сбоев GitHub Actions
@@ -885,7 +885,7 @@ REVIEW-PR-02-01 завершён 2026-10-03T19:59:32.538575+03:00; [анализ
 
 План: получить логи failed jobs, воспроизвести доступную статическую проверку и изучить упавший браузерный сценарий; дополнить локальный отчёт. Исправление реализации и повторный запуск удалённого CI пока не выполняются.
 
-REVIEW-CI-02-01 завершён 2026-10-03T20:25:34.844787+03:00; [анализ CI](reviews/pr-2-ci.md). Format failed на 11 файлах воспроизведён; resize race 22/30 с точной разницей CI и 0 после обновления кадров подтверждён. Исправления не выполнялись; следующий шаг — formatter/layout и необходимые полные проверки вместе с CodeScene.
+REVIEW-CI-02-01 завершён 2026-10-03T20:25:34.844787+03:00; [анализ CI](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/reviews/pr-2-ci.md). Format failed на 11 файлах воспроизведён; resize race 22/30 с точной разницей CI и 0 после обновления кадров подтверждён. Исправления не выполнялись; следующий шаг — formatter/layout и необходимые полные проверки вместе с CodeScene.
 
 
 ## PR-FIX-02 — исправления CI и CodeScene
@@ -1121,7 +1121,7 @@ AUDIT-FIX-05/F24, 2026-10-04T04:10:45.4106690+03:00: in_progress, criterion full
 
 P1; done; зависимости: существующий email delivery; начало 2026-10-05T00:02:34.6829497+03:00, завершение 2026-10-05T00:29:57.4737202+03:00, Codex. Добавить Resend через Settings/HTTPX и прежний диспетчер; SES/SMTP без изменений. Приёмка: offline adapter/config/privacy tests, real PostgreSQL auth scenarios, full/enabled regression, Ruff/mypy/locks/scans/build/docs. Реальные письма, публикация и deployment исключены.
 
-Результат: [приёмка](acceptance-resend.md), final full624 PASS +16subtests, external5deselected; enabled20 PASS, статические проверки/audit/build PASS. Runtime Docker/Compose не проверен: Docker отсутствует; YAML/env/startup проверены статически и тестами. Реальная доставка и общая GOAL-09 не заявлены. Продолжение: локальная ветка new/resend-email-provider готова к review; владелец отдельно задаёт key/проверяет domain для активации, PR/publication не выполнялись.
+Результат: [приёмка](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md), final full624 PASS +16subtests, external5deselected; enabled20 PASS, статические проверки/audit/build PASS. Runtime Docker/Compose не проверен: Docker отсутствует; YAML/env/startup проверены статически и тестами. Реальная доставка и общая GOAL-09 не заявлены. Продолжение: локальная ветка new/resend-email-provider готова к review; владелец отдельно задаёт key/проверяет domain для активации, PR/publication не выполнялись.
 
 ### EMAIL-RESEND-01 — этап commit/CI
 2026-10-05T00:33:39.6356927+03:00, Codex; in_progress. Прямое поручение владельца: commit/push, ожидание existing CI, исправление failures. Зависимость: завершённая local приёмка выше. Критерий: рабочие изменения сохранены commit, draft PR и actual CI для его ревизии проверены; no merge/deploy.
@@ -1242,3 +1242,12 @@ BUILD-PERF-01 — done; завершение 2026-10-06T12:24:48.0060880+03:00. 
 P1; зависимость BUILD-PERF-01 done. Начало: 2026-10-06T16:10:46.6833471+03:00. Критерий: commit всех изменений задачи, push и PR в main с реальными evidence; далее review/CI владельцем.
 
 BUILD-PERF-PR-01 — done; завершение2026-10-06T16:15:50.0464712+03:00. Commitfcf57ef, main syncf201f0a, push и [PR10](https://github.com/alxprgstech/sso/pull/10) выполнены; критерий выполнен. RemoteCI/review/merge — следующий шаг владельца.
+
+
+### DOC-CLEANUP-01: очистка старой документации
+
+- P2; `done`; Codex; начало 2026-10-06T18:13:54.343711+03:00; прямое поручение владельца, main.
+- План: удалить исторические задания и отчёты, исправить ссылки и AGENTS, проверить diff, локальный commit.
+- Критерий: исторические документы удалены, рабочие инструкции сохранены, нет новых битых локальных ссылок, commit в main.
+
+- Завершение 2026-10-06T18:15:04.665915+03:00: удалены 39 исторических файлов; рабочие документы и ADR сохранены; локальные ссылки и git diff --check PASS. Далее локальный commit в main.
