@@ -209,6 +209,9 @@ test("legal footer reaches the page bottom across routes and cookie states", asy
   ];
   const footerAtBottom = async () => {
     await expect(page.locator(".legal-footer")).toHaveCount(1);
+    await expect(page.locator(".appearance-bar")).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Тема оформления" })).toHaveCount(1);
+    await expect(page.locator(".legal-footer").getByRole("combobox", { name: "Тема оформления" })).toHaveCount(1);
     await expect(page.locator("#main-content h1")).toBeVisible();
     await page.locator(".app-scroll").evaluate((element) => {
       element.scrollTop = element.scrollHeight;
@@ -233,10 +236,21 @@ test("legal footer reaches the page bottom across routes and cookie states", asy
     expect(Math.abs(geometry.bottom - geometry.contentBottom)).toBeLessThan(2);
     expect(geometry.top).toBeGreaterThanOrEqual(geometry.mainBottom - 1);
     expect(geometry.fitsWidth).toBe(true);
+    const preferences = await page.locator(".footer-preferences").boundingBox();
+    const links = await page.locator(".legal-footer nav").boundingBox();
+    expect(preferences).not.toBeNull();
+    expect(links).not.toBeNull();
+    if (page.viewportSize()!.width < 640)
+      expect(preferences!.y).toBeGreaterThanOrEqual(links!.y + links!.height - 1);
+    const bannerElement = page.locator(".cookie-banner");
+    const banner = await bannerElement.isVisible() ? await bannerElement.boundingBox() : null;
+    if (banner) expect(geometry.bottom).toBeLessThanOrEqual(banner.y + 1);
   };
   for (const viewport of [
+    { width: 320, height: 800 },
     { width: 1440, height: 1200 },
     { width: 390, height: 1200 },
+    { width: 1908, height: 1200 },
   ]) {
     await page.setViewportSize(viewport);
     for (const scenario of cases) {
@@ -422,9 +436,16 @@ test("theme selector is reachable and operable with a keyboard", async ({
   await expect(
     page.getByRole("link", { name: "К основному содержимому" }),
   ).toBeFocused();
-  await page.keyboard.press("Tab");
   const control = page.getByRole("combobox", { name: "Тема оформления" });
+  // The shared footer follows the form and legal links in the natural tab order.
+  for (let index = 0; index < 30 && !await control.evaluate(element => element === document.activeElement); index++)
+    await page.keyboard.press("Tab");
   await expect(control).toBeFocused();
+  await expect(page.locator(".legal-footer").getByRole("combobox", { name: "Тема оформления" })).toBeFocused();
+  expect(await control.evaluate(element => {
+    const style = getComputedStyle(element);
+    return style.outlineStyle !== "none" || style.boxShadow !== "none";
+  })).toBe(true);
   await control.selectOption("system");
   await page.keyboard.press("ArrowDown");
   await expect(control).toHaveValue("light");

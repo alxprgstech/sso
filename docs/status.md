@@ -657,3 +657,11 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-06T11:00:10.3404019+03:00 — WEB-PERF-01: готовится локальный commit всего diff оптимизации; далее review владельцем. Push не поручен.
 
 2026-10-06T11:00:30.0041452+03:00 — Весь diff WEB-PERF-01 проверен и готов к локальному commit; продолжение — review владельцем и его Lighthouse audit, без push.
+
+2026-10-06T11:05:51.4668735+03:00 — UI-THEME-FOOTER-01 in_progress: перенос выбора темы в общий футер по утверждённому плану; далее checks/rebuild/visualQA. WEB-PERF-01 изменения уже сохранены commit23d2b96.
+
+2026-10-06T11:15:40.3494411+03:00 — UI-THEME-FOOTER-01 done: основной выбор темы перенесён в общий футер всех страниц; DesignLanguage53 и frontend docs согласованы. Локальный frontend пересобран, lint/types/components39/build и все40 browser сценариев проверены (39+1 targeted rerun), desktop/mobile visualQA PASS. Точка продолжения: review локального diff владельцем; commit/push не выполнялись. Отдельно planned patch существующего source-map-js high, UI задача dependencies не меняла; production/полная GOAL не проверялись.
+
+2026-10-06T11:18:02.1527354+03:00 — UI-THEME-FOOTER-01, Codex: по поручению владельца подготовка локального commit всех 10 изменённых файлов. План: secret scan, staged whitespace, commit и проверка чистоты дерева; предыдущие runtime проверки сохранены в acceptance.md, исходники после них не менялись. Push не поручен.
+
+2026-10-06T11:18:40.2311731+03:00 — UI-THEME-FOOTER-01: подготовка commit завершена, secret scan135/0new и whitespace PASS. Все изменения просмотрены; следующим действием локальный commit и проверка чистоты дерева. Продолжение — review владельцем, без push.

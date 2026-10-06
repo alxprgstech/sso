@@ -1202,3 +1202,16 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-06T11:00:10.3404019+03:00 — WEB-PERF-01: локальный commit in_progress по поручению владельца; критерий — все правки сохранены, secret/staged whitespace PASS, чистое дерево.
 
 2026-10-06T11:00:30.0041452+03:00 — WEB-PERF-01: подготовка commit завершена, secret135-0new/whitespace PASS; сохранение выполняется следующим Git действием, после него проверяется чистота дерева.
+
+### UI-THEME-FOOTER-01 — выбор темы в общем футере
+- P2; in_progress; начало: 2026-10-06T11:05:51.4668735+03:00; Codex; ARCH-05/FR-theme/DOC-TRACK; зависит от существующего AppShell/LegalFooter.
+- План по утверждённому владельцем: убрать appearance-bar, ThemeControl в footer contacts (desktopright/mobilebelow640); DesignLanguage53/docsfrontend; keyboard/footer geometry/theme/Axe regressions, static/components/build; localfrontend rebuild и visualQA.
+- Готовность: один ThemeControl в footer на всех routes, no topbar/nooverlap/keyboard/themes preserved; localchecksPASS. Commit/push не входят.
+
+2026-10-06T11:12:22.8220974+03:00 — Замечание к существующей приёмке зависимостей SEC/CI: npm audit high source-map-js1.2.1, GHSA-68fv-2mgg-jv7q (https://github.com/advisories/GHSA-68fv-2mgg-jv7q), исправлено upstream1.2.2. Исправление planned: отдельно обновить lock совместимым patch и выполнить audit/build/CI. UI-THEME-FOOTER-01 не меняет dependencies; уязвимость не устранена этой записью.
+
+2026-10-06T11:15:40.3494411+03:00 — UI-THEME-FOOTER-01 done; завершение 2026-10-06T11:15:40.3494411+03:00. Критерии выполнены: footer-only unique theme control, no topbar, responsive640, cookie nonoverlap, natural Tab/arrows/focus, light/dark и public/account/admin geometry. Lint/types/components39/build/localDocker/visualQA PASS; browser40 проверены как39PASS и targeted1PASS после исправления optional-banner ожидания. Продолжение — review владельцем, без commit/push.
+
+2026-10-06T11:18:02.1527354+03:00 — UI-THEME-FOOTER-01, Codex: по поручению владельца подготовка локального commit всех 10 изменённых файлов. План: secret scan, staged whitespace, commit и проверка чистоты дерева; предыдущие runtime проверки сохранены в acceptance.md, исходники после них не менялись. Push не поручен.
+
+2026-10-06T11:18:40.2311731+03:00 — UI-THEME-FOOTER-01: подготовка commit завершена, secret scan135/0new и whitespace PASS. Все изменения просмотрены; следующим действием локальный commit и проверка чистоты дерева. Продолжение — review владельцем, без push.

@@ -214,9 +214,6 @@
   #main-content {
     @apply flex flex-auto shrink-0 flex-col;
   }
-  .appearance-bar {
-    @apply flex shrink-0 justify-end px-4 py-2 border-b border-line;
-  }
   .theme-control {
     @apply flex items-center gap-2 text-xs text-secondary;
   }
@@ -265,6 +262,9 @@
   }
   .legal-footer {
     @apply flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-5 text-xs text-secondary;
+  }
+  .footer-preferences {
+    @apply flex w-full flex-wrap items-center gap-3 sm:ml-auto sm:w-auto sm:justify-end;
   }
   .legal-footer nav,
   .privacy-actions {

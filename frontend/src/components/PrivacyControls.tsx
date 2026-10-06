@@ -7,6 +7,7 @@ import {
   savePrivacyChoice,
 } from "../telemetry/consent";
 import type { TelemetryConfig } from "../types/api";
+import { ThemeControl } from "./ThemeControl";
 
 export const COOKIE_SETTINGS = "alxprgs-cookie-settings";
 export function LegalFooter() {
@@ -26,7 +27,10 @@ export function LegalFooter() {
           Настройки cookies
         </Button>
       </nav>
-      <a href="mailto:alxprgs@gmail.com">alxprgs@gmail.com</a>
+      <div className="footer-preferences">
+        <a href="mailto:alxprgs@gmail.com">alxprgs@gmail.com</a>
+        <ThemeControl />
+      </div>
     </footer>
   );
 }
