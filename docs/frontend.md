@@ -56,7 +56,11 @@ Motion: auth-step/layout, modal entry, selected navigation. CSS state/copy/succe
 
 Из `frontend/` после `npm ci`:
 
-`frontend/public/robots.txt` запрещает обход всех путей SSO для всех поисковых роботов (`User-agent: *`, `Disallow: /`). Vite копирует его в корень production build; существующая конфигурация Nginx раздаёт файл по `/robots.txt`. Это рекомендация роботам и не замена аутентификации или контроля доступа.
+В статических `location /` локального и production Nginx задан `charset utf-8`: `.txt` возвращаются с `Content-Type: text/plain; charset=utf-8`, чтобы браузер корректно отображал русский текст `llms.txt`. После изменения конфигурации локальный frontend контейнер нужно пересобрать и пересоздать; исходные файлы сохраняются в UTF-8.
+
+`frontend/public/robots.txt` разрешает обход публичных страниц и исключает служебные пути кабинета, администрации, API, OAuth, health и обязательных действий с учётной записью. По решению владельца в WEB-SEO-01 общий запрет `Disallow: /` отменён. Это рекомендация роботам и не замена аутентификации или контроля доступа; запрет обхода сам по себе не гарантирует исключения URL из поискового индекса.
+
+`frontend/public/llms.txt` содержит Markdown H1, краткое описание и ссылки на существующие публичные страницы для AI-агентов. Формат сверён с [llms.txt](https://llmstxt.org/) и [аудитом Lighthouse](https://developer.chrome.com/docs/lighthouse/agentic-browsing/llms-txt). Vite копирует оба `.txt` в корень production build; существующая конфигурация Nginx раздаёт их по `/robots.txt` и `/llms.txt`. В `index.html` добавлены meta description и ссылка `rel="describedby"` на llms.txt. Эти изменения не добавляют WebMCP-интеграцию; Lighthouse на реальном развёртывании проверяется отдельно.
 
 ```text
 npm run lint

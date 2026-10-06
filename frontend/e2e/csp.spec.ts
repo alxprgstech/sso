@@ -1,5 +1,17 @@
 import { test, expect } from "@playwright/test";
 
+test("proxy serves llms.txt as UTF-8 text in the browser", async ({ page }) => {
+  const response = await page.goto("/llms.txt");
+  expect(response?.status()).toBe(200);
+  expect(response!.headers()["content-type"]).toMatch(/^text\/plain;\s*charset=utf-8$/i);
+  expect(response!.headers()["x-content-type-options"]).toBe("nosniff");
+  const text = await page.locator("body").innerText();
+  expect(text).toContain("# ALXPRGS SSO");
+  expect(text).toContain("Единая система входа для сервисов ALXPRGS");
+  expect(text).toContain("[Политика конфиденциальности](/privacy)");
+  expect(text).not.toContain("Р•Рґ");
+});
+
 test("proxy enforces CSP while the production login UI remains functional", async ({ page }) => {
   const response = await page.goto("/login");
   expect(response).not.toBeNull();

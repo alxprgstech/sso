@@ -637,3 +637,15 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-06T02:46:53.4226517+03:00 — PROJECT-PR-01: подготовка отдельного локального commit всех оставшихся правок; далее review владельцем, remote CI не запускается.
 
 2026-10-06T02:49:38.3108298+03:00 — Все оставшиеся правки сохранены локальным commit; lint/types/components37/secret scan PASS. Финальная запись включается в тот же неопубликованный commit; далее review владельцем. Push/remote CI не выполнялись.
+
+2026-10-06T03:09:32.1782888+03:00 — WEB-SEO-01 in_progress: исправление указанных Lighthouse замечаний; далее build/HTTP. WEB-ROBOTS-01 общий запрет пересматривается по прямому поручению владельца.
+
+2026-10-06T03:11:05.6088625+03:00 — WEB-SEO-01 done: robots public crawl, llms H1/5links и meta description готовы; build и локальный HTTP PASS. Прежний WEB-ROBOTS-01 blocked заменён новой политикой; текущая HTTP проверена. Lighthouse score и production не проверялись. Продолжение: пересобрать локальный frontend и повторить аудит; commit/push не выполнены.
+
+2026-10-06T03:14:51.0331203+03:00 — WEB-UTF8-01 in_progress: подтверждён отсутствующий charset у llms.txt на localhost3000; далее Nginx fix/HTTP regression.
+
+2026-10-06T03:17:46.5758821+03:00 — WEB-UTF8-01 done: localhost3000/llms.txt исправлен и проверен браузером; charsetutf8/exacttext/nginx-t/CSP/lint/types PASS. Локальный frontend пересобран; production не запускался, commit/push не выполнены.
+
+2026-10-06T03:21:06.9253861+03:00 — Все текущие SEO/llms/UTF8 правки готовятся к локальному commit; далее review владельцем. Push не поручен.
+
+2026-10-06T03:21:25.1042942+03:00 — SEO/llms/UTF8 готовы к сохранению одним локальным commit; secret scan PASS, предыдущие runtime проверки PASS. Следующий шаг — review commit владельцем.

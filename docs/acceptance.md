@@ -520,3 +520,9 @@ Commit/PR и последующие локальные/remote проверки �
 2026-10-05T17:00:49.6539127+03:00 — LOCAL-START-02:16WindowsPowerShell/pwsh regressionsPASS78.908s; final env-selection2PASS11.934s; RuffPASS. Explicit paths проверены mocked Docker, real Compose unavailable. Runtime запуска на машине владельца не заявлен.
 
 2026-10-05T18:10:53.9596707+03:00 — BOOTSTRAP-PASSWORD-01: RuffPASS; unit pytestBLOCKED pydantic_core/psycopg native ABI/libpq, real bootstrap rerun unverified. User supplied actual Compose success/health/migration evidence для LOCAL-START-02; bootstrap failure зафиксирован и исправлен без ослабления policy.
+
+### WEB-SEO-01 — 2026-10-06T03:11:05.6088625+03:00
+По поручению владельца добавлены llms.txt (H1/summary/5publiclinks), description/describedby в HTML и публичный crawl вместо blanket block в robots.txt; служебные пути исключены. Проверки: npm.cmd run build exit0; Node/Vite preview вне sandbox: robots/llms200textplain/source-dist exact, H1+5links,6publicHTMLroutes200/description/describedby/no-noindex, no-blanket-disallow; git diff --check PASS. Preview закрыт finally. Lighthouse score, WebMCP и production не проверялись; WebMCP не добавлялся. Publiclinks соответствуют publicDocuments/login в App.tsx; HTTP проверяет SPA shell, не семантический browser render.
+
+### WEB-UTF8-01 — 2026-10-06T03:17:46.5758821+03:00
+До исправления localhost3000/llms.txt200text/plain без charset при корректном UTF8source. После charsetutf8 в static Nginx local/production: localfrontend Docker build/recreate exit0, nginx-tPASS, HTTP200text/plain;charset=utf-8/exactsource PASS; Playwright e2e/csp.spec.ts 2PASS/2.9s (browserRussian/H1/link/charset/nosniff и existingCSP denial assertions). Lint/test-types/whitespace PASS. Production template runtime не проверен; backend/DB не пересоздавались.

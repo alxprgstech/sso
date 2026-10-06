@@ -1,2 +1,9 @@
 User-agent: *
-Disallow: /
+Allow: /
+Disallow: /account
+Disallow: /admin
+Disallow: /api/
+Disallow: /oauth/
+Disallow: /health/
+Disallow: /accept-terms
+Disallow: /change-password

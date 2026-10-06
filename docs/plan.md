@@ -1172,3 +1172,21 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-06T02:46:53.4226517+03:00 — PROJECT-PR-01: этап локального commit оставшихся правок in_progress по поручению владельца. Критерий: frontend lint/types/components и staged diff PASS, все оставшиеся изменения сохранены; remote CI отдельно.
 
 2026-10-06T02:49:38.3108298+03:00 — PROJECT-PR-01: этап локального commit done; все оставшиеся правки сохранены, lint/types/components37/secret135-0new/staged-whitespace PASS. Remote CI/CodeScene — отдельное продолжение, общая задача не закрыта.
+
+### WEB-SEO-01 — llms.txt и публичная индексация
+- P2; in_progress; начало: 2026-10-06T03:09:32.1782888+03:00; Codex; ARCH-05/DOC-TRACK-02–07; зависит от WEB-ROBOTS-01.
+- По поручению владельца общий Disallow заменяется разрешением публичных страниц с исключением служебных путей; добавляются llms.txt с H1/ссылками и meta description.
+- Готовность: build PASS, source/dist совпадают, локальные HTTP robots/llms и HTML meta проверены; docs/GOAL согласованы. Lighthouse score отдельно, без обещания результата.
+
+2026-10-06T03:11:05.6088625+03:00 — WEB-SEO-01 done; завершение: 2026-10-06T03:11:05.6088625+03:00. Build/source-dist/HTTP200textplain/H1+5links/6HTMLmeta/whitespace PASS. WEB-ROBOTS-01 прежний общий запрет cancelled (заменён прямым указанием владельца); актуальная HTTP-раздача проверена. Далее review и Lighthouse на стенде; общий GOAL не закрыт.
+
+### WEB-UTF8-01 — кодировка текстовых файлов
+- P2; in_progress; начало: 2026-10-06T03:14:51.0331203+03:00; Codex; ARCH-05/DOC-TRACK; зависит от WEB-SEO-01.
+- Подтверждено: localhost3000 llms200text/plain без charset, исходный русский UTF8 корректен. План: charset utf-8 в static Nginx local/production; HTTP regression с реальным Nginx; docs.
+- Готовность: HTTP Content-Type text/plain;charset=utf-8 и точные UTF8bytes/русский текст, security headers сохранены.
+
+2026-10-06T03:17:46.5758821+03:00 — WEB-UTF8-01 done; завершение: 2026-10-06T03:17:46.5758821+03:00. Docker frontend build/recreate, nginx -t, HTTP exact UTF8/charset, browserUTF8+CSP2PASS, lint/test-types/whitespace PASS. Production template runtime не проверен. Далее review владельцем.
+
+2026-10-06T03:21:06.9253861+03:00 — WEB-SEO-01/WEB-UTF8-01: локальный commit in_progress по поручению владельца; критерий — всё сохранено, staged whitespace/secret scan PASS, чистое дерево.
+
+2026-10-06T03:21:25.1042942+03:00 — WEB-SEO-01/WEB-UTF8-01: подготовка commit завершена, secret scan135/0new/whitespace PASS; сохранение и git status выполняются следующим действием.
