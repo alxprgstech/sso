@@ -24,4 +24,4 @@ Compose разделяет owner/migrator/runtime PostgreSQL роли, публ�
 
 DOC-DEF-01 воспроизведён на временной копии: bump_version не обновляет npm lock version metadata. Текущие версии0.2.0 совпадают; исправление [DOC-VERSION-LOCK-01](plan.md) planned, код не менялся.
 
-Точка продолжения: review документационного diff; отдельная реализация lock consistency и общая приёмка по [методике](03-test-procedure.md). По новому поручению владельца DOC-REFRESH-PR-01 in_progress: commit/push/PR документации в main. Release/deploy не выполнялись.
+Точка продолжения: review документационного diff; отдельная реализация lock consistency и общая приёмка по [методике](03-test-procedure.md). DOC-REFRESH-PR-01 done: commit 3644e88 отправлен в new/documentation-refresh; [PR №12](https://github.com/alxprgstech/sso/pull/12) открыт в main. Результат CI этой ветки пока не подтверждён. Release/deploy не выполнялись.
