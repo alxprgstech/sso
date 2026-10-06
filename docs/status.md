@@ -649,3 +649,11 @@ Mypy58 sourcefiles/Ruff193files passed; runtime lock/version/invariant checks pa
 2026-10-06T03:21:06.9253861+03:00 — Все текущие SEO/llms/UTF8 правки готовятся к локальному commit; далее review владельцем. Push не поручен.
 
 2026-10-06T03:21:25.1042942+03:00 — SEO/llms/UTF8 готовы к сохранению одним локальным commit; secret scan PASS, предыдущие runtime проверки PASS. Следующий шаг — review commit владельцем.
+
+2026-10-06T03:25:51.2646786+03:00 — WEB-PERF-01 in_progress: source/HTTP/browser baseline получен; далее cache и сокращение критического пути, проверка поведения и фактический network delta.
+
+2026-10-06T03:44:55.6268903+03:00 — WEB-PERF-01 done: локальный frontend оптимизирован/пересобран; FCP/LCP median2.204→1.796s, JS273→145kB по3CDP coldsamples; это не новый Lighthouse score. Build/lint/types/unit13/components39/telemetry9/UI-CSP-cache40/secrets PASS. Продолжение: повтор Lighthouse на нужном route/profile, review локального diff; commit/push не выполнены.
+
+2026-10-06T11:00:10.3404019+03:00 — WEB-PERF-01: готовится локальный commit всего diff оптимизации; далее review владельцем. Push не поручен.
+
+2026-10-06T11:00:30.0041452+03:00 — Весь diff WEB-PERF-01 проверен и готов к локальному commit; продолжение — review владельцем и его Lighthouse audit, без push.

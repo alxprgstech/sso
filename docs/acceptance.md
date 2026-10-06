@@ -526,3 +526,6 @@ Commit/PR и последующие локальные/remote проверки �
 
 ### WEB-UTF8-01 — 2026-10-06T03:17:46.5758821+03:00
 До исправления localhost3000/llms.txt200text/plain без charset при корректном UTF8source. После charsetutf8 в static Nginx local/production: localfrontend Docker build/recreate exit0, nginx-tPASS, HTTP200text/plain;charset=utf-8/exactsource PASS; Playwright e2e/csp.spec.ts 2PASS/2.9s (browserRussian/H1/link/charset/nosniff и existingCSP denial assertions). Lint/test-types/whitespace PASS. Production template runtime не проверен; backend/DB не пересоздавались.
+
+### WEB-PERF-01 — 2026-10-06T03:44:55.6268903+03:00
+Локальная оптимизация выполнена: hash-cache/mutable-revalidation, tokensCSS/preloadfont, parallelbootstrap, DeferredDialog, conditionalSentry with consent/generation guards. Docker/build/nginx-t/lint/test-types/unit13/components39/telemetrybrowser9/UI-cache-CSP-UTF8browser40/secret135-0new PASS. Медианы3mobileCDP coldsamples FCP/LCP2204→1796ms, JS273164→144854bytes; это не Lighthouse score. Полный отчёт/методика: [acceptance-web-perf.md](acceptance-web-perf.md). Production/fullPG-OIDC-E2E/Lighthouse не запускались.

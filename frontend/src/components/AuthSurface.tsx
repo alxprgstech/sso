@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { ErrorBoundary } from "@sentry/react";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { Brand } from "./Brand";
 const Infrastructure = lazy(() => import("./Infrastructure"));
 export function AuthSurface({
@@ -49,7 +49,6 @@ export function AuthSurface({
         <aside className="auth-decoration" aria-hidden="true">
           <ErrorBoundary
             fallback={<></>}
-            showDialog={false}
             onError={() => setDecorationFailed(true)}
           >
             <Suspense fallback={null}>

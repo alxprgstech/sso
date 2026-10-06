@@ -357,7 +357,7 @@ describe("server capabilities and account flows", () => {
       name: "Изменить пароль",
     });
     fireEvent.click(trigger);
-    const dialog = screen.getByRole("dialog", { name: "Смена пароля" });
+    const dialog = await screen.findByRole("dialog", { name: "Смена пароля" });
     const inputs = dialog.querySelectorAll<HTMLInputElement>(
       'input[type="password"]',
     );

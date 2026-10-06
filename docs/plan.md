@@ -1190,3 +1190,15 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-06T03:21:06.9253861+03:00 — WEB-SEO-01/WEB-UTF8-01: локальный commit in_progress по поручению владельца; критерий — всё сохранено, staged whitespace/secret scan PASS, чистое дерево.
 
 2026-10-06T03:21:25.1042942+03:00 — WEB-SEO-01/WEB-UTF8-01: подготовка commit завершена, secret scan135/0new/whitespace PASS; сохранение и git status выполняются следующим действием.
+
+### WEB-PERF-01 — загрузка и HTTP cache
+- P2; in_progress; начало: 2026-10-06T03:25:51.2646786+03:00; Codex; ARCH-05/TEST-01/DOC-TRACK; зависит от существующего frontend.
+- План: базовые browser network/paint; immutable cache только hashed assets с сохранением security headers; cache revalidation для mutable files; объединение tokens CSS с build/preload font; параллельный bootstrap; устранение eager dialog download; build/browser/component/static regressions.
+- Готовность: измеренное сравнение ресурсов, HTTP cache+negative404/CSP/UTF8/browser/components PASS; Lighthouse score не подменяется локальными paint timings.
+- Инструменты: DevTools trace MCP отсутствует; доступен Playwright/CDP, source и HTTP анализ.
+
+2026-10-06T03:44:55.6268903+03:00 — WEB-PERF-01 done; завершение: 2026-10-06T03:44:55.6268903+03:00. Измеримое coldCDP улучшение18.5%FCP/LCP и47%JS; все локальные статические/component/privacy/browser/cache/CSP критерии PASS. План расширен до conditionaltelemetry (ADR0022), security policy сохранена. Продолжение: Lighthouse владельца на том же audited route; production/полная GOAL отдельно.
+
+2026-10-06T11:00:10.3404019+03:00 — WEB-PERF-01: локальный commit in_progress по поручению владельца; критерий — все правки сохранены, secret/staged whitespace PASS, чистое дерево.
+
+2026-10-06T11:00:30.0041452+03:00 — WEB-PERF-01: подготовка commit завершена, secret135-0new/whitespace PASS; сохранение выполняется следующим Git действием, после него проверяется чистота дерева.

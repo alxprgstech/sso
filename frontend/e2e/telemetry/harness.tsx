@@ -12,7 +12,7 @@ const parameters = new URLSearchParams(location.search);
 parameters.delete("consent");
 parameters.delete("environment"); // Test control, never a user/auth parameter.
 history.replaceState(null, "", location.pathname + (parameters.size ? "?" + parameters.toString() : ""));
-initializeTelemetry({ enabled: true, dsn: "https://public@o1.ingest.de.sentry.io/1", environment,
+await initializeTelemetry({ enabled: true, dsn: "https://public@o1.ingest.de.sentry.io/1", environment,
   traces_sample_rate: 1, replay_enabled: true, replays_session_sample_rate: 1,
   replays_on_error_sample_rate: 1, trace_propagation_targets: [],
 });

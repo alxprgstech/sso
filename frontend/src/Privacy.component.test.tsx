@@ -64,7 +64,7 @@ describe("browser-only privacy choice", () => {
     expect(permitsDiagnostics()).toBe(false);
     expect(permitsReplay()).toBe(false);
   });
-  it("does not initialize the real Sentry SDK before diagnostics consent", () => {
+  it("does not initialize the real Sentry SDK before diagnostics consent", async () => {
     const config: TelemetryConfig = {
       enabled: true,
       dsn: "https://public@o1.ingest.de.sentry.io/1",
@@ -75,7 +75,7 @@ describe("browser-only privacy choice", () => {
       replays_on_error_sample_rate: 0,
       trace_propagation_targets: [],
     };
-    expect(initializeTelemetry(config)).toBe(false);
+    expect(await initializeTelemetry(config)).toBe(false);
   });
   it("separates staging Replay, diagnostics, refusal, and cross-tab updates", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(

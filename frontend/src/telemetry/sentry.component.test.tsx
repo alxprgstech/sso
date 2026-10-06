@@ -1,15 +1,37 @@
 import React from "react";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { savePrivacyChoice } from "./consent";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { ErrorBoundary as AppErrorBoundary } from "../components/ErrorBoundary";
 import { ErrorBoundary, getClient, init, captureException, flush } from "@sentry/react";
-import { parseConfig, propagationTargets, bootstrapTelemetry, isExpectedClientFailure } from "./sentry";
+import { parseConfig, propagationTargets, bootstrapTelemetry, isExpectedClientFailure, initializeTelemetry } from "./sentry";
 import { ApiError, api } from "../api/client";
 import { sanitizeEvent } from "./privacy";
 
 beforeEach(() => { savePrivacyChoice(true, false); });
 afterEach(async () => { cleanup(); await getClient()?.close(0); savePrivacyChoice(false, false); vi.restoreAllMocks(); });
 describe("telemetry bootstrap and real SDK ErrorBoundary", () => {
+  it("does not initialize after consent is revoked during the SDK import", async () => {
+    const pending = initializeTelemetry({ enabled: true, dsn: "https://public@o1.ingest.de.sentry.io/1", environment: "production",
+      traces_sample_rate: 0, replay_enabled: false, replays_session_sample_rate: 0,
+      replays_on_error_sample_rate: 0, trace_propagation_targets: [] });
+    savePrivacyChoice(false, false);
+    expect(await pending).toBe(false);
+    expect(getClient()?.getOptions().enabled).not.toBe(true);
+  });
+  it("shows the local fallback and captures a sanitized event through the lazy SDK", async () => {
+    const envelopes: unknown[] = [];
+    init({ dsn: "https://public@o1.ingest.de.sentry.io/1", defaultIntegrations: false,
+      beforeSend: event => sanitizeEvent(event),
+      transport: () => ({ send: envelope => { envelopes.push(envelope); return Promise.resolve({}); }, flush: () => Promise.resolve(true) }),
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    function Broken(): React.ReactNode { throw new Error("canary-password-never-export"); }
+    render(<AppErrorBoundary fallback={<p>Локальное восстановление</p>}><Broken /></AppErrorBoundary>);
+    expect(screen.getByText("Локальное восстановление")).toBeTruthy();
+    await waitFor(() => expect(envelopes).toHaveLength(1));
+    expect(JSON.stringify(envelopes)).not.toContain("canary-password-never-export");
+  });
   it("fails open within deadline when config fetch never resolves", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
     const started = performance.now();
@@ -70,7 +92,6 @@ describe("telemetry bootstrap and real SDK ErrorBoundary", () => {
     expect(envelopes).toHaveLength(0);
     fetch.mockResolvedValueOnce(new Response("not JSON", { status: 200 }));
     await expect(api.getCapabilities()).rejects.toMatchObject({ name: "ApiError", code: "invalid_response" });
-    await flush(500);
-    expect(envelopes).toHaveLength(1);
+    await waitFor(() => expect(envelopes).toHaveLength(1));
   });
 });

@@ -1,0 +1,173 @@
+{
+  "method": "Playwright CDP measured (not Lighthouse simulation)",
+  "browser": "153.0.8010.12",
+  "route": "/login",
+  "anonymous": true,
+  "viewport": [
+    390,
+    844
+  ],
+  "latency_ms": 150,
+  "download_bytes_s": 200000,
+  "upload_bytes_s": 93750,
+  "cpu_rate": 4,
+  "cache_disabled": true,
+  "samples": [
+    {
+      "lcp": 2204,
+      "cls": 0.07821058565788098,
+      "fcp": 2204,
+      "resources": [
+        {
+          "path": "/theme/theme.js",
+          "bytes": 809,
+          "transfer": 1109
+        },
+        {
+          "path": "/theme/design-tokens.css",
+          "bytes": 902,
+          "transfer": 1202
+        },
+        {
+          "path": "/assets/index-C-QLCchu.js",
+          "bytes": 19484,
+          "transfer": 19784
+        },
+        {
+          "path": "/assets/createLucideIcon-swxzqtco.js",
+          "bytes": 4717,
+          "transfer": 5017
+        },
+        {
+          "path": "/assets/esm-BdSbQVQk.js",
+          "bytes": 71516,
+          "transfer": 71816
+        },
+        {
+          "path": "/assets/index-GZfCBFga.css",
+          "bytes": 9984,
+          "transfer": 10284
+        },
+        {
+          "path": "/assets/Dialog-zKl8RCgZ.js",
+          "bytes": 175045,
+          "transfer": 175345
+        },
+        {
+          "path": "/assets/Geist-Variable-Bj2R_7yk.woff2",
+          "bytes": 69652,
+          "transfer": 69952
+        },
+        {
+          "path": "/assets/Infrastructure-DI2s_BEn.js",
+          "bytes": 1593,
+          "transfer": 1893
+        }
+      ]
+    },
+    {
+      "lcp": 2232,
+      "cls": 0.10009753392089817,
+      "fcp": 2232,
+      "resources": [
+        {
+          "path": "/theme/theme.js",
+          "bytes": 809,
+          "transfer": 1109
+        },
+        {
+          "path": "/theme/design-tokens.css",
+          "bytes": 902,
+          "transfer": 1202
+        },
+        {
+          "path": "/assets/index-C-QLCchu.js",
+          "bytes": 19484,
+          "transfer": 19784
+        },
+        {
+          "path": "/assets/createLucideIcon-swxzqtco.js",
+          "bytes": 4717,
+          "transfer": 5017
+        },
+        {
+          "path": "/assets/esm-BdSbQVQk.js",
+          "bytes": 71516,
+          "transfer": 71816
+        },
+        {
+          "path": "/assets/Dialog-zKl8RCgZ.js",
+          "bytes": 175045,
+          "transfer": 175345
+        },
+        {
+          "path": "/assets/index-GZfCBFga.css",
+          "bytes": 9984,
+          "transfer": 10284
+        },
+        {
+          "path": "/assets/Geist-Variable-Bj2R_7yk.woff2",
+          "bytes": 69652,
+          "transfer": 69952
+        },
+        {
+          "path": "/assets/Infrastructure-DI2s_BEn.js",
+          "bytes": 1593,
+          "transfer": 1893
+        }
+      ]
+    },
+    {
+      "lcp": 2164,
+      "cls": 0.07821058565788098,
+      "fcp": 2164,
+      "resources": [
+        {
+          "path": "/theme/theme.js",
+          "bytes": 809,
+          "transfer": 1109
+        },
+        {
+          "path": "/theme/design-tokens.css",
+          "bytes": 902,
+          "transfer": 1202
+        },
+        {
+          "path": "/assets/index-C-QLCchu.js",
+          "bytes": 19484,
+          "transfer": 19784
+        },
+        {
+          "path": "/assets/createLucideIcon-swxzqtco.js",
+          "bytes": 4717,
+          "transfer": 5017
+        },
+        {
+          "path": "/assets/esm-BdSbQVQk.js",
+          "bytes": 71516,
+          "transfer": 71816
+        },
+        {
+          "path": "/assets/Dialog-zKl8RCgZ.js",
+          "bytes": 175045,
+          "transfer": 175345
+        },
+        {
+          "path": "/assets/index-GZfCBFga.css",
+          "bytes": 9984,
+          "transfer": 10284
+        },
+        {
+          "path": "/assets/Geist-Variable-Bj2R_7yk.woff2",
+          "bytes": 69652,
+          "transfer": 69952
+        },
+        {
+          "path": "/assets/Infrastructure-DI2s_BEn.js",
+          "bytes": 1593,
+          "transfer": 1893
+        }
+      ]
+    }
+  ]
+}
