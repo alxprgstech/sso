@@ -1,3 +1,15 @@
+# BUILD-PERF-PR-01 — in_progress
+
+2026-10-06T16:10:46.6833471+03:00 — Codex: по поручению владельца commit/push/PR ускорения сборки в main. Проверки BUILD-PERF-01 сохранены ниже; remote CI нового diff не подтверждён.
+
+# BUILD-PERF-01 — done
+
+2026-10-06T12:24:48.0060880+03:00 — Codex, new/local-build-cache: ускорение реализовано; baseline новый SHA253,16s →25,07s (10,1x в одном прогоне), dependency cache сохранён. Unit21/Ruff/build-lock/18Docker cache assertions/11build scenarios/images/isolated Compose PASS. [Методика и ограничения](acceptance-build-perf.md). Изменения локальные, далее review; remote CI/full browser E2E/production не проверялись, общая GOAL-09 не закрыта. Ниже исторические checkpoints.
+
+# BUILD-PERF-01 — in_progress
+
+2026-10-06T12:01:58.5283694+03:00 — Codex: ускорение локального Docker build в new/local-build-cache; далее lock/cache regression и Docker timings на отдельном builder. Общая приёмка GOAL-09 не закрыта.
+
 # PROJECT-PR-01 — in_progress
 
 Обновление2026-10-05T19:51:34+03:00: [PR7](https://github.com/alxprgstech/sso/pull/7) создан; source089ed932ae28deb024c6ce0da28c45a1dbc6be46. Первый [CI](https://github.com/alxprgstech/sso/actions/runs/37339819853):6обязательныхPASS/3FAIL/2externalSESskip, CodeScene3gatesFAIL. Причины:8dot3 path assertion, устаревший PG password assert8 вместо15..128, CRLF derived SVG против manifest, сложность UI. Исправления подготовлены без bypass: canonical test paths,4PG invalid/no-write cases, exact SVG Git bytes и декомпозиция реально используемых компонентов/helpers. Повтор local lint/types/components37/build/Windows27+4subtests/brand index/docs PASS; полный UI browser37PASS/2.8m/exit0. Следующий шаг — commit исправлений, новый CI точного SHA и финальный checkpoint. Общая GOAL-09 не закрыта; merge/deploy/release/live mail не выполнялись. Ниже история этого дня.

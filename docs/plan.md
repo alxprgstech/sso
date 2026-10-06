@@ -1221,3 +1221,14 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-06T11:26:13.3264743+03:00 — PROJECT-PR-02: remote fetch/prune и GitHub open PR поиск выполнены; открытых PR нет. Ancestry origin/main подтвердил завершение пяти локальных веток codex/ci-repair-pr9, new/production-readiness-audit, new/production-readiness-remediation, new/resend-email-provider, new/skip-ses-without-credentials; удалены git branch -d, remote refs сохранены. new/frontend-redesign активна для PR. Далее docs checkpoint commit/push, создание PR и переключение на main; проверки runtime сохранены в acceptance, новый diff только учёт работы.
 
 2026-10-06T11:27:57.2070709+03:00 — PROJECT-PR-02 done; Codex: создан и прикреплён PR https://github.com/alxprgstech/sso/pull/8 из new/frontend-redesign в main, GitHub mergeable=true и git merge-tree exit0 (без изменений рабочего дерева). Пять завершённых локальных веток удалены после ancestry проверки; main и активная ветка PR сохранены. Docs checkpoint отправляется в PR; далее переключение чистого рабочего дерева на main. Продолжение: review/CI/merge PR владельцем; CI текущего PR пока не заявлен PASS, merge не поручен, remote ветки не удалялись.
+
+## BUILD-PERF-01 — in_progress
+P1; зависимости: существующие full/runtime locks и Docker BuildKit. Начало: 2026-10-06T12:01:58.5283694+03:00. План и критерий: минимальный builder lock, SHA после dependency layers, cache mounts; проверить pins/wheel/runtime/cache/Compose и before-after timings. Следующий шаг: реализация и изолированные измерения.
+
+BUILD-PERF-01 checkpoint 2026-10-06T12:09:24.2037607+03:00: код/lock9pins/CI-check готовы; unit21PASS, Docker измерения и изолированный Compose in_progress. Критерий done пока не выполнен.
+
+
+BUILD-PERF-01 — done; завершение 2026-10-06T12:24:48.0060880+03:00. Критерий выполнен: baseline SHA253.16s→optimized25.07s; dependency layers CACHED, lock/source matrix11exit0 и18cache assertions PASS, unit21/Ruff/pip check/images/isolated Compose PASS. Подробности docs/acceptance-build-perf.md. Далее review локального diff; commit/push/remote CI не выполнялись.
+
+## BUILD-PERF-PR-01 — in_progress
+P1; зависимость BUILD-PERF-01 done. Начало: 2026-10-06T16:10:46.6833471+03:00. Критерий: commit всех изменений задачи, push и PR в main с реальными evidence; далее review/CI владельцем.
