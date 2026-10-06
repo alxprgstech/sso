@@ -366,6 +366,9 @@ jobs:
       - name: Verify production-only dependency lock
         run: python scripts/runtime_lock.py --check
 
+      - name: Verify wheel-builder dependency lock
+        run: python scripts/build_lock.py --check
+
       - name: Run Mypy Typecheck
         run: |
           mypy --explicit-package-bases packages/python-sdk/alxprgs_sso backend/app --ignore-missing-imports

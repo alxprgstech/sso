@@ -1229,3 +1229,16 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-06T11:49:37.2634609+03:00 — DEP-SOURCEMAP-01 done в локальном scope, Codex; завершение 2026-10-06T11:49:37.2634609+03:00. Окончательный minimal lock: только source-map-js1.2.1→1.2.2/version-resolved-integrity. npm ci exit0 (2min), npm audit --audit-level=high0vulnerabilities/exit0; npm ls подтверждает1.2.2 во всех4цепочках. Node24.20.0/npm11.19.0; lint/typecheck/test-types/unit13/components39(43.76s)/build(2.93s) PASS; secret135/0new/whitespace PASS. Existing high из UI-THEME-FOOTER-01 устранён обновлением пакета, CI thresholds не менялись. Далее commit/push и PR исправления; remoteCI ещё не заявлен PASS, production/общая GOAL не проверялись.
 
 2026-10-06T11:51:01.8372503+03:00 — DEP-SOURCEMAP-01: исправление сохранено commit45a4ab4 и отправлено normalpush; создан и прикреплён https://github.com/alxprgstech/sso/pull/9 в main. Локальные проверки PASS выше, remote CI ожидается отдельно. Финальный docs checkpoint сохраняется в той же ветке; продолжение — CI/review/merge PR9 владельцем, без автоматического merge.
+
+## BUILD-PERF-01 — in_progress
+P1; зависимости: существующие full/runtime locks и Docker BuildKit. Начало: 2026-10-06T12:01:58.5283694+03:00. План и критерий: минимальный builder lock, SHA после dependency layers, cache mounts; проверить pins/wheel/runtime/cache/Compose и before-after timings. Следующий шаг: реализация и изолированные измерения.
+
+BUILD-PERF-01 checkpoint 2026-10-06T12:09:24.2037607+03:00: код/lock9pins/CI-check готовы; unit21PASS, Docker измерения и изолированный Compose in_progress. Критерий done пока не выполнен.
+
+
+BUILD-PERF-01 — done; завершение 2026-10-06T12:24:48.0060880+03:00. Критерий выполнен: baseline SHA253.16s→optimized25.07s; dependency layers CACHED, lock/source matrix11exit0 и18cache assertions PASS, unit21/Ruff/pip check/images/isolated Compose PASS. Подробности docs/acceptance-build-perf.md. Далее review локального diff; commit/push/remote CI не выполнялись.
+
+## BUILD-PERF-PR-01 — in_progress
+P1; зависимость BUILD-PERF-01 done. Начало: 2026-10-06T16:10:46.6833471+03:00. Критерий: commit всех изменений задачи, push и PR в main с реальными evidence; далее review/CI владельцем.
+
+BUILD-PERF-PR-01 — done; завершение2026-10-06T16:15:50.0464712+03:00. Commitfcf57ef, main syncf201f0a, push и [PR10](https://github.com/alxprgstech/sso/pull/10) выполнены; критерий выполнен. RemoteCI/review/merge — следующий шаг владельца.

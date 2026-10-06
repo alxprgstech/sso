@@ -261,6 +261,17 @@ Backend/frontend errors и static tracing реализованы с default-off 
 
 Для ручной source-сборки Compose сначала задайте `ALX_BUILD_SHA` полным проверенным SHA (`$env:ALX_BUILD_SHA = git rev-parse HEAD` в PowerShell, `export ALX_BUILD_SHA=$(git rev-parse HEAD)` в Bash). Start scripts выполняют это сами; требуется Git. Для frontend release artifact используйте `frontend/Dockerfile.release`, без повторной компиляции. Это не запускает deployment.
 
+Локальные source-сборки используют BuildKit: зависимости устанавливаются до передачи
+commit SHA, поэтому новый коммит не сбрасывает кэш pip/npm. Builder backend использует
+только `requirements-build-lock.txt`; runtime — `requirements-runtime-lock.txt`.
+После установки полного `requirements-lock.txt` обновляйте build lock командой
+`python scripts/build_lock.py`, проверяйте `python scripts/build_lock.py --check`.
+Кэши загрузок pip/npm хранятся в BuildKit cache mounts вне итоговых образов;
+они ускоряют повторную установку при изменении lock-файлов. Для обычного запуска
+сохраняйте build cache: `--no-cache` и очистка builder отменяют часть ускорения.
+Первая сборка всё ещё зависит от сети. Методика и фактические результаты:
+[проверка ускорения сборки](docs/acceptance-build-perf.md).
+
 ## Конфиденциальность и удаление
 
 Публичные проектные документы доступны на `/privacy`, `/terms`, `/cookies`, `/data-consent`. Регистрация требует отдельных условий и согласия; существующие пользователи принимают актуальные версии после входа. Браузерная диагностика выключена до opt-in, Replay требует отдельного staging-разрешения. Отказ не мешает входу.
