@@ -4,6 +4,17 @@ import { inflateSync, gunzipSync } from "node:zlib";
 const secret = "canary-browser-password-otp-pkce-jwt-cookie-csrf-totp-recovery-webauthn-aws-smtp-email-phone"; // pragma: allowlist secret -- synthetic canary
 type Item = { type: string; value: unknown };
 
+test.beforeEach(async ({ context }) => {
+  // This suite inspects real SDK payloads locally; no external service receives them.
+  // Test-specific page routes fulfill/abort synthetic ingestion before this guard.
+  await context.route("**/*", route => {
+    const url = new URL(route.request().url());
+    return ["localhost", "127.0.0.1"].includes(url.hostname)
+      ? route.continue()
+      : route.abort("blockedbyclient");
+  });
+});
+
 function parseEnvelope(body: Buffer): Item[] {
   let cursor = body.indexOf(10) + 1;
   const items: Item[] = [];

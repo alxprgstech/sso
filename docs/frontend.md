@@ -56,6 +56,14 @@ Motion: auth-step/layout, modal entry, selected navigation. CSS state/copy/succe
 
 Из `frontend/` после `npm ci`:
 
+UI-THEME-FOOTER-01: основной выбор «Тема оформления» находится в общем LegalFooter рядом с контактом на всех публичных/account/admin страницах. На широком экране группа выровнена справа; ниже640px занимает отдельную строку после юридических ссылок. Верхняя appearance-bar удалена; footer остаётся в обычном потоке, cookie banner не перекрывает управление. System/Light/Dark, storage/cross-tab и ранний theme bootstrap не изменены; palette сохраняет дополнительный выбор темы. Соответствует разделу53 ALXPRGS Design Language.
+
+В статических `location /` локального и production Nginx задан `charset utf-8`: `.txt` возвращаются с `Content-Type: text/plain; charset=utf-8`, чтобы браузер корректно отображал русский текст `llms.txt`. После изменения конфигурации локальный frontend контейнер нужно пересобрать и пересоздать; исходные файлы сохраняются в UTF-8.
+
+`frontend/public/robots.txt` разрешает обход публичных страниц и исключает служебные пути кабинета, администрации, API, OAuth, health и обязательных действий с учётной записью. По решению владельца в WEB-SEO-01 общий запрет `Disallow: /` отменён. Это рекомендация роботам и не замена аутентификации или контроля доступа; запрет обхода сам по себе не гарантирует исключения URL из поискового индекса.
+
+`frontend/public/llms.txt` содержит Markdown H1, краткое описание и ссылки на существующие публичные страницы для AI-агентов. Формат сверён с [llms.txt](https://llmstxt.org/) и [аудитом Lighthouse](https://developer.chrome.com/docs/lighthouse/agentic-browsing/llms-txt). Vite копирует оба `.txt` в корень production build; существующая конфигурация Nginx раздаёт их по `/robots.txt` и `/llms.txt`. В `index.html` добавлены meta description и ссылка `rel="describedby"` на llms.txt. Эти изменения не добавляют WebMCP-интеграцию; Lighthouse на реальном развёртывании проверяется отдельно.
+
 ```text
 npm run lint
 npm run typecheck
@@ -66,3 +74,7 @@ npm run build
 ```
 
 Обязательные реальные E2E запускаются существующим `python scripts/run_e2e_suite.py` из подготовленной Python среды с guarded PostgreSQL/mandatory fresh marker; профили default-off/enabled имеют preflight на backend и frontend proxy. Точные environment prerequisites — [testing plan](testing/plan.md). Appearance fixtures проверяют геометрию/theme/history/palette/Axe и явно отделены от настоящего PG/browser/WebAuthn. `appearance.spec.ts` содержит Axe WCAG2A/AA/2.1AA/best-practice без disableRules. `csp.spec.ts` запускается за Nginx enforcing CSP; vite-preview не подтверждает CSP. Негативные OIDC/UV/RP/CSRF/replay/proof tests обязательны. Не считайте build/Axe заменой ручной visual inspection или real authentication.
+
+WEB-PERF-01: CSS tokens включены в entry CSS, основной Geist получает preload; синхронный внешний theme bootstrap сохранён для темы до первого кадра без inline CSP. Capabilities и сессия читаются параллельно, gate ждёт обе операции. Feedback/reauth используют DeferredDialog, handler повторной аутентификации остаётся синхронным; обычный AccessibleDialog сохраняет Radix contract. Sentry runtime загружается после enabled-конфигурации и согласия, проверяемых повторно после import. [Решение](adr/0022-frontend-critical-loading.md), [измерения и ограничения](acceptance-web-perf.md).
+
+Nginx возвращает `Cache-Control: max-age=31536000` для существующих hashed JS/CSS/WOFF2 `/assets/`, `max-age=3600` для mutable `/brand/` и `/theme/`, `no-cache` для HTML/прочей статической раздачи. Security headers наследуются, `.map` и неизвестные asset paths возвращают 404. API/OAuth policy не изменяется. При обновлении HTML revalidation получает новые asset hashes; mutable public files могут обновиться в клиентском кэше в течение часа.

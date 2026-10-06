@@ -1312,6 +1312,12 @@ Light surfaces rely slightly more on border/elevation contrast.
 
 Theme changes should feel polished.
 
+The primary theme selector belongs in the shared page footer on public, account and administrative pages. Do not reserve a separate top appearance bar for it.
+
+Group the selector with the contact information, aligned to the right on wide screens. Below 640 px, place this group on a separate row after the legal links. Keep the footer in normal document flow, visible at the bottom of short pages and after long content, without overlapping cookie notices.
+
+Keep a visible label and support System, Light and Dark choices with keyboard access and a clear focus indicator. The command palette may provide an additional way to change the theme.
+
 A brief global colour transition may be applied when the change was directly initiated by the user.
 
 Do not animate initial page theme hydration.

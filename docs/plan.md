@@ -1155,3 +1155,69 @@ P1; done; зависимости: существующий email delivery; на�
 2026-10-05T19:23:23+03:00 — PROJECT-PR-01 in_progress: Windows8dot3 fixture canonicalization и9files CodeScene refactor запланированы до изменений; критерий — те же regression assertions и все3remotequalitygates, без suppression/threshold changes.
 
 2026-10-05T19:52:58+03:00 — PROJECT-PR-01 in_progress: Windows/PG/SVG/CodeScene source fixes реализованы; all local gates и browser37PASS. Далее новыйcommit/normalpush, новыйremoteCI; успех ещё не заявлен.
+
+2026-10-05T20:08:20+03:00 — PROJECT-PR-01 in_progress: все9Actions на0828424PASS, CodeScene2dup fixes готовы, local regressionPASS. Новыйcommit/CI и финальныйdocs checkpoint остаются обязательными.
+
+### WEB-ROBOTS-01 — robots.txt
+- P2; in_progress; начало: 2026-10-06T02:42:43.7429774+03:00; исполнитель: Codex; требования ARCH-05, DOC-TRACK-02–07; зависимость: существующая статическая сборка frontend.
+- План: добавить public/robots.txt с запретом обхода всех путей; документировать; проверить production build и HTTP-раздачу Vite preview.
+- Готовность: dist содержит исходный файл, GET /robots.txt возвращает 200 и text/plain с ожидаемыми директивами; чужие изменения сохранены.
+
+2026-10-06T02:43:57.9511831+03:00 — WEB-ROBOTS-01 done; завершение: 2026-10-06T02:43:57.9511831+03:00. Файл и описание добавлены; npm.cmd run build PASS; dist/source совпадают; GET /robots.txt — 200 text/plain и точное содержимое; git diff --check PASS. Production Nginx не запускался. Продолжение: review локальных правок.
+
+2026-10-06T02:44:15.0616710+03:00 — WEB-ROBOTS-01 blocked: корректировка ошибочного done выше. Реализация и build завершены; обязательная по локальному плану HTTP-проверка заблокирована loopback socket permissions. Для завершения проверить GET /robots.txt (200, text/plain, две директивы) вне ограничения среды.
+
+2026-10-06T02:45:19.4673799+03:00 — WEB-ROBOTS-01: подготовка локального commit по поручению владельца; чужие изменения исключаются. HTTP-критерий остаётся blocked.
+
+2026-10-06T02:46:53.4226517+03:00 — PROJECT-PR-01: этап локального commit оставшихся правок in_progress по поручению владельца. Критерий: frontend lint/types/components и staged diff PASS, все оставшиеся изменения сохранены; remote CI отдельно.
+
+2026-10-06T02:49:38.3108298+03:00 — PROJECT-PR-01: этап локального commit done; все оставшиеся правки сохранены, lint/types/components37/secret135-0new/staged-whitespace PASS. Remote CI/CodeScene — отдельное продолжение, общая задача не закрыта.
+
+### WEB-SEO-01 — llms.txt и публичная индексация
+- P2; in_progress; начало: 2026-10-06T03:09:32.1782888+03:00; Codex; ARCH-05/DOC-TRACK-02–07; зависит от WEB-ROBOTS-01.
+- По поручению владельца общий Disallow заменяется разрешением публичных страниц с исключением служебных путей; добавляются llms.txt с H1/ссылками и meta description.
+- Готовность: build PASS, source/dist совпадают, локальные HTTP robots/llms и HTML meta проверены; docs/GOAL согласованы. Lighthouse score отдельно, без обещания результата.
+
+2026-10-06T03:11:05.6088625+03:00 — WEB-SEO-01 done; завершение: 2026-10-06T03:11:05.6088625+03:00. Build/source-dist/HTTP200textplain/H1+5links/6HTMLmeta/whitespace PASS. WEB-ROBOTS-01 прежний общий запрет cancelled (заменён прямым указанием владельца); актуальная HTTP-раздача проверена. Далее review и Lighthouse на стенде; общий GOAL не закрыт.
+
+### WEB-UTF8-01 — кодировка текстовых файлов
+- P2; in_progress; начало: 2026-10-06T03:14:51.0331203+03:00; Codex; ARCH-05/DOC-TRACK; зависит от WEB-SEO-01.
+- Подтверждено: localhost3000 llms200text/plain без charset, исходный русский UTF8 корректен. План: charset utf-8 в static Nginx local/production; HTTP regression с реальным Nginx; docs.
+- Готовность: HTTP Content-Type text/plain;charset=utf-8 и точные UTF8bytes/русский текст, security headers сохранены.
+
+2026-10-06T03:17:46.5758821+03:00 — WEB-UTF8-01 done; завершение: 2026-10-06T03:17:46.5758821+03:00. Docker frontend build/recreate, nginx -t, HTTP exact UTF8/charset, browserUTF8+CSP2PASS, lint/test-types/whitespace PASS. Production template runtime не проверен. Далее review владельцем.
+
+2026-10-06T03:21:06.9253861+03:00 — WEB-SEO-01/WEB-UTF8-01: локальный commit in_progress по поручению владельца; критерий — всё сохранено, staged whitespace/secret scan PASS, чистое дерево.
+
+2026-10-06T03:21:25.1042942+03:00 — WEB-SEO-01/WEB-UTF8-01: подготовка commit завершена, secret scan135/0new/whitespace PASS; сохранение и git status выполняются следующим действием.
+
+### WEB-PERF-01 — загрузка и HTTP cache
+- P2; in_progress; начало: 2026-10-06T03:25:51.2646786+03:00; Codex; ARCH-05/TEST-01/DOC-TRACK; зависит от существующего frontend.
+- План: базовые browser network/paint; immutable cache только hashed assets с сохранением security headers; cache revalidation для mutable files; объединение tokens CSS с build/preload font; параллельный bootstrap; устранение eager dialog download; build/browser/component/static regressions.
+- Готовность: измеренное сравнение ресурсов, HTTP cache+negative404/CSP/UTF8/browser/components PASS; Lighthouse score не подменяется локальными paint timings.
+- Инструменты: DevTools trace MCP отсутствует; доступен Playwright/CDP, source и HTTP анализ.
+
+2026-10-06T03:44:55.6268903+03:00 — WEB-PERF-01 done; завершение: 2026-10-06T03:44:55.6268903+03:00. Измеримое coldCDP улучшение18.5%FCP/LCP и47%JS; все локальные статические/component/privacy/browser/cache/CSP критерии PASS. План расширен до conditionaltelemetry (ADR0022), security policy сохранена. Продолжение: Lighthouse владельца на том же audited route; production/полная GOAL отдельно.
+
+2026-10-06T11:00:10.3404019+03:00 — WEB-PERF-01: локальный commit in_progress по поручению владельца; критерий — все правки сохранены, secret/staged whitespace PASS, чистое дерево.
+
+2026-10-06T11:00:30.0041452+03:00 — WEB-PERF-01: подготовка commit завершена, secret135-0new/whitespace PASS; сохранение выполняется следующим Git действием, после него проверяется чистота дерева.
+
+### UI-THEME-FOOTER-01 — выбор темы в общем футере
+- P2; in_progress; начало: 2026-10-06T11:05:51.4668735+03:00; Codex; ARCH-05/FR-theme/DOC-TRACK; зависит от существующего AppShell/LegalFooter.
+- План по утверждённому владельцем: убрать appearance-bar, ThemeControl в footer contacts (desktopright/mobilebelow640); DesignLanguage53/docsfrontend; keyboard/footer geometry/theme/Axe regressions, static/components/build; localfrontend rebuild и visualQA.
+- Готовность: один ThemeControl в footer на всех routes, no topbar/nooverlap/keyboard/themes preserved; localchecksPASS. Commit/push не входят.
+
+2026-10-06T11:12:22.8220974+03:00 — Замечание к существующей приёмке зависимостей SEC/CI: npm audit high source-map-js1.2.1, GHSA-68fv-2mgg-jv7q (https://github.com/advisories/GHSA-68fv-2mgg-jv7q), исправлено upstream1.2.2. Исправление planned: отдельно обновить lock совместимым patch и выполнить audit/build/CI. UI-THEME-FOOTER-01 не меняет dependencies; уязвимость не устранена этой записью.
+
+2026-10-06T11:15:40.3494411+03:00 — UI-THEME-FOOTER-01 done; завершение 2026-10-06T11:15:40.3494411+03:00. Критерии выполнены: footer-only unique theme control, no topbar, responsive640, cookie nonoverlap, natural Tab/arrows/focus, light/dark и public/account/admin geometry. Lint/types/components39/build/localDocker/visualQA PASS; browser40 проверены как39PASS и targeted1PASS после исправления optional-banner ожидания. Продолжение — review владельцем, без commit/push.
+
+2026-10-06T11:18:02.1527354+03:00 — UI-THEME-FOOTER-01, Codex: по поручению владельца подготовка локального commit всех 10 изменённых файлов. План: secret scan, staged whitespace, commit и проверка чистоты дерева; предыдущие runtime проверки сохранены в acceptance.md, исходники после них не менялись. Push не поручен.
+
+2026-10-06T11:18:40.2311731+03:00 — UI-THEME-FOOTER-01: подготовка commit завершена, secret scan135/0new и whitespace PASS. Все изменения просмотрены; следующим действием локальный commit и проверка чистоты дерева. Продолжение — review владельцем, без push.
+
+2026-10-06T11:24:34.9458602+03:00 — PROJECT-PR-02, Codex, in_progress: по поручению владельца создать PR последних frontend/SEO/theme изменений в main и удалить только завершённые локальные ветки. План: проверить remote/main и открытые PR, сохранить этот checkpoint, создать PR, attach, проверить ancestry всех веток, переключиться на main и удалить merged ветки. Активная new/frontend-redesign сохраняется до merge. Критерий: PR URL и чистое дерево на main, никакие уникальные коммиты не потеряны; remote ветки не удаляются.
+
+2026-10-06T11:26:13.3264743+03:00 — PROJECT-PR-02: remote fetch/prune и GitHub open PR поиск выполнены; открытых PR нет. Ancestry origin/main подтвердил завершение пяти локальных веток codex/ci-repair-pr9, new/production-readiness-audit, new/production-readiness-remediation, new/resend-email-provider, new/skip-ses-without-credentials; удалены git branch -d, remote refs сохранены. new/frontend-redesign активна для PR. Далее docs checkpoint commit/push, создание PR и переключение на main; проверки runtime сохранены в acceptance, новый diff только учёт работы.
+
+2026-10-06T11:27:57.2070709+03:00 — PROJECT-PR-02 done; Codex: создан и прикреплён PR https://github.com/alxprgstech/sso/pull/8 из new/frontend-redesign в main, GitHub mergeable=true и git merge-tree exit0 (без изменений рабочего дерева). Пять завершённых локальных веток удалены после ancestry проверки; main и активная ветка PR сохранены. Docs checkpoint отправляется в PR; далее переключение чистого рабочего дерева на main. Продолжение: review/CI/merge PR владельцем; CI текущего PR пока не заявлен PASS, merge не поручен, remote ветки не удалялись.

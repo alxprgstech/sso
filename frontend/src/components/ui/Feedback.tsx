@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Check, X } from "lucide-react";
-import { Dialog } from "./Dialog";
+import { DeferredDialog as Dialog } from "../DeferredDialog";
 import { Button, IconButton } from "./controls";
 interface Confirmation {
   message: string;

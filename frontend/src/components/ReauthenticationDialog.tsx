@@ -12,7 +12,7 @@ import {
   prepareRequestOptions,
   serializeRequestResponse,
 } from "../utils/webauthn";
-import { AccessibleDialog } from "./AccessibleDialog";
+import { DeferredDialog as AccessibleDialog } from "./DeferredDialog";
 
 interface Pending {
   action: string;

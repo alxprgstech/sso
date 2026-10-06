@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { CookieBanner, LegalFooter } from "./PrivacyControls";
-import { ThemeControl } from "./ThemeControl";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -9,9 +8,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         К основному содержимому
       </a>
       <div className="app-scroll">
-        <div className="appearance-bar" role="region" aria-label="Оформление">
-          <ThemeControl />
-        </div>
         <main id="main-content" tabIndex={-1}>
           {children}
         </main>

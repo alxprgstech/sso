@@ -19,6 +19,8 @@ Environment defaults: development→local, testing→test, production→producti
 
 `GET /api/v1/auth/telemetry-config` публичен, `Cache-Control: no-store`, без обращения к БД. Возвращает frontend flags/DSN/environment/rates и точные propagation targets. Не возвращает backend DSN, credentials, user data. Bootstrap запрашивает его без cookies и ждёт не более 300 ms; неверный ответ/отказ не мешает React render. Privacy нельзя ослабить через ответ endpoint.
 
+WEB-PERF-01: лёгкий frontend facade не импортирует Sentry SDK в начальной загрузке. Runtime загружается асинхронно при включённой конфигурации и согласии, с повторной проверкой согласия/generation после загрузки; `initializeTelemetry` возвращает `Promise<boolean>`. Отзыв синхронно запрещает работу существующего клиента до его асинхронного закрытия. Runtime transport/sanitization/Replay policy сохраняются. Source-owned React ErrorBoundary отображает локальный fallback и передаёт фиксированную обобщённую ошибку без exception text/component values; ошибки до инициализации SDK не буферизуются. Тестовый harness ожидает инициализацию; browser suite перехватывает synthetic SDK payloads локально и запрещает остальные внешние соединения. [ADR-0022](adr/0022-frontend-critical-loading.md).
+
 Порядок rollout: errors с нулевыми traces/Replay → staging privacy/source-map smoke → tracing `0.01` для обоих компонентов → отдельная Replay-приёмка → staging Replay `0 / 0.10`. Flags остаются false до соответствующей live-приёмки. Production Replay выключен кодом независимо от flags/rates.
 
 ## Capture и privacy

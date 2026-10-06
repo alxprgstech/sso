@@ -42,8 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      await refreshCapabilities();
-      await refreshUser();
+      await Promise.all([refreshCapabilities(), refreshUser()]);
       setIsLoading(false);
     };
 
