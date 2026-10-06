@@ -1,3 +1,7 @@
+# BUILD-PERF-PR-01 — done
+
+2026-10-06T16:15:50.0464712+03:00 — Codex: [PR10](https://github.com/alxprgstech/sso/pull/10) создан и прикреплён; featurefcf57ef, синхронизация mainf201f0a. Все локальные проверки сохранены в acceptance-build-perf; повтор unit21 и secret135/0new PASS. Docs checkpoint отправляется в ту же ветку; далее remote CI/review владельцем. Merge/deploy не выполнялись. Ниже исторические checkpoints.
+
 # BUILD-PERF-PR-01 — in_progress
 
 2026-10-06T16:10:46.6833471+03:00 — Codex: по поручению владельца commit/push/PR ускорения сборки в main. Проверки BUILD-PERF-01 сохранены ниже; remote CI нового diff не подтверждён.

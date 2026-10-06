@@ -1240,3 +1240,5 @@ BUILD-PERF-01 — done; завершение 2026-10-06T12:24:48.0060880+03:00. 
 
 ## BUILD-PERF-PR-01 — in_progress
 P1; зависимость BUILD-PERF-01 done. Начало: 2026-10-06T16:10:46.6833471+03:00. Критерий: commit всех изменений задачи, push и PR в main с реальными evidence; далее review/CI владельцем.
+
+BUILD-PERF-PR-01 — done; завершение2026-10-06T16:15:50.0464712+03:00. Commitfcf57ef, main syncf201f0a, push и [PR10](https://github.com/alxprgstech/sso/pull/10) выполнены; критерий выполнен. RemoteCI/review/merge — следующий шаг владельца.
