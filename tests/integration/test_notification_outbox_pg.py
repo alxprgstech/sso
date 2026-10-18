@@ -102,11 +102,12 @@ async def test_outbox_fifth_failure_removes_recipient_data(pg_session, monkeypat
 
 async def test_outbox_rechecks_expiry_after_previous_slow_delivery(pg_session, monkeypatch):
     user = await owner(pg_session)
-    clock = datetime.now(timezone.utc)
     for _ in range(2):
         enqueue(pg_session, user, "password_change")
     await pg_session.flush()
+    clock = datetime.now(timezone.utc)
     for row in (await pg_session.scalars(select(SecurityNotification))).all():
+        row.next_attempt_at = clock
         row.expires_at = clock + timedelta(minutes=1)
     await pg_session.commit()
 
