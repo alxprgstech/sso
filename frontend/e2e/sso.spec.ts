@@ -204,4 +204,40 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     // Проверяем, что ссылка на регистрацию снова скрыта
     await expect(page.getByRole("button", { name: "Зарегистрироваться" })).not.toBeVisible();
   });
+  test("05. Session view and revocation require separate real confirmations", async ({ page, browser }) => {
+    const login = async (target: import("@playwright/test").Page) => {
+      await target.goto("/");
+      await target.fill('input[placeholder="user@alxprgs.tech"]', "compose_admin");
+      await target.fill('input[type="password"]', "ComposeAdminPass2026!");
+      await target.click('button[type="submit"]');
+      await acceptDocumentsAfterLogin(target);
+      await expect(target.getByText("Личный кабинет")).toBeVisible();
+    };
+    await login(page);
+    const other = await browser.newContext();
+    try {
+      await login(await other.newPage());
+      expect((await page.request.get("/api/v1/auth/sessions")).status()).toBe(401);
+      await page.goto("/account/sessions");
+      const viewed = page.waitForResponse(response => response.url().endsWith("/api/v1/auth/sessions") && response.status() === 200);
+      await confirmSensitiveAction(page, "ComposeAdminPass2026!");
+      const viewRequest = (await viewed).request();
+      const readGrant = viewRequest.headers()["x-reauthentication"];
+      expect(readGrant).toBeTruthy();
+      expect((await page.request.get("/api/v1/auth/sessions", { headers: { "X-Reauthentication": readGrant } })).status()).toBe(200);
+      const csrf = (await page.request.get("/api/v1/auth/me")).headers()["x-csrf-token"];
+      expect(csrf).toBeTruthy();
+      expect((await page.request.delete("/api/v1/auth/sessions", { headers: { "X-CSRF-Token": csrf, "X-Reauthentication": readGrant } })).status()).toBe(401);
+      const revoked = page.waitForResponse(response => response.request().method() === "DELETE" && response.status() === 200);
+      await page.getByRole("button", { name: "Отозвать", exact: true }).last().click();
+      await confirmSensitiveAction(page, "ComposeAdminPass2026!");
+      const request = (await revoked).request();
+      expect(request.headers()["x-reauthentication"]).not.toBe(readGrant);
+      expect((await page.request.delete(request.url(), { headers: { "X-CSRF-Token": csrf, "X-Reauthentication": request.headers()["x-reauthentication"] } })).status()).toBe(401);
+      await page.getByRole("button", { name: "Выйти", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible();
+    } finally {
+      await other.close();
+    }
+  });
 });

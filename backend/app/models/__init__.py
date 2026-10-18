@@ -1,4 +1,5 @@
 from app.models.audit import AuditEvent
+from app.models.notification import SecurityNotification
 from app.models.authentication import AuthenticationStep, SecurityAuthorization
 from app.models.mfa import (
     EmailVerificationToken,
@@ -25,6 +26,7 @@ from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
 
 __all__ = [
+    "SecurityNotification",
     "SecurityAuthorization",
     "AuthenticationStep",
     "LegalAcceptance",

@@ -55,6 +55,14 @@ def release_pair(tmp_path):
         "sha256": sha256(archive_path),
         "size_bytes": archive_path.stat().st_size,
     }
+    provenance_path = release / "BUILD_PROVENANCE.json"
+    provenance = json.loads(provenance_path.read_text())
+    provenance["subjects"][archive_path.name] = sha256(archive_path)
+    provenance_path.write_text(json.dumps(provenance))
+    manifest["artifacts"][provenance_path.name] = {
+        "sha256": sha256(provenance_path),
+        "size_bytes": provenance_path.stat().st_size,
+    }
     (release / "release-manifest.json").write_text(json.dumps(manifest))
     (release / "SHA256SUMS.txt").write_text(
         "".join(

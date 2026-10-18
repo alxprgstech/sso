@@ -354,6 +354,8 @@ def test_fresh_content_failures_are_safe(settings, field, value):
 
 
 def test_configuration_env_precedence_and_validation_redaction(tmp_path, monkeypatch):
+    for name in ("TESTMAIL_API_KEY", "TESTMAIL_NAMESPACE", "TESTMAIL_TIMEOUT_SECONDS"):
+        monkeypatch.delenv(name, raising=False)
     dotenv = tmp_path / ".env"
     dotenv.write_text(
         "TESTMAIL_API_KEY=synthetic-dotenv\nTESTMAIL_NAMESPACE=example\nTESTMAIL_TIMEOUT_SECONDS=10\n",

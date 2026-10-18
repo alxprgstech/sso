@@ -218,7 +218,19 @@ async def test_documents_gate_and_direct_api_csrf(pg_session, pg_client):
         },
     )
     assert accepted.status_code == 200
-    assert (await pg_client.get("/api/v1/auth/sessions")).status_code == 200
+    assert (await pg_client.get("/api/v1/auth/sessions")).status_code == 401
+    from tests.helpers.reauthentication import (
+        MutationRequest,
+        RequestAuthorization,
+        authorized_request,
+    )
+
+    viewed = await authorized_request(
+        pg_client,
+        MutationRequest("GET", "/api/v1/auth/sessions"),
+        RequestAuthorization(PASSWORD, {"X-CSRF-Token": csrf}),
+    )
+    assert viewed.status_code == 200
     assert (
         await pg_client.post("/api/v1/auth/account-deletion", json={"authorization": "x" * 43})
     ).status_code == 403

@@ -6,7 +6,8 @@
 
 ```bash
 python -m build --no-isolation packages/python-sdk --outdir dist/sdk
-python -m pip install dist/sdk/alxprgs_sso-0.2.0-py3-none-any.whl
+python -m pip install --require-hashes -r requirements-lock-hashed.txt
+python -m pip install --no-deps --no-build-isolation dist/sdk/alxprgs_sso-0.2.0-py3-none-any.whl
 ```
 
 Диапазоны зависимостей и зафиксированный набор находятся в `packages/python-sdk/pyproject.toml` и `requirements-lock.txt`. Для проверки примеров устанавливайте wheel в чистую среду; `PYTHONPATH` не должен подменять установленный SDK исходниками.
@@ -82,3 +83,7 @@ def admin(user: UserClaims = Depends(security.require_role("admin"))):
 ## Условия сборки и локальный issuer
 
 Для --no-isolation заранее установите requirements-lock.txt (включает build/setuptools/wheel); requirements-build-lock.txt предназначен для backend builder и не содержит setuptools/wheel; wheel проверяйте после установки в отдельную среду с зависимостями SDK. README пакета показывает FastAPI helper, этот документ — полный callback. SSOClient.expected_issuer задаётся явно, когда transport server_url отличается от issuer. Срок/лимиты JWKS и fallback не отключайте ради тестов. [Тестирование](testing/README.md), [примеры](../examples/README.md).
+
+## Unreleased: transport policy
+
+SSOClient по умолчанию принимает только HTTPS, certificate verification обязательна. `verify_ssl=False` запрещён в любом профиле. Для локального HTTP явно передайте `transport_profile="local"`; допустимы только localhost и loopback IP, включая IPv6. Это несовместимое изменение, VERSION пока 0.2.0. Не выводите server URL с userinfo; userinfo/query/fragment в URL сервера отвергаются. Demo uses `SSO_TRANSPORT_PROFILE=local` только для локального стенда.

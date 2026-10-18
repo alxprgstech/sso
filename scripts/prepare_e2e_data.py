@@ -42,6 +42,13 @@ from tests.db_guard import (
 
 SYNTHETIC_USERS = [
     {
+        "username": "e2e_sso_user",
+        "email": "e2e_sso@example.test",
+        "password": "SSOBrowserSynthetic2026!",  # pragma: allowlist secret -- isolated SSO fixture
+        "is_superuser": False,
+        "roles": [ROLE_USER],
+    },
+    {
         "username": "e2e_totp_user",
         "email": "e2e_totp@example.test",
         "password": "TOTPBrowserSynthetic2026!",

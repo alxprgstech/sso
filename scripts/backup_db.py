@@ -10,10 +10,34 @@ import argparse
 import hashlib
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from scripts.rotate_keys import private_directory, write_private
+except ModuleNotFoundError:
+    from rotate_keys import private_directory, write_private
+
+
+def require_private_directory(path: Path) -> None:
+    if path.is_symlink():
+        raise ValueError("Symlink backup destination")
+    if not path.exists():
+        private_directory(path)
+    if os.name == "nt":
+        script = "$ErrorActionPreference='Stop'; $a=[System.IO.Directory]::GetAccessControl($env:SSO_BACKUP_DIRECTORY); $s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; foreach($r in $a.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier])){if($r.AccessControlType -eq 'Allow' -and $r.IdentityReference.Value -ne $s){exit 1}}"
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            env=os.environ | {"SSO_BACKUP_DIRECTORY": str(path)},
+            capture_output=True,
+            check=True,
+        )
+    elif stat.S_IMODE(path.stat().st_mode) & 0o077:
+        raise ValueError("Backup directory must have owner-only permissions")
+
 
 try:
     from scripts.privacy_journal import EXPORT_SQL, purge_backups
@@ -95,15 +119,12 @@ def postgres_command(args: argparse.Namespace, tool: str, options: list[str]) ->
 
 def create_dump(args: argparse.Namespace, backup_file: Path) -> None:
     cmd = postgres_command(args, "pg_dump", ["--clean", "--if-exists"])
-    if args.docker:
-        print(f"[*] Executing via Docker container '{args.container}'...")
-        with backup_file.open("wb") as output:
-            subprocess.run(cmd, stdout=output, stderr=subprocess.PIPE, check=True)
-    else:
-        print(f"[*] Executing pg_dump on {args.host}:{args.port}...")
+    descriptor = os.open(backup_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
         subprocess.run(
-            [*cmd, "-f", str(backup_file)],
+            cmd,
             env=postgres_environment(),
+            stdout=output,
             check=True,
             stderr=subprocess.PIPE,
         )
@@ -119,7 +140,7 @@ def export_snapshot_journal(args: argparse.Namespace, backup_file: Path) -> None
     cmd = postgres_command(args, "psql", ["-X", "-At", "-v", "ON_ERROR_STOP=1", "-c", EXPORT_SQL])
     env = os.environ.copy() if args.docker else postgres_environment()
     journal = subprocess.run(cmd, env=env, check=True, capture_output=True)
-    backup_file.with_suffix(".journal.json").write_bytes(journal.stdout)
+    write_private(backup_file.with_suffix(".journal.json"), journal.stdout)
 
 
 def remove_failed_backup(backup_file: Path) -> None:
@@ -138,7 +159,7 @@ def print_backup_result(backup_file: Path) -> None:
 def main() -> None:
     args = parse_arguments()
     out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    require_private_directory(out_dir)
     purge_backups(out_dir)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_file = out_dir / f"sso_backup_{args.db}_{timestamp}.sql"

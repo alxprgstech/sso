@@ -113,10 +113,16 @@ async def test_oidc_service_issues_isolated_codes_for_two_clients_unit():
 
     # 3. Инициализируем SDK для обоих клиентов
     sdk1 = SSOClient(
-        server_url=settings.BASE_URL, client_id=client1_id, expected_issuer=settings.OIDC_ISSUER
+        transport_profile="local",
+        server_url=settings.BASE_URL,
+        client_id=client1_id,
+        expected_issuer=settings.OIDC_ISSUER,
     )
     sdk2 = SSOClient(
-        server_url=settings.BASE_URL, client_id=client2_id, expected_issuer=settings.OIDC_ISSUER
+        transport_profile="local",
+        server_url=settings.BASE_URL,
+        client_id=client2_id,
+        expected_issuer=settings.OIDC_ISSUER,
     )
     server_jwks = get_jwks()
 

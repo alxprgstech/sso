@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 from app.core.exceptions import AuthorizationException
 from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin, lock_admin_invariant
 from app.core.security import async_hash_password, generate_random_token
+from app.core.urls import validate_redirect
+from app.config import get_settings
 from app.models.audit import AuditEvent
 from app.models.oidc import OIDCClient, OIDCRedirectUri
 from app.models.session import Session
@@ -136,8 +138,6 @@ class AdminService:
             user_role = UserRole(user_id=user.id, role_id=role_obj.id)
             db.add(user_role)
 
-        await db.commit()
-
         # Аудит создания
         await AuditService.log_event(
             db,
@@ -176,6 +176,9 @@ class AdminService:
 
         must_revoke_sessions = False
         if email is not None and email.strip().lower() != user.email:
+            from app.services.notification_service import enqueue
+
+            enqueue(db, user, "email_changed")
             user.email = email.strip().lower()
             user.email_verified = False
             must_revoke_sessions = True
@@ -231,6 +234,9 @@ class AdminService:
                 db.add(UserRole(user_id=user.id, role_id=role_obj.id))
 
         if new_password is not None:
+            from app.services.notification_service import enqueue
+
+            enqueue(db, user, "password_change")
             pwd_hash = await async_hash_password(new_password)
             if user.password_credential:
                 user.password_credential.password_hash = pwd_hash
@@ -269,7 +275,6 @@ class AdminService:
             await db.scalar(select(func.count(Session.id)).where(Session.user_id == user_id)) or 0
         )
         await invalidate_security_state(db, user)
-        await db.commit()
         await AuditService.log_event(
             db,
             event_type="admin_revoked_sessions",
@@ -312,6 +317,16 @@ class AdminService:
         Секрет генерируется и возвращается ТОЛЬКО ОДИН РАЗ (USR-09).
         """
         client_id = f"client_{generate_random_token(16)}"
+        cfg = get_settings()
+        for uri in redirect_uris:
+            try:
+                validate_redirect(
+                    uri,
+                    local=cfg.REDIRECT_TRANSPORT_PROFILE == "local"
+                    and cfg.ENVIRONMENT != "production",
+                )
+            except ValueError:
+                raise AuthorizationException("Недопустимый redirect URI") from None
         raw_secret: str | None = None
         secret_hash: str | None = None
 
@@ -335,8 +350,6 @@ class AdminService:
             if uri.strip():
                 redirect = OIDCRedirectUri(client_id=client.id, uri=uri.strip())
                 db.add(redirect)
-
-        await db.commit()
 
         await AuditService.log_event(
             db,
@@ -372,7 +385,6 @@ class AdminService:
 
         raw_secret = f"sec_{generate_random_token(32)}"
         client.client_secret_hash = await async_hash_password(raw_secret)
-        await db.commit()
 
         await AuditService.log_event(
             db,
@@ -390,7 +402,6 @@ class AdminService:
     ) -> bool:
         stmt = delete(OIDCClient).where(OIDCClient.client_id == client_id)
         res = await db.execute(stmt)
-        await db.commit()
         if (getattr(res, "rowcount", 0) or 0) > 0:
             await AuditService.log_event(
                 db,

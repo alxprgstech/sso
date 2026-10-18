@@ -76,6 +76,8 @@ def browser_environment() -> dict[str, str]:
             "JWT_PRIVATE_KEY_PEM": "",
             "OIDC_ISSUER": "https://auth.alxprgs.tech",
             "FRONTEND_URL": "http://localhost:5173",
+            "REDIRECT_TRANSPORT_PROFILE": "local",
+            "SSO_TRANSPORT_PROFILE": "local",
             "WEBAUTHN_RP_ID": "localhost",
             "WEBAUTHN_ORIGIN": "http://localhost:5173",
             "PORT": "8000",

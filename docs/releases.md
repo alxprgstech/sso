@@ -141,3 +141,9 @@ Build identity/release workflow допускают stable X.Y.Z и rc.N. bump_ve
 Реальные CI jobs: windows-safety, email-e2e-credentials/email-e2e, telemetry-container-check, verify-cd-template, security-and-deps-scan, version-consistency, backend-lint-and-test, sdk-build-and-test, frontend-build, playwright-e2e. Названия выше в описании направлений не являются идентификаторами jobs. CI использует Python 3.12/Node 24; закреплённые Actions проверяются в workflow.
 
 Будущие infrastructure/secrets в секции CD — предварительные placeholders, не выбранная схема. Активация требует отдельного поручения, анализа целевого контура, проверки артефактов, backup/миграции/health/rollback. Документационная задача release workflow не запускала; результаты прежних SHA — [acceptance](acceptance.md).
+
+## Unreleased: целостность Python artifacts и build metadata
+
+`requirements-lock.txt` сохраняет выбранные версии; companions `requirements-lock-hashed.txt`, `requirements-runtime-lock-hashed.txt`, `requirements-build-lock-hashed.txt` содержат SHA-256 доступных non-yanked PyPI artifacts. Обновление по HTTPS: `python scripts/hashed_locks.py --generate`; offline consistency: `python scripts/hashed_locks.py`. CI/Docker/release installs требуют `--require-hashes`; project wheel/editable ставится отдельно `--no-deps --no-build-isolation`. Full lock включает ранее применявшийся CI scanner pip-audit с зафиксированными transitive versions; runtime/build состав не расширен.
+
+Bundle включает `SBOM.json` (CycloneDX inventory full Python и npm lock) и `BUILD_PROVENANCE.json` (input hashes, commit SHA, dirty flag, Python version, payload hashes). Эти файлы обязательны в manifest/SHA256SUMS, verifier проверяет subject binding. Это **неподписанная локальная запись сборки**, не криптографическая аттестация и не доказательство внешней доверенной сборки. VERSION/release публикация не изменяются этой задачей.

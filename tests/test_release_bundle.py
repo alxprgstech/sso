@@ -74,6 +74,21 @@ def _bundle(path: Path) -> None:
             _tar(target, "package/README.md")
         else:
             target.write_text("synthetic release instructions\n", encoding="utf-8")
+    (path / "SBOM.json").write_text(
+        json.dumps(
+            {"bomFormat": "CycloneDX", "components": [{"name": "synthetic", "version": "1"}]}
+        ),
+        encoding="utf-8",
+    )
+    subjects = {
+        name: sha256(path / name)
+        for name in payload_names(VERSION)
+        if name != "BUILD_PROVENANCE.json"
+    }
+    (path / "BUILD_PROVENANCE.json").write_text(
+        json.dumps({"signed": False, "commit_sha": "a" * 40, "subjects": subjects}),
+        encoding="utf-8",
+    )
     manifest = {
         "version": VERSION,
         "commit_sha": "a" * 40,
@@ -101,6 +116,42 @@ def test_verifier_accepts_complete_bundle(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     _bundle(bundle)
     assert verify(bundle, expected_sha="a" * 40)["version"] == VERSION
+
+
+@pytest.mark.parametrize("mutation", ["signed_claim", "wrong_subject", "empty_sbom"])
+def test_verifier_rejects_invalid_security_metadata_even_with_updated_checksums(tmp_path, mutation):
+    bundle = tmp_path / "bundle"
+    _bundle(bundle)
+    path = bundle / ("SBOM.json" if mutation == "empty_sbom" else "BUILD_PROVENANCE.json")
+    document = json.loads(path.read_text())
+    if mutation == "signed_claim":
+        document["signed"] = True
+    elif mutation == "wrong_subject":
+        document["subjects"]["MIGRATION.md"] = "0" * 64
+    else:
+        document["components"] = []
+    path.write_text(json.dumps(document))
+    manifest_path = bundle / "release-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][path.name] = {"sha256": sha256(path), "size_bytes": path.stat().st_size}
+    if mutation == "empty_sbom":
+        provenance_path = bundle / "BUILD_PROVENANCE.json"
+        provenance = json.loads(provenance_path.read_text())
+        provenance["subjects"][path.name] = sha256(path)
+        provenance_path.write_text(json.dumps(provenance))
+        manifest["artifacts"][provenance_path.name] = {
+            "sha256": sha256(provenance_path),
+            "size_bytes": provenance_path.stat().st_size,
+        }
+    manifest_path.write_text(json.dumps(manifest))
+    (bundle / "SHA256SUMS.txt").write_text(
+        "".join(
+            f"{sha256(bundle / name)}  {name}\n"
+            for name in sorted(payload_names(VERSION) | {"release-manifest.json"})
+        )
+    )
+    with pytest.raises(ReleaseError, match="provenance|Provenance|inventory"):
+        verify(bundle)
 
 
 @pytest.mark.parametrize("mutation", ["missing", "corrupt", "checksums", "manifest_sha"])

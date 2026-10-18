@@ -3,7 +3,7 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-SCHEMA_REVISION = "0010_registration_session"
+SCHEMA_REVISION = "0013_security_outbox"
 
 
 async def require_runtime_database_role(db: AsyncSession) -> None:

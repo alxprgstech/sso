@@ -1,8 +1,10 @@
 """Run an owned, synthetic Compose acceptance campaign; never target existing volumes."""
 
+import ipaddress
 import json
 import os
 import secrets
+import socket
 import subprocess
 import tempfile
 import time
@@ -12,6 +14,7 @@ import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CAMPAIGN_URL = "http://127.0.0.1:3000"
 
 
 def command(args: list[str], *, check: bool = True) -> str:
@@ -26,7 +29,7 @@ def command(args: list[str], *, check: bool = True) -> str:
 
 def request(path: str) -> tuple[int, dict[str, str], bytes]:
     try:
-        response = urllib.request.urlopen("http://127.0.0.1:3000" + path, timeout=3)
+        response = urllib.request.urlopen(CAMPAIGN_URL + path, timeout=3)
     except urllib.error.HTTPError as exc:
         response = exc
     with response:
@@ -52,6 +55,15 @@ def campaign_environment(sha: str) -> dict[str, str]:
         "SSO_RUNTIME_PASSWORD": secrets.token_hex(32),
         "SSO_MIGRATOR_PASSWORD": secrets.token_hex(32),
         "ENVIRONMENT": "testing",
+        "REDIRECT_TRANSPORT_PROFILE": "local",
+        "FEATURE_TOTP_ENABLED": "false",
+        "FEATURE_PASSKEY_ENABLED": "false",
+        "FEATURE_RECOVERY_CODES_ENABLED": "false",
+        "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
+        "EMAIL_PROVIDER": "smtp",
+        "SMTP_HOST": "127.0.0.1",
+        "SMTP_PORT": "1",
+        "SENTRY_ENABLED": "false",
         "SESSION_SECRET_KEY": secrets.token_hex(64),
         "BASE_URL": "http://localhost:3000",
         "FRONTEND_URL": "http://localhost:3000",
@@ -68,7 +80,9 @@ def tag_campaign_images(project: str) -> None:
             [
                 "docker",
                 "tag",
-                "sso-frontend-check" if service == "frontend" else "sso-backend-check",
+                os.getenv("SSO_FRONTEND_TEST_IMAGE", "sso-frontend-check")
+                if service == "frontend"
+                else os.getenv("SSO_BACKEND_TEST_IMAGE", "sso-backend-check"),
                 project + "-" + service,
             ]
         )
@@ -112,7 +126,7 @@ def require_runtime_and_browser(compose: list[str]) -> None:
     browser = subprocess.run(
         ["npx.cmd" if os.name == "nt" else "npx", "playwright", "test", "e2e/csp.spec.ts"],
         cwd=ROOT / "frontend",
-        env=os.environ | {"PLAYWRIGHT_BASE_URL": "http://localhost:3000"},
+        env=os.environ | {"PLAYWRIGHT_BASE_URL": CAMPAIGN_URL},
     )
     if browser.returncode:
         raise RuntimeError("Real proxy CSP browser regression failed")
@@ -152,19 +166,111 @@ def cleanup_owned_campaign(compose: list[str], project: str, volume: str) -> Non
 
 
 def run() -> None:
+    global CAMPAIGN_URL
     project = "sso-ci-" + uuid.uuid4().hex
     volume = project + "_sso_db_data"
     sha = campaign_revision(volume)
     environment = campaign_environment(sha)
-    with tempfile.TemporaryDirectory(prefix="sso-container-") as temp:
-        envfile = Path(temp) / ".env"
-        envfile.write_text(
-            "\n".join(f"{key}={value}" for key, value in environment.items()) + "\n",
-            encoding="utf-8",
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    CAMPAIGN_URL = f"http://127.0.0.1:{port}"
+    environment.update(
+        BASE_URL=CAMPAIGN_URL,
+        FRONTEND_URL=CAMPAIGN_URL,
+        OIDC_ISSUER=CAMPAIGN_URL,
+        WEBAUTHN_ORIGIN=CAMPAIGN_URL,
+    )
+    ids = command(["docker", "network", "ls", "-q"]).split()
+    existing = json.loads(command(["docker", "network", "inspect", *ids])) if ids else []
+    used = [
+        ipaddress.ip_network(item["Subnet"])
+        for network in existing
+        for item in (network.get("IPAM", {}).get("Config") or [])
+        if "Subnet" in item
+    ]
+    free = [
+        ipaddress.ip_network(f"172.30.{index}.0/24")
+        for index in range(1, 255)
+        if all(
+            not ipaddress.ip_network(f"172.30.{index}.0/24").overlaps(subnet)
+            for subnet in used
+            if subnet.version == 4
         )
-        if os.name != "nt":
-            envfile.chmod(0o600)
-        compose = ["docker", "compose", "--env-file", str(envfile), "-p", project]
+    ]
+    if len(free) < 2:
+        raise RuntimeError("No isolated Compose subnets available")
+    proxy_subnet, db_subnet = free[:2]
+    proxy_ip, backend_ip = str(proxy_subnet[10]), str(proxy_subnet[20])
+    environment["TRUSTED_PROXIES"] = json.dumps([proxy_ip], separators=(",", ":"))
+    for name in (
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "RESEND_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_FRONTEND_DSN",
+        "SENTRY_AUTH_TOKEN",
+        "SMTP_PASSWORD",
+        "SMTP_USER",
+    ):
+        os.environ.pop(name, None)
+    # The subprocess is an explicitly synthetic campaign; inherited values
+    # must not override its env-file or activate an external provider.
+    os.environ.update(environment)
+    with tempfile.TemporaryDirectory(prefix="sso-container-") as temp:
+        try:
+            from scripts.rotate_keys import private_directory, write_private
+        except ModuleNotFoundError:
+            from rotate_keys import private_directory, write_private
+
+        private = Path(temp) / "private"
+        private_directory(private)
+        envfile = private / ".env"
+        write_private(
+            envfile,
+            ("\n".join(f"{key}={value}" for key, value in environment.items()) + "\n").encode(),
+        )
+        override = private / "compose.override.yml"
+        write_private(
+            override,
+            f'''services:
+  db:
+    container_name: {project}-db
+  backend:
+    container_name: {project}-backend
+    environment:
+      TRUSTED_PROXIES: '["{proxy_ip}"]'
+    networks:
+      proxy_network:
+        ipv4_address: {backend_ip}
+  frontend:
+    container_name: {project}-frontend
+    ports: !override ["127.0.0.1:{port}:8080"]
+    networks:
+      proxy_network:
+        ipv4_address: {proxy_ip}
+networks:
+  proxy_network:
+    ipam:
+      config: !override [{{subnet: {proxy_subnet}}}]
+  db_network:
+    ipam:
+      config: !override [{{subnet: {db_subnet}}}]
+'''.encode(),
+        )
+        compose = [
+            "docker",
+            "compose",
+            "--env-file",
+            str(envfile),
+            "-f",
+            str(ROOT / "docker-compose.yml"),
+            "-f",
+            str(override),
+            "-p",
+            project,
+        ]
         tag_campaign_images(project)
         try:
             command(compose + ["up", "-d", "--no-build"])

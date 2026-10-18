@@ -425,19 +425,24 @@ async def test_registration_duplicate_collisions_pg(
 
     # Попытка 3: email с другим регистром -> 409 Conflict
     # Isolate the case-folding assertion from the already consumed three-attempt mail quota.
-    r_dup_case = await pg_client.post(
-        "/api/v1/auth/register",
-        headers={"X-Forwarded-For": "192.0.2.37"},
-        json={
-            "terms_accepted": True,
-            "data_processing_consent": True,
-            "legal_versions": REQUIRED_DOCUMENTS,
-            "username": "another_user",
-            "email": "ExIsTiNg@alxprgs.tech",
-            "password": "RegistrationPassword2026!",
-            "confirm_password": "RegistrationPassword2026!",
-        },
-    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=__import__("app.main", fromlist=["app"]).app, client=("192.0.2.37", 123)
+        ),
+        base_url="http://testserver",
+    ) as independent_peer:
+        r_dup_case = await independent_peer.post(
+            "/api/v1/auth/register",
+            json={
+                "terms_accepted": True,
+                "data_processing_consent": True,
+                "legal_versions": REQUIRED_DOCUMENTS,
+                "username": "another_user",
+                "email": "ExIsTiNg@alxprgs.tech",
+                "password": "RegistrationPassword2026!",
+                "confirm_password": "RegistrationPassword2026!",
+            },
+        )
     assert r_dup_case.status_code == 409
 
 

@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     BASE_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:5173"
+    REDIRECT_TRANSPORT_PROFILE: Literal["strict", "local"] = "strict"
     TRUSTED_PROXIES: list[str] | str = ["127.0.0.1", "::1"]
 
     # OIDC параметры

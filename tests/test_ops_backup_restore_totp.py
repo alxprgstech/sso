@@ -155,7 +155,11 @@ def drop_owned(
     verify_admin(admin, expected_server)
     if not database_exists(admin, name):
         raise OpsSafetyError("Owned database disappeared before cleanup")
-    with psycopg.connect(pg_uri(db_url(base, name)), connect_timeout=5) as conn:
+    probe_name = f"sso-cleanup-{run_id}"
+    with psycopg.connect(
+        pg_uri(db_url(base, name)), connect_timeout=5, application_name=probe_name
+    ) as conn:
+        probe_pid = conn.execute("SELECT pg_backend_pid()").fetchone()[0]
         if conn.execute("SELECT current_database()").fetchone()[0] != name:
             raise OpsSafetyError("Cleanup connected to a different database")
         if server_identity(conn) != expected_server:
@@ -167,6 +171,12 @@ def drop_owned(
         ).fetchone()
         if row != (run_id, name):
             raise OpsSafetyError("Ownership marker mismatch; database preserved")
+    # Confirm closure of this exact ownership probe on the server. Client close
+    # alone can race pg_stat_activity; unrelated connections still block DROP.
+    admin.execute(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid=%s AND datname=%s AND application_name=%s",
+        (probe_pid, name, probe_name),
+    )
     connections = admin.execute(
         "SELECT count(*) FROM pg_stat_activity WHERE datname = %s", (name,)
     ).fetchone()[0]
@@ -246,6 +256,10 @@ async def test_backup_restore_and_totp_key_recovery(monkeypatch: pytest.MonkeyPa
     secret = pyotp.random_base32()
     primary_error: BaseException | None = None
     with tempfile.TemporaryDirectory(prefix="sso_ops_") as tmp:
+        from scripts.rotate_keys import private_directory
+
+        backup_dir = Path(tmp) / "backups"
+        private_directory(backup_dir)
         with psycopg.connect(pg_uri(admin_url), autocommit=True, connect_timeout=5) as admin:
             try:
                 verify_admin(admin, expected_server)
@@ -279,14 +293,14 @@ async def test_backup_restore_and_totp_key_recovery(monkeypatch: pytest.MonkeyPa
                         sys.executable,
                         str(ROOT / "scripts" / "backup_db.py"),
                         "--output-dir",
-                        tmp,
+                        str(backup_dir),
                         *common,
                         "--db",
                         source,
                     ],
                     env=env,
                 )
-                backups = list(Path(tmp).glob("*.sql"))
+                backups = list(backup_dir.glob("*.sql"))
                 assert len(backups) == 1 and backups[0].stat().st_size > 0
                 # Erasure AFTER the backup must survive restoration of that backup.
                 with psycopg.connect(pg_uri(source_url)) as conn:

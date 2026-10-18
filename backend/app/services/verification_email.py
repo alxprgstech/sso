@@ -271,8 +271,11 @@ def link_url(settings: Settings, token: str, purpose: str) -> str:
     return f"{settings.FRONTEND_URL}/verify-email?mode={quote(purpose)}&token={quote(token)}"
 
 
-def action_url(settings: Settings, challenge_id: uuid.UUID) -> str:
-    return f"{settings.BASE_URL}/api/v1/auth/register/confirm-gmail?challenge_id={challenge_id}"
+def action_url(settings: Settings, challenge_id: uuid.UUID, action_token: str) -> str:
+    return (
+        f"{settings.BASE_URL}/api/v1/auth/register/confirm-gmail"
+        f"?challenge_id={challenge_id}&action_token={quote(action_token)}"
+    )
 
 
 def link_digest(token: str) -> str:

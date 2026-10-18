@@ -47,6 +47,7 @@ services:
     environment: &backend_environment
       DATABASE_URL: postgresql+psycopg://sso_runtime:${SSO_RUNTIME_PASSWORD:?Set a separate runtime password}@db:5432/${POSTGRES_DB:-sso_db}
       ENVIRONMENT: ${ENVIRONMENT:-development}
+      REDIRECT_TRANSPORT_PROFILE: "${REDIRECT_TRANSPORT_PROFILE:-strict}"
       SENTRY_ENABLED: "${SENTRY_ENABLED:-false}"
       SENTRY_DSN: "${SENTRY_DSN:-}"
       SENTRY_FRONTEND_ENABLED: "${SENTRY_FRONTEND_ENABLED:-false}"

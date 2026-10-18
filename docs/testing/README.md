@@ -4,7 +4,7 @@
 
 ## Среда
 
-CI использует Python 3.12 и Node.js 24; backend image — Python 3.13.16, PostgreSQL — 16. Устанавливайте `requirements-lock.txt` в отдельную Python-среду, frontend — через `npm ci`. Полный requirements-lock.txt включает build/setuptools/wheel; requirements-build-lock.txt — сокращённый набор backend builder, его одного недостаточно для setuptools-сборки SDK. В Windows предпочтителен `PYTHONUTF8=1`.
+CI использует Python 3.12 и Node.js 24; backend image — Python 3.13.16, PostgreSQL — 16. Устанавливайте зависимости командой `python -m pip install --require-hashes -r requirements-lock-hashed.txt` в отдельную Python-среду, frontend — через `npm ci`. Полный requirements-lock.txt включает build/setuptools/wheel; requirements-build-lock.txt — сокращённый набор backend builder, его одного недостаточно для setuptools-сборки SDK. В Windows предпочтителен `PYTHONUTF8=1`.
 
 Интеграция требует отдельной синтетической PostgreSQL. `TEST_DATABASE_URL` экспортируется явно, не извлекается guard из dotenv. Guard проверяет допустимое имя, выделенную цель и существующий marker до очистки таблиц. Не используйте рабочую Compose БД и не создавайте marker на существующей базе. [Эксплуатация тестовой БД](../operations.md) и `scripts/init_fresh_ci_test_marker.py --help` описывают условия fresh/local-fresh; fixture не создаёт marker автоматически.
 
@@ -40,6 +40,8 @@ npm run build
 Production source build требует проверенного `ALX_BUILD_SHA`. Для Windows: `$env:ALX_BUILD_SHA = git rev-parse HEAD`; Bash: `export ALX_BUILD_SHA=$(git rev-parse HEAD)`.
 
 Реальный runner из корня: `python scripts/run_e2e_suite.py --suite all`. Он готовит управляемый тестовый стенд; предварительно нужны guarded PostgreSQL, установленные зависимости и Chromium. `--suite sso` и `--suite passkey` выбирают сценарии; `--suite email` отдельно отправляет реальные письма и требует соответствующего поручения/credentials.
+
+Два RP используют отдельного обычного synthetic пользователя: `E2E_USERNAME=e2e_sso_user`, соответствующий `E2E_PASSWORD` из `SYNTHETIC_USERS` в `scripts/prepare_e2e_data.py`, а также явные `E2E_CLIENT1_SECRET`/`E2E_CLIENT2_SECRET` и `PYTHON_BIN` с установленным SDK wheel. Этот пользователь не разделяет login quota администратора из соседних UI cases; лимиты не отключаются и счётчики не сбрасываются в ходе сценария. CI задаёт эти параметры явно.
 
 Default-off и enabled проверяются отдельно. Email обязателен в обоих; enabled включает TOTP/Passkey/Recovery с точным origin/RP и настоящим virtual authenticator с UV. Appearance fixtures проверяют UI; CSP проверяется за Nginx. Ни fixtures, ни build не подтверждают реальный вход.
 

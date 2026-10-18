@@ -102,6 +102,10 @@ async def _verify_factor(db: AsyncSession, context: FactorVerification, proof: F
 
 
 def sensitive_action(method: str, path: str) -> bool:
+    if path == "/api/v1/auth/sessions":
+        return method in {"GET", "DELETE"}
+    if path.startswith("/api/v1/auth/sessions/"):
+        return method == "DELETE"
     if method not in {"POST", "PUT", "PATCH", "DELETE"}:
         return False
     if path.startswith("/api/v1/admin/"):
@@ -292,5 +296,6 @@ async def consume(db: AsyncSession, user: User, session: Session, request: Reque
         await request.body()
     ):
         raise reject()
-    await db.execute(delete(SecurityAuthorization).where(SecurityAuthorization.id == row.id))
+    if request.method != "GET":
+        await db.execute(delete(SecurityAuthorization).where(SecurityAuthorization.id == row.id))
     # Deliberately no commit: proof consumption and the mutation share one transaction.

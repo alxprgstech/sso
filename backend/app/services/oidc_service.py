@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.exceptions import AuthenticationException, OAuthErrorException
+from app.core.urls import validate_redirect
 from app.core.security import (
     async_verify_password,
     create_jwt,
@@ -66,6 +67,14 @@ class OIDCService:
         Запрещены wildcards (*), относительные пути и поддомены.
         """
         registered_uris = [r.uri for r in client.redirect_uris]
+        try:
+            validate_redirect(
+                redirect_uri,
+                local=settings.REDIRECT_TRANSPORT_PROFILE == "local"
+                and settings.ENVIRONMENT != "production",
+            )
+        except ValueError:
+            raise OAuthErrorException("invalid_request", "Недопустимый redirect_uri", 400) from None
         if redirect_uri not in registered_uris:
             raise OAuthErrorException(
                 "invalid_request",

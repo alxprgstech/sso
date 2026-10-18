@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -201,11 +201,17 @@ async def resend_registration(
 async def confirm_registration_gmail(
     request: Request,
     challenge_id: uuid.UUID,
+    action_token: str = Query(min_length=43, max_length=43, pattern=r"^[A-Za-z0-9_-]{43}$"),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RegistrationCompleteResponse:
+    from app.services.privacy_service import RateLimit, consume_rate_limit
+
+    await consume_rate_limit(db, settings, RateLimit("gmail-action", get_client_ip(request), 10))
     await verify_gmail_bearer(request.headers.get("Authorization", ""), settings)
-    user = await RegistrationService.confirm(db, settings=settings, action_id=challenge_id)
+    user = await RegistrationService.confirm(
+        db, settings=settings, action_id=challenge_id, action_token=action_token
+    )
     return RegistrationCompleteResponse(user_id=user.id)
 
 
@@ -286,7 +292,6 @@ async def logout(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     await db.delete(session)
-    await db.commit()
 
     cookie_name = get_cookie_name(settings, request)
     response.delete_cookie(key=cookie_name, path="/")

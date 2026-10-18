@@ -306,3 +306,9 @@ Backup скрипт удаляет только собственные файл�
 ## Конфигурация и проверенность
 
 Start scripts требуют Git и сами задают identity. Default Settings и Compose различаются: [configuration](configuration.md). Копия .env.example содержит placeholders. Изменённый frontend требует пересборки/пересоздания. DOC-REFRESH-01 не запускал backup/restore или пользовательский стенд.
+
+## Security notifications и локальные файлы
+
+Чувствительные изменения и их audit/outbox фиксируются одной транзакцией. Notices о password/TOTP/Passkey/recovery/email идут на ранее подтверждённый адрес без секретов. Queue хранит recipient максимум 24 часа; worker штатного maintenance loop выбирает задания `FOR UPDATE SKIP LOCKED`, делает максимум пять попыток с bounded backoff и удаляет payload при завершении/исчерпании срока. Ошибка provider не отменяет изменение и не теряет задание до лимита. Доставка at-least-once: crash после доставки до commit может дать повторное уведомление. Диагностика `security_notification` содержит только ограниченный reason, без provider exceptions/адресов.
+
+Backup destination должен иметь права только владельца: новый каталог создаётся приватным, существующий с широкими правами отвергается. POSIX 0700/0600; Windows owner-only ACL. SQL/journal создаются эксклюзивно, повторное имя не перезаписывает файл. Генератор keys создаёт новый private directory и exclusive files; production keys не заменяются автоматически. Storage encryption/vault/HSM/реальные alerts остаются внешней приёмкой.

@@ -77,7 +77,6 @@ class RecoveryCodesService:
             db.add(rec)
 
         await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
         await AuditService.log_event(db, event_type="recovery_codes_generated", user_id=user.id)
         return plain_codes
 
@@ -103,9 +102,6 @@ class RecoveryCodesService:
             .returning(RecoveryCode.id)
         )
         result = await db.execute(stmt)
-        if commit:
-            await db.commit()
-
         consumed_id = result.scalar_one_or_none()
         if consumed_id:
             await AuditService.log_event(

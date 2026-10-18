@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import httpx
+import hmac
 import jwt
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, text
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.core.rate_limit import check_email_request_rate_limit, check_registration_rate_limit
 from app.core.rbac import ROLE_USER
-from app.core.security import async_hash_password
+from app.core.security import async_hash_password, generate_random_token, hash_token
 from app.legal import validate_versions
 from app.models.audit import AuditEvent
 from app.models.registration import PendingRegistration
@@ -58,15 +58,10 @@ async def verify_gmail_bearer(header: str, settings: Settings) -> None:
         if unverified.get("alg") != "RS256" or not isinstance(kid, str):
             raise ValueError("Invalid Google key header")
         validate_key_id(kid)
-        async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.get("https://www.googleapis.com/oauth2/v3/certs")
-            response.raise_for_status()
-            jwks = response.json()
-        if len(response.content) > 65536 or not isinstance(jwks, dict):
-            raise ValueError("Invalid Google JWKS")
-        keys = jwks.get("keys")
-        if not isinstance(keys, list) or not 1 <= len(keys) <= 16:
-            raise ValueError("Invalid Google JWKS")
+        from app.services.google_keys import signing_keys
+
+        jwks = await signing_keys()
+        keys = jwks["keys"]
         matches = [key for key in keys if isinstance(key, dict) and key.get("kid") == kid]
         if len(matches) != 1:
             raise ValueError("Unknown or duplicate Google key")
@@ -149,6 +144,7 @@ class RegistrationService:
         now = datetime.now(timezone.utc)
         code = new_code()
         link = new_link()
+        action = generate_random_token(32)
         password_digest = await async_hash_password(password)
         # The transaction-scoped lock serializes first requests for one email across workers.
         await db.execute(
@@ -184,6 +180,7 @@ class RegistrationService:
             db.add(pending)
         pending.code_hash = code_hash(settings, pending.id, code)
         pending.link_hash = link_digest(link)
+        pending.action_hash = hash_token(action)
         pending.request_details = details
         pending.legal_versions = legal_versions
         pending.legal_accepted_at = now
@@ -196,7 +193,7 @@ class RegistrationService:
                 status_code=409,
                 detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
             ) from error
-        await RegistrationService._send(db, pending, code, link, settings)
+        await RegistrationService._send(db, pending, code, link, action, settings)
         return pending
 
     @staticmethod
@@ -219,13 +216,15 @@ class RegistrationService:
         if pending.send_count >= MAX_SENDS:
             raise HTTPException(status_code=429, detail={"error": "rate_limit_exceeded"})
         code, link = new_code(), new_link()
+        action = generate_random_token(32)
         pending.code_hash = code_hash(settings, pending.id, code)
         pending.link_hash = link_digest(link)
+        pending.action_hash = hash_token(action)
         pending.failed_attempts = 0
         pending.send_count += 1
         pending.expires_at = now + timedelta(seconds=CODE_TTL_SECONDS)
         await db.commit()
-        await RegistrationService._send(db, pending, code, link, settings)
+        await RegistrationService._send(db, pending, code, link, action, settings)
         return pending
 
     @staticmethod
@@ -234,6 +233,7 @@ class RegistrationService:
         pending: PendingRegistration,
         code: str,
         link: str,
+        action: str,
         settings: Settings,
     ) -> None:
         message = build_message(
@@ -242,7 +242,7 @@ class RegistrationService:
             code=code,
             link=link_url(settings, link, "registration"),
             action_url=(
-                action_url(settings, pending.id)
+                action_url(settings, pending.id, action)
                 if settings.BASE_URL.startswith("https://")
                 else None
             ),
@@ -296,6 +296,7 @@ class RegistrationService:
         code: str | None = None,
         link: str | None = None,
         action_id: uuid.UUID | None = None,
+        action_token: str | None = None,
     ) -> User:
         if code is not None and challenge_id is not None:
             stmt = select(PendingRegistration).where(PendingRegistration.id == challenge_id)
@@ -303,12 +304,18 @@ class RegistrationService:
             stmt = select(PendingRegistration).where(
                 PendingRegistration.link_hash == link_digest(link)
             )
-        elif action_id is not None:
+        elif action_id is not None and action_token is not None:
             stmt = select(PendingRegistration).where(PendingRegistration.id == action_id)
         else:
             raise _invalid_challenge()
         pending = await db.scalar(stmt.with_for_update())
         if not pending or pending.expires_at <= datetime.now(timezone.utc):
+            raise _invalid_challenge()
+        if action_id is not None and (
+            not pending.action_hash
+            or not action_token
+            or not hmac.compare_digest(pending.action_hash, hash_token(action_token))
+        ):
             raise _invalid_challenge()
         if code is not None:
             if pending.failed_attempts >= MAX_CODE_ATTEMPTS:

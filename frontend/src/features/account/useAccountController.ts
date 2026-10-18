@@ -301,7 +301,7 @@ export function useAccountController() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      await fetchSessions();
+      setSessions([]);
       setShowPasswordModal(false);
       window.setTimeout(() => passwordTriggerRef.current?.focus(), 0);
     } catch (err: unknown) {

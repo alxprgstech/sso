@@ -29,6 +29,7 @@ async function startClient(python: string, module: string, port: number, clientS
       CLIENT_ID: port === 8001 ? "client_analytics_app" : "client_docs_app",
       REDIRECT_URI: `http://localhost:${port}/callback`,
       DEMO_ALLOW_HTTP_LOCALHOST: "1",
+      SSO_TRANSPORT_PROFILE: "local",
       SSO_SERVER_URL: process.env.E2E_SSO_URL || "http://localhost:8000",
       OIDC_ISSUER: process.env.E2E_ISSUER || "https://auth.alxprgs.tech",
       PYTHONUNBUFFERED: "1",
@@ -97,7 +98,9 @@ test.describe.serial("Two real FastAPI clients and installed SDK", () => {
     }
     await expect(page).toHaveURL(`${clientOrigins[0]}/dashboard`);
     await expect(page.locator("#username")).toHaveText(process.env.E2E_USERNAME!);
-    expect((await page.request.get(`${clientOrigins[0]}/api/me`)).status()).toBe(200);
+    const firstProfile = await page.request.get(`${clientOrigins[0]}/api/me`);
+    expect(firstProfile.status()).toBe(200);
+    await expect(page.locator("#roles")).toHaveText("user");
     expect(callbackUrls).toHaveLength(1);
 
     await page.goto(clientOrigins[1]);

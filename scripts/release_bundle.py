@@ -17,6 +17,8 @@ from pathlib import Path
 # Supports both `python scripts/release_bundle.py` and module import in tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.build_identity import build_identity
+from scripts.hashed_locks import LOCKS, pins
+from scripts.hashed_locks import check as check_hashed_locks
 from scripts.sentry_artifacts import prepare_private_maps
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +65,8 @@ def payload_names(version: str) -> set[str]:
         f"alxprgs-sso-migrations-{version}.tar.gz",
         "MIGRATION.md",
         "RELEASE_NOTES.md",
+        "SBOM.json",
+        "BUILD_PROVENANCE.json",
     }
 
 
@@ -183,6 +187,22 @@ def verify(output: Path, expected_sha: str | None = None) -> dict:
     if set(sums) != required or len(sums) != len(required):
         raise ReleaseError("SHA256SUMS is incomplete or invalid")
     inspect_packages(output, version, identity)
+    provenance = json.loads((output / "BUILD_PROVENANCE.json").read_text(encoding="utf-8"))
+    if (
+        provenance.get("signed") is not False
+        or provenance.get("commit_sha") != manifest["commit_sha"]
+    ):
+        raise ReleaseError("Invalid local provenance")
+    expected_subjects = {
+        name: metadata["sha256"]
+        for name, metadata in manifest["artifacts"].items()
+        if name != "BUILD_PROVENANCE.json"
+    }
+    if provenance.get("subjects") != expected_subjects:
+        raise ReleaseError("Provenance subject mismatch")
+    sbom = json.loads((output / "SBOM.json").read_text(encoding="utf-8"))
+    if sbom.get("bomFormat") != "CycloneDX" or not sbom.get("components"):
+        raise ReleaseError("Missing dependency inventory")
     return manifest
 
 
@@ -197,6 +217,7 @@ def build(
     notes = release_notes(version)
     sha, dirty = source_identity(version, tag, require_clean)
     identity = build_identity(ROOT, sha)
+    check_hashed_locks(ROOT)
     output = empty_output(output)
     for package in ("backend", "packages/python-sdk"):
         run([sys.executable, "-m", "build", "--no-isolation", package, "--outdir", str(output)])
@@ -217,6 +238,65 @@ def build(
         archive.add(ROOT / "backend" / "alembic.ini", arcname="alembic.ini")
     (output / "RELEASE_NOTES.md").write_text(notes, encoding="utf-8")
     (output / "MIGRATION.md").write_bytes((ROOT / "docs" / "migration.md").read_bytes())
+    components = []
+    for pin in pins(ROOT / "requirements-lock.txt"):
+        name, dependency_version = pin.split(";", 1)[0].strip().split("==", 1)
+        components.append(
+            {
+                "type": "library",
+                "name": name,
+                "version": dependency_version,
+                "purl": f"pkg:pypi/{name.lower()}@{dependency_version}",
+            }
+        )
+    npm_lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+    for path, metadata in npm_lock.get("packages", {}).items():
+        if path and metadata.get("version"):
+            name = path.rsplit("node_modules/", 1)[-1]
+            components.append(
+                {
+                    "type": "library",
+                    "name": name,
+                    "version": metadata["version"],
+                    "purl": f"pkg:npm/{name}@{metadata['version']}",
+                }
+            )
+    (output / "SBOM.json").write_text(
+        json.dumps(
+            {
+                "bomFormat": "CycloneDX",
+                "specVersion": "1.6",
+                "version": 1,
+                "metadata": {
+                    "component": {"type": "application", "name": "ALXPRGS SSO", "version": version}
+                },
+                "components": components,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    inputs = (
+        list(LOCKS)
+        + [name.replace(".txt", "-hashed.txt") for name in LOCKS]
+        + ["frontend/package-lock.json"]
+    )
+    provenance = {
+        "signed": False,
+        "kind": "local-build-record",
+        "commit_sha": sha,
+        "source_tree_dirty": dirty,
+        "python": sys.version.split()[0],
+        "inputs": {name: sha256(ROOT / name) for name in inputs},
+        "subjects": {
+            name: sha256(output / name)
+            for name in sorted(payload_names(version) - {"BUILD_PROVENANCE.json"})
+        },
+    }
+    (output / "BUILD_PROVENANCE.json").write_text(
+        json.dumps(provenance, indent=2) + "\n", encoding="utf-8"
+    )
     payload = payload_names(version)
     if {path.name for path in output.iterdir() if path.is_file()} != payload:
         raise ReleaseError("Build produced an incomplete or unexpected payload")

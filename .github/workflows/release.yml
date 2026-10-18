@@ -141,7 +141,7 @@ jobs:
           RELEASE_TAG: ${{ needs.verify-tag-and-sha.outputs.tag }}
           RELEASE_SHA: ${{ needs.verify-tag-and-sha.outputs.commit_sha }}
         run: |
-          python -m pip install -r requirements-lock.txt
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           python scripts/build_release_artifacts.py build --outdir dist/artifacts --tag "$RELEASE_TAG" --require-clean
           python scripts/build_release_artifacts.py verify --outdir dist/artifacts --expected-sha "$RELEASE_SHA"
 

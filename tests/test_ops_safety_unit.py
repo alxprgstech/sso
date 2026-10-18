@@ -236,6 +236,8 @@ class FakeConnection:
             raise RuntimeError("DROP failed")
         if "current_database()" in statement:
             self.last = (self.database,)
+        elif "pg_backend_pid()" in statement:
+            self.last = (1024,)
         elif "inet_server_addr()" in statement:
             self.last = ("127.0.0.1", 5432, "start")
         elif "pg_database" in statement:
