@@ -6,7 +6,8 @@
 
 ```bash
 python -m build --no-isolation packages/python-sdk --outdir dist/sdk
-python -m pip install dist/sdk/alxprgs_sso-0.2.0-py3-none-any.whl
+python -m pip install --require-hashes -r requirements-lock-hashed.txt
+python -m pip install --no-deps --no-build-isolation dist/sdk/alxprgs_sso-0.2.0-py3-none-any.whl
 ```
 
 Зависимости и их точные версии находятся в `packages/python-sdk/pyproject.toml` и `requirements-lock.txt`. Для проверки примеров устанавливайте wheel в чистую среду; `PYTHONPATH` не должен подменять установленный SDK исходниками.
@@ -89,3 +90,7 @@ def admin(user: UserClaims = Depends(security.require_role("admin"))):
 ## Сборка и границы проверки
 
 Версия — корневой VERSION, публичная публикация пакета не подтверждается README. Полный поток start_authorization/handle_web_callback, настройка expected_issuer и сборка wheel описаны в [SDK](../../docs/sdk.md). Интеграция требует установленного пакета, без импорта backend. [Чистая среда и проверки](../../docs/testing/README.md). Прежние результаты читаются с датой/SHA.
+
+## Unreleased: transport policy
+
+SSOClient по умолчанию принимает только HTTPS, certificate verification обязательна. `verify_ssl=False` запрещён в любом профиле. Для локального HTTP явно передайте `transport_profile="local"`; допустимы только localhost и loopback IP, включая IPv6. Это несовместимое изменение, VERSION пока 0.2.0. Не выводите server URL с userinfo; userinfo/query/fragment в URL сервера отвергаются. Demo uses `SSO_TRANSPORT_PROFILE=local` только для локального стенда.

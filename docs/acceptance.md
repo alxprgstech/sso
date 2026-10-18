@@ -573,3 +573,57 @@ Footer regression проверяет13 public/account/admin сценариев �
 DOC-DEF-01 воспроизведён в отдельной временной копии: bump0.2.1 изменил package.json, npm lock остался0.2.0; исходные manifests не изменены. Код исправляется отдельной planned задачей. Полная PG/Compose/E2E/SDK-install/live email/Sentry/HTTPS/OIF приёмка не выполнялась. Новые safe summaries находятся в игнорируемом artifacts/docs-refresh; старые акты/ADR/worklog сохранены.
 
 Финальная сверка 2026-10-06T19:06:10.226840+03:00:357local links/anchors0errors; проверка сохранения исходной истории plan/worklog/acceptance/manual,22ADR,CHANGELOG/audit JSON PASS относительно HEAD. После последней редакторской правки git diff --check PASS, изменения только Markdown.
+
+## SEC-AUDIT-20261007 — evidence-based security audit
+
+Начало2026-10-07T00:54:06.8876371+03:00; завершение2026-10-07T01:42:04.0296396+03:00; Codex; исходная ревизия170175be06318645c0fd2ef222e2688edf31b37c, ветка new/security-audit, версия0.2.0. [Отчёт](../SECURITY_AUDIT.md): NOT READY FOR PRODUCTION; audit завершён, remediation не выполнялась.
+
+| Проверка / команда | Фактический результат |
+| --- | --- |
+| Alembic upgrade head + init_fresh_ci_test_marker --local-fresh | PASS; отдельный DockerPG16 loopback5433/tmpfs, safety guard включён |
+| python -m pytest tests -q --basetemp=artifacts/security-audit/pytest-final02 --junitxml=artifacts/security-audit/full-final.xml | 637passed/2failed/5deselected external email/18subtests; Python3.12.14 pytest9.1.1 |
+| python -m pytest -p tests.conftest docs/audit/test_security_audit_20261007.py -q --basetemp=artifacts/security-audit/probe-final03 | 4PASS/1.90s; Gmail trust fixture, delivery sink, настоящий PG; не live Google |
+| Testmail env precedence isolated test | 1PASS после удаления внешнего TESTMAIL_API_KEY только в test process; общий run отдельно не повторён |
+| Ruff check project + audit test / mypy explicit-package-bases | PASS / 68files PASS |
+| npm lint/typecheck/typecheck:tests/test:unit/test:components/build | PASS /13unit /39component; build PASS |
+| python -m build --no-isolation packages/python-sdk + clean venv installed wheel tests | wheel/sdist PASS,17tests PASS, actual site-packages import |
+| clean SDK env python scripts/run_e2e_suite.py --suite all | default-off47PASS /enabled9PASS, real two RP + mandatory UV/TOTP/recovery replay; local SMTP only |
+| Docker backend/frontend fresh builds | PASS, отдельные audit image tags, product source без remediation |
+| Trivy0.75.0 image --scanners vuln --severity HIGH,CRITICAL --exit-code1 | оба images0/exit0; official checksum verified; DB UpdatedAt2026-10-06T19:11:49Z; не Low/Medium scan |
+| Local readonly non-root Nginx image | index200/map404, enforcing CSP/DENY/nosniff/no-referrer/Permissions-Policy PASS; public TLS не проверен |
+| pip-audit2.10.1 --strict lock / npm audit | 79Python packages0known advisories /npm0; не zero-day guarantee |
+| Bandit1.8.6 | 172signals:158Low/14Medium/0High, reviewed контекстно, не172vulnerabilities |
+| detect-secrets1.5.0 offline read-only API | финально254signals/0new, verification filters network-off; baseline неизменён |
+| Git history offline |1745UTF8 text blobs/3597signals;1750outside baseline=1744verified npm integrity+6non-lock context candidates; не live credential clearance |
+
+Первые прогоны не скрыты: pytest542PASS/3failed/94errors (Temp/PG native tools); browser44/3, затем46/1 (installed-wheel requirement), enabled8/1 (TOTP UI). После safe environment corrections browser47/9PASS без изменения защиты/assertions/таймаутов. Full-final остаётся637/2: quota409→429 и testmail external env; отдельный latter повтор1PASS.
+
+Safe evidence: artifacts/security-audit/*.xml/json/log и SDK packages; raw captures не публиковать, возможны synthetic secrets/tokens. Временные owned SMTP/PG/Nginx остановлены, PG tmpfs удалён с label ownership check; существующие user containers не изменены. Actual release/deploy/remoteCI/publicTLS/real email/Sentry/Gmail/IAM/multi-replica load/полная Compose runtime matrix не проверены. Необходимые inputs и confidence указаны в отчёте. Аудитный test доказывает дефект текущей реализации; его PASS не означает устранение SEC-01.
+
+## SEC-REMED-20261007 — локальная повторная приёмка 18.10.2026
+
+База `170175be06318645c0fd2ef222e2688edf31b37c`, ветка `new/security-remediation`, рабочее дерево поверх базы. Builds/provenance явно помечены `source_tree_dirty=true`; это локальная проверка кандидата, не выпуск и не результат remote CI будущего commit. Матрица: [security-remediation-20261018](audit/security-remediation-20261018.md).
+
+Среда: Windows, Python3.12.14, pytest9.1.1, Node24.20.0/npm11.19.0, новая tmpfs PostgreSQL16.15 на `127.0.0.1:5433` с safety marker. Backend image Python3.13.16, non-root/read-only Compose; browser backend18000/frontend5173/SMTP11025. Evidence — ignored `artifacts/security-remediation-final/`; raw captures/keys/tokens не публикуются.
+
+| Проверка / фактическая команда | Результат |
+| --- | --- |
+| `pip install --require-hashes -r requirements-lock-hashed.txt`, clean venv; backend editable `--no-deps --no-build-isolation`, SDK wheel; `pip check` | PASS, graph без конфликтов; hash companions full/runtime/build согласованы |
+| `ruff check` / `ruff format --check` backend/tests/SDK/scripts/examples и audit fixture; `mypy --explicit-package-bases ... --ignore-missing-imports` | PASS /230files /73typed files |
+| Fresh Alembic `upgrade head`, `init_fresh_ci_test_marker --local-fresh` | PASS,0013_security_outbox; guards не ослаблялись |
+| `pytest tests -vv`, default-off в clean CI-prepared env | 687PASS,18subtestsPASS,5external deselected,812.74s; `pytest-final-ci.xml` |
+| CI enabled suite: MFA features/email verification/passkey/distributed rate limits | 20PASS,82.87s; реальные PostgreSQL/crypto, SMTP loopback |
+| Post-change Origin/redirect/JWKS/credential-ID regressions | 54PASS: реальная OIDC PostgreSQL integration и36unit boundary, включая7новых route/method/header cases |
+| Windows key ACL/backup validator regression | 53PASS; injected explicit Everyone ACE, проверены directory/files; backup отвергает широкие права; real RSA/session/TOTP generation+privateACL3PASS |
+| SDK `build --no-isolation`, clean installed wheel package/tests + Python SDK/JWKS tests | wheel/sdist PASS;29tests PASS до установки backend в clean-env |
+| npm lint/typecheck/typecheck:tests/test:unit/test:components/build | PASS;13unit/40components; повтор builder тоже PASS |
+| Secret scanner `--self-test`, baseline неизменён |127candidates/0new (финальный повтор); контрольный synthetic secret отвергнут |
+| `pip_audit --strict --no-deps --disable-pip -r requirements-lock.txt`; npm audit |0known/0vulnerabilities, exit0; не zero-day guarantee |
+| Docker backend/frontend builds; checksum-verified official Trivy0.75.0 High/Critical/exit-code1 | PASS; final images0High/Critical, frontend libexpat2.9.0-r0/tiff4.7.2-r0 |
+| Final isolated Compose runtime + Nginx CSP | PASS: non-root/read-only/capabilities/resources/runtime role,3real browser CSP tests, DB outage/recovery; owned cleanup |
+| Final local `release_bundle.py build` | PASS: packages/migrations/frontend, manifest/SHA-256/SBOM/unsigned provenance/private maps separation; публикации нет |
+| Browser default-off/enabled, post-change OIDC PG |48PASS /9PASS; OIDC PG+boundary54PASS; согласие с документами ожидается до навигации, UV/OTP/replay assertions сохранены |
+
+Диагностические неуспехи сохранены в worklog: старый installed SDK, missing installed backend в независимом worker (первый IPv4 full685PASS/1FAIL), localhost connection5.031s противIPv4 0.015s, Windows explicit ACL/PSModulePath, CA/cache permissions сканера, пересечение Compose CSP с собственным release npm ci. Они не заменены skip/xfail/retries/timeout или ослаблением защиты; после исправлений среды/кода выполнены указанные повторы. Один ранний final Compose `up` exit1 не сохранил stderr и не засчитан; отдельная финальная кампания прошла полностью после завершения builder.
+
+Внешние SES/Gmail/Sentry и sender registration, public TLS/DNS/IAM/managed secrets, production storage/ACL/нагрузка/OIF и review исторических credentials остаются отдельной приёмкой. CD/release publication/deploy/реальные рассылки не выполнялись. DOC-VERSION-LOCK-01 вне scope.

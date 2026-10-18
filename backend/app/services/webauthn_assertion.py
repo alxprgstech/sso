@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import base64
+
+from app.core.credential_ids import canonical_credential_id
 
 
 import uuid
@@ -32,10 +35,15 @@ from app.models.mfa import (
 
 
 def _cred_id_to_bytes(cred_id: str) -> bytes:
+    canonical = canonical_credential_id(cred_id)
+    return base64.urlsafe_b64decode(canonical + "=" * (-len(canonical) % 4))
+
+
+def validated_credential_id(value: str) -> str:
     try:
-        return webauthn.helpers.base64url_to_bytes(cred_id)
-    except Exception:
-        return cred_id.encode("utf-8")
+        return canonical_credential_id(value)
+    except ValueError:
+        raise AuthenticationException("Некорректный идентификатор ключа Passkey") from None
 
 
 @dataclass(frozen=True)
@@ -67,22 +75,18 @@ async def locked_assertion_credential(
     raw_id = assertion.get("id") or assertion.get("rawId")
     if not raw_id:
         raise AuthenticationException("Отсутствует идентификатор ключа Passkey (id)")
-    credentials = (
-        (
-            await db.execute(
-                select(WebAuthnCredential)
-                .where(
-                    WebAuthnCredential.user_id == user_id,
-                )
-                .with_for_update()
-            )
+    canonical = validated_credential_id(raw_id)
+    target = await db.scalar(
+        select(WebAuthnCredential)
+        .where(
+            WebAuthnCredential.user_id == user_id,
+            WebAuthnCredential.credential_id == canonical,
         )
-        .scalars()
-        .all()
+        .with_for_update()
     )
-    if not credentials:
-        raise AuthenticationException("У пользователя отсутствуют зарегистрированные ключи Passkey")
-    return matching_credential(credentials, raw_id)
+    if target is None:
+        raise AuthenticationException("Ключ доступа Passkey не найден или был удалён")
+    return target
 
 
 def signed_assertion_challenge(assertion: dict[str, Any], policy: AssertionPolicy) -> str | None:

@@ -34,6 +34,7 @@ export class ApiError extends Error {
 
 class ApiClient {
   private csrfToken: string | null = null;
+  private sessionReadGrant: string | null = null;
   private reauthenticationHandler: ((action: string, digest: string) => Promise<string>) | null = null;
 
   setReauthenticationHandler(handler: ((action: string, digest: string) => Promise<string>) | null) {
@@ -49,6 +50,7 @@ class ApiClient {
   }
 
   setCsrfToken(token: string | null) {
+    if (this.csrfToken !== token) this.sessionReadGrant = null;
     this.csrfToken = token;
   }
 
@@ -90,6 +92,10 @@ class ApiClient {
 
     // Добавление CSRF заголовка для мутирующих запросов
     const method = options.method?.toUpperCase() || "GET";
+    const sessionRead = method === "GET" && endpoint === "/api/v1/auth/sessions";
+    if (sessionRead && this.sessionReadGrant && !headers.has("X-Reauthentication")) {
+      headers.set("X-Reauthentication", this.sessionReadGrant);
+    }
     if (["POST", "PUT", "DELETE", "PATCH"].includes(method) && this.csrfToken) {
       headers.set("X-CSRF-Token", this.csrfToken);
     }
@@ -119,6 +125,7 @@ class ApiClient {
       if (errorCode === "reauthentication_required" && allowReauthentication && this.reauthenticationHandler) {
         const digest = await requestDigest(typeof options.body === "string" ? options.body : "");
         const authorization = await this.reauthenticationHandler(`${method} ${endpoint}`, digest);
+        if (sessionRead) this.sessionReadGrant = authorization;
         headers.set("X-Reauthentication", authorization);
         return this.request<T>(endpoint, { ...options, headers }, false);
       }
@@ -152,14 +159,14 @@ class ApiClient {
       body: JSON.stringify({ username, password }),
     });
     if ("csrf_token" in res) {
-      this.csrfToken = res.csrf_token;
+      this.setCsrfToken(res.csrf_token);
     }
     return res;
   }
 
   async logout(): Promise<void> {
     await this.request("/api/v1/auth/logout", { method: "POST" });
-    this.csrfToken = null;
+    this.setCsrfToken(null);
   }
 
   async getMe(): Promise<UserProfile> {

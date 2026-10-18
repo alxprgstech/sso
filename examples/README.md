@@ -33,3 +33,5 @@
 ## Локальный профиль
 
 В штатном Compose SSO_SERVER_URL=http://localhost:3000, OIDC_ISSUER буквально равен issuer OP. Start scripts не заменяют OIDC_ISSUER из .env.example: по умолчанию он остаётся https://auth.alxprgs.tech, тогда как transport — localhost:3000. Existing .env не переписывается. У каждого процесса собственный CLIENT_SECRET и точный callback. DEMO_ALLOW_HTTP_LOCALHOST=1 допускается только для локального HTTP. [SDK](../docs/sdk.md) описывает независимую установку; текущая документационная сверка не запускала live callback.
+
+Для локального SDK HTTP явно задайте `SSO_TRANSPORT_PROFILE=local` вместе с существующим demo HTTP opt-in. Серверный `REDIRECT_TRANSPORT_PROFILE=local` допускает лишь loopback callbacks. Строгий SDK default остаётся HTTPS, отключать TLS verification нельзя. Сначала установите hashed dependencies, затем собранный SDK wheel отдельно с `--no-deps --no-build-isolation`.

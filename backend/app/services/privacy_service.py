@@ -617,6 +617,9 @@ async def maintenance_loop(settings: Settings) -> None:
         try:
             async with async_session_maker() as db:
                 await maintenance(db, settings)
+                from app.services.notification_service import dispatch
+
+                await dispatch(db, settings)
         except asyncio.CancelledError:
             raise
         except Exception:

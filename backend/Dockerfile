@@ -2,9 +2,9 @@
 FROM python:3.13.16-alpine3.24@sha256:2d9aefe2fef018a7eb2c13064c89c71929800fd2e5dccdbf52ea5da5bb8d929a AS builder
 
 WORKDIR /src
-COPY requirements-build-lock.txt /tmp/requirements-build-lock.txt
+COPY requirements-build-lock-hashed.txt /tmp/requirements-build-lock-hashed.txt
 RUN --mount=type=cache,id=sso-pip-build,target=/root/.cache/pip,sharing=locked \
-    pip install -r /tmp/requirements-build-lock.txt && pip check
+    pip install --require-hashes -r /tmp/requirements-build-lock-hashed.txt && pip check
 COPY backend /src/backend
 COPY VERSION /src/VERSION
 ARG ALX_BUILD_SHA
@@ -21,12 +21,12 @@ WORKDIR /app
 
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 
-COPY requirements-runtime-lock.txt /tmp/requirements-runtime-lock.txt
+COPY requirements-runtime-lock-hashed.txt /tmp/requirements-runtime-lock-hashed.txt
 RUN --mount=type=cache,id=sso-pip,target=/root/.cache/pip,sharing=locked \
-    pip install -r /tmp/requirements-runtime-lock.txt \
+    pip install --require-hashes -r /tmp/requirements-runtime-lock-hashed.txt \
     && addgroup -S -g 10001 sso && adduser -S -D -H -u 10001 -G sso sso
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir --no-deps /wheels/*.whl \
+RUN pip install --no-cache-dir --no-deps --no-build-isolation /wheels/*.whl \
     && pip check \
     && pip uninstall --yes pip setuptools wheel \
     && rm -rf /wheels

@@ -39,6 +39,9 @@ def malformed_kid(encoded, headers):
     "change", [None, "iss", "aud", "azp", "exp", "iat", "kid", "signature", "missing_exp"]
 )
 async def test_google_style_real_rsa_profiles(monkeypatch, change):
+    from app.services.google_keys import clear_cache
+
+    clear_cache()
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
     jwk.update(kid="google-fixture", use="sig", alg="RS256")

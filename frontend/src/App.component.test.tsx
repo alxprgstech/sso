@@ -110,6 +110,8 @@ async function enterPassword() {
 
 describe("server capabilities and account flows", () => {
   it("distinguishes a pending or failed passkey read from an empty list and retries", async () => {
+    // Complete real lazy-module loading before measuring the pending API state.
+    await import("./pages/DashboardPage");
     window.history.replaceState({}, "", "/account/security");
     apiMock.getMe.mockResolvedValue(admin);
     apiMock.getCapabilities.mockResolvedValue({
@@ -347,6 +349,8 @@ describe("server capabilities and account flows", () => {
 
   it("changes password in a modal and closes it after success", async () => {
     apiMock.getMe.mockResolvedValue(admin);
+    // Session reads need an independent proof and must not block this mutation.
+    apiMock.getSessions.mockImplementation(() => new Promise(() => {}));
     apiMock.changePassword.mockResolvedValue({
       status: "ok",
       message: "Пароль обновлён",
@@ -380,6 +384,7 @@ describe("server capabilities and account flows", () => {
       "NewPasswordRegression2026!",
     );
     expect(screen.getByText("Пароль обновлён")).toBeTruthy();
+    expect(apiMock.getSessions).not.toHaveBeenCalled();
   });
 
   it("shows full audit details and exports the active server filter", async () => {

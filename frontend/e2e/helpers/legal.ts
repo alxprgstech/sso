@@ -7,5 +7,7 @@ export async function acceptDocumentsAfterLogin(page: Page) {
     await page.getByRole("checkbox").nth(0).check();
     await page.getByRole("checkbox").nth(1).check();
     await page.getByRole("button", {name:"Подтвердить и продолжить"}).click();
+    await expect(page.getByRole("heading", {name:"Подтвердите документы"})).toBeHidden();
+    await expect(page.getByRole("link", {name:"Личный кабинет", exact:true})).toBeVisible();
   }
 }

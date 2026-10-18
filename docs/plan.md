@@ -2,6 +2,8 @@
 
 ## Текущий срез плана
 
+SEC-REMED-20261007-R1–R5 — done, завершение 2026-10-18T16:13:56+03:00: локальная реализация и retest завершены. SEC-REMED-PR-01 — done, начало 2026-10-18T16:13:56+03:00: commit/push ветки new/security-remediation, PR в main, проверка его состояния; зависит R1–R5. Готовность: commit отправлен, PR создан и прикреплён, CI отражён по факту.
+
 DOC-REFRESH-01 — done: актуализация, конфигурация, тестовый стенд, реестр и проверки завершены; акт в acceptance.md. DOC-VERSION-LOCK-01 — planned, исправление кода вне документационной задачи. Общая production-приёмка не закрыта; текущие ограничения — [status](status.md).
 
 ## Исторические записи плана
@@ -1296,3 +1298,31 @@ DOC-REFRESH-01 — завершение: 2026-10-06T19:01:30.930078+03:00. Кр�
 - Готовность: документация сохранена в Git, ветка отправлена, PR создан и связан с задачей; CI отражён по фактическому состоянию.
 
 - Завершение: 2026-10-06T19:37:13.113416+03:00. Commit 3644e88; ветка отправлена; PR https://github.com/alxprgstech/sso/pull/12 создан и прикреплён. CI пока не подтверждён.
+
+### SEC-AUDIT-20261007 — комплексный аудит безопасности
+- P0; done; Codex; начало 2026-10-07T00:54:06.8876371+03:00; ветка new/security-audit; зависимость: текущая ревизия 170175be.
+- План: карта архитектуры/границ → static review всех применимых поверхностей → безопасные unit/PG/browser/scanner проверки → независимый adversarial второй проход → SECURITY_AUDIT.md на русском.
+- Готовность: доказательные категории находок, ASVS coverage, точные ограничения и verdict; production-код не меняется, внешние атаки/рассылки не выполняются.
+- Завершение: 2026-10-07T01:42:04.0296396+03:00. SECURITY_AUDIT.md готов, критерий аудита выполнен:4находки,18разделов, ASVS coverage, second pass, scoped tests/scan и явные external limits. Audit-only test4PASS; browser47+9PASS, SDK17PASS, Trivy High/Critical0. Общий pytest637/2failed; production verdict NOT READY, remediation SEC-01 P0 и остальные действия — план отчёта, не выполненные исправления.
+
+### SEC-REMED-20261007 — реализация Spec Freeze v1
+- P0; in_progress; начало 2026-10-07T02:18:09.9145364+03:00; Codex; ветка new/security-remediation; зависимость SEC-AUDIT-20261007.
+- Этапы: R1 Gmail secret/JWKS/quota; R2 canonical Passkey/session grants; R3 hashed supply chain/SDK/Origin/URI; R4 transactional audit/outbox/ops; R5 полная локальная приёмка и retest. Готовность: критерии1–7 согласованного плана, внешний stage отдельно; защита не ослабляется.
+
+
+SEC-REMED-20261007-R1 — in_progress, P0: implementation + targeted cross-binding/expiry/resend/replay/race PASS; окончательный retest после полной приёмки.
+SEC-REMED-20261007-R2 — in_progress, P1, зависит R1: canonical lookup/migration collision и separate session proof PASS; browser/new client regression pending.
+SEC-REMED-20261007-R3 — in_progress, P1, зависит R2: hashes/strict SDK/Origin/redirect/SBOM/provenance; clean install и artifact tamper PASS; updated scanner graph/install/release build pending.
+SEC-REMED-20261007-R4 — in_progress, P1, зависит R2: atomic audit/outbox/notifications, private backups; targeted outbox/schema PASS, final ops/ACL/rotation повтор pending.
+SEC-REMED-20261007-R5 — planned, P1, зависит R1–R4: все согласованные локальные проверки, adversarial второй проход, доказательная remediation матрица и external limitations.
+
+SEC-REMED-20261007 — продолжение 2026-10-18T11:13:05.0680659+03:00, in_progress: завершить R1–R5 на текущем дереве, затем commit/push/PR по поручению владельца. Чужие сервисы сохраняются; E2E backend 18000. DOC-VERSION-LOCK-01 вне scope.
+
+SEC-REMED-PR-01 — завершение 2026-10-18T16:15:08+03:00: commit f4b5fe52aa74c4fd010468eb8a3b9c2dec6eabb2 отправлен; PR https://github.com/alxprgstech/sso/pull/13 создан и прикреплён. CI run39130712008 выполняется; успех remote CI не заявлен. Финальный документальный checkpoint отправляется той же веткой.
+
+## CI-FRONTEND-PR13-01 — исправление падения Frontend Build & Typecheck
+
+- P0; done; начало: 2026-10-18T13:32:36+00:00; исполнитель: Codex; зависимость: CI run 39130782762/job 117685386895.
+- План: получить workflow/job logs → подтвердить root cause → внести минимальное исправление в frontend release image → повторить целевую проверку frontend typecheck/release build.
+- Готовность: job-блокер устранён локально, проверки шага Build and verify private source maps offline проходят.
+- Завершение: 2026-10-18T13:34:27+00:00. Root cause подтверждён по логам: недоступный pin `libexpat=2.8.5-r0` в `frontend/Dockerfile.release` (Alpine обновился до `2.9.0-r0`). Обновлён только этот pin; локально прошли `npm --prefix frontend run typecheck` и CI-эквивалент `ALX_RELEASE_BUILD=1 npm --prefix frontend run build && python scripts/check_sentry_build.py && docker build -f frontend/Dockerfile.release -t sso-release-frontend-check frontend`.

@@ -101,7 +101,7 @@ class TOTPService:
             )
             db.add(cred)
 
-        await db.commit()
+        await AuditService.log_event(db, event_type="totp_setup_started", user_id=user.id)
 
         totp_obj = pyotp.TOTP(secret)
         otpauth_url = totp_obj.provisioning_uri(
@@ -144,7 +144,6 @@ class TOTPService:
         cred.last_verified_step = last_matching_step(totp, code, now)
         await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
         await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
         await AuditService.log_event(db, event_type="totp_enabled", user_id=user.id)
         return True
 
@@ -194,5 +193,4 @@ class TOTPService:
         await db.execute(delete(TOTPCredential).where(TOTPCredential.user_id == user.id))
         await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
         await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
         await AuditService.log_event(db, event_type="totp_disabled", user_id=user.id)

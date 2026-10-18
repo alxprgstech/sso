@@ -42,12 +42,12 @@ from app.services.mfa_service import (
     RecoveryCodesService,
     TOTPService,
     WebAuthnService,
-    _cred_id_to_bytes,
     WebAuthnContext,
     PasskeyRegistration,
     PasskeyAuthentication,
 )
 from app.services.verification_email import request_details
+from app.services.webauthn_assertion import validated_credential_id
 
 router = APIRouter(
     prefix="/api/v1/mfa",
@@ -296,16 +296,10 @@ async def passkey_auth_options(
 async def _find_discoverable_credential(db: AsyncSession, raw_id: str):
     from sqlalchemy import select
 
-    cred_stmt = select(WebAuthnCredential).where(WebAuthnCredential.credential_id == raw_id)
-    cred_obj = (await db.execute(cred_stmt)).scalar_one_or_none()
-    if not cred_obj:
-        all_creds = (await db.execute(select(WebAuthnCredential))).scalars().all()
-        for c in all_creds:
-            if _cred_id_to_bytes(c.credential_id) == _cred_id_to_bytes(raw_id):
-                cred_obj = c
-                break
-
-    return cred_obj
+    canonical = validated_credential_id(raw_id)
+    return await db.scalar(
+        select(WebAuthnCredential).where(WebAuthnCredential.credential_id == canonical)
+    )
 
 
 def _discoverable_credential_id(credential: dict[str, Any]) -> Any:

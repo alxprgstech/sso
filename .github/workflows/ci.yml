@@ -61,9 +61,9 @@ jobs:
           Get-Command powershell.exe -ErrorAction Stop
           Get-Command pwsh.exe -ErrorAction Stop
       - name: Install locked dependencies
-        run: python -m pip install -r requirements-lock.txt
+        run: python -m pip install --require-hashes -r requirements-lock-hashed.txt
       - name: Execute reset safety regressions with UTF-8 and Cyrillic paths
-        run: python -m pytest tests/test_reset_local_ps1.py tests/test_start_ps1.py tests/test_windows_native_encoding.py tests/test_database_guard.py tests/test_migration_metadata.py -m "not postgres" -v
+        run: python -m pytest tests/test_reset_local_ps1.py tests/test_start_ps1.py tests/test_windows_native_encoding.py tests/test_database_guard.py tests/test_migration_metadata.py tests/test_production_keys.py -m "not postgres" -v
 
   email-e2e-credentials:
     name: Check availability of CI AWS credentials
@@ -117,6 +117,8 @@ jobs:
       SESSION_SECRET_KEY: default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only
       EMAIL_PROVIDER: ses
       ENVIRONMENT: testing
+      REDIRECT_TRANSPORT_PROFILE: local
+      SSO_TRANSPORT_PROFILE: local
       REQUIRE_VERIFIED_EMAIL: 'true'
       FEATURE_EMAIL_VERIFICATION_ENABLED: 'true'
       FEATURE_TOTP_ENABLED: 'false'
@@ -149,7 +151,7 @@ jobs:
           node-version: '24'
       - name: Install locked dependencies and build without credentials
         run: |
-          python -m pip install -r requirements-lock.txt
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           python -m pip install --no-deps --no-build-isolation -e './backend[dev]'
           python -m pip check
           cd frontend
@@ -284,12 +286,12 @@ jobs:
 
       - name: Audit pinned Python dependencies
         run: |
-          python -m pip install pip-audit==2.10.1
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           pip-audit --strict -r requirements-lock.txt
 
       - name: Scan tracked source for secrets without printing values
         run: |
-          python -m pip install detect-secrets==1.5.0
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           python scripts/check_secret_scan.py --self-test
 
   version-consistency:
@@ -343,7 +345,7 @@ jobs:
 
       - name: Install backend and SDK dependencies
         run: |
-          python -m pip install -r requirements-lock.txt
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           python -m pip install --no-deps --no-build-isolation -e "./backend[dev]" -e "./packages/python-sdk"
           python -m pip check
 
@@ -364,7 +366,9 @@ jobs:
           ruff format --check backend/ tests/ packages/python-sdk/ scripts/ examples/
 
       - name: Verify production-only dependency lock
-        run: python scripts/runtime_lock.py --check
+        run: |
+          python scripts/hashed_locks.py
+          python scripts/runtime_lock.py --check
 
       - name: Verify wheel-builder dependency lock
         run: python scripts/build_lock.py --check
@@ -439,16 +443,16 @@ jobs:
 
       - name: Build SDK Wheel and Sdist
         run: |
-          python -m pip install -r requirements-lock.txt
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           python -m build --no-isolation packages/python-sdk --outdir dist/sdk
 
       - name: Test clean installation in isolated venv
         run: |
           python -m venv test_env
-          ./test_env/bin/pip install -r requirements-lock.txt
-          ./test_env/bin/pip install --no-deps dist/sdk/*.whl
+          ./test_env/bin/pip install --require-hashes -r requirements-lock-hashed.txt
+          ./test_env/bin/pip install --no-deps --no-build-isolation dist/sdk/*.whl
           ./test_env/bin/pip check
-          ./test_env/bin/pytest packages/python-sdk/tests/test_sdk_isolated.py tests/test_python_sdk.py tests/test_sdk_freshness_and_jwks.py -v
+          ./test_env/bin/pytest packages/python-sdk/tests/ tests/test_python_sdk.py tests/test_sdk_freshness_and_jwks.py -v
 
   frontend-build:
     name: Frontend Build & Typecheck
@@ -499,6 +503,9 @@ jobs:
     name: Playwright E2E Browser Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      REDIRECT_TRANSPORT_PROFILE: local
+      SSO_TRANSPORT_PROFILE: local
     services:
       postgres:
         image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
@@ -535,10 +542,10 @@ jobs:
 
       - name: Install backend and SDK wheel
         run: |
-          python -m pip install -r requirements-lock.txt
+          python -m pip install --require-hashes -r requirements-lock-hashed.txt
           python -m pip install --no-deps --no-build-isolation -e "./backend[dev]"
           python -m build --no-isolation packages/python-sdk --outdir dist/sdk
-          python -m pip install --no-deps dist/sdk/*.whl
+          python -m pip install --no-deps --no-build-isolation dist/sdk/*.whl
           python -m pip check
           python -c "import alxprgs_sso, pathlib; assert 'site-packages' in str(pathlib.Path(alxprgs_sso.__file__).resolve())"
 
@@ -619,8 +626,8 @@ jobs:
           PRIVACY_ENABLED_PROFILE: "0"
           E2E_CLIENT1_SECRET: analytics_client_secret_123
           E2E_CLIENT2_SECRET: docs_client_secret_123
-          E2E_USERNAME: compose_admin
-          E2E_PASSWORD: ComposeAdminPass2026!
+          E2E_USERNAME: e2e_sso_user
+          E2E_PASSWORD: SSOBrowserSynthetic2026! # pragma: allowlist secret -- isolated SSO fixture
           E2E_MAILBOX_PATH: /tmp/sso-e2e-mailbox.jsonl
         run: |
           npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts e2e/protocol_lifecycle.spec.ts e2e/telemetry.spec.ts e2e/privacy.spec.ts e2e/appearance.spec.ts

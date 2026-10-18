@@ -401,7 +401,10 @@ async def test_callback_rejects_missing_nonce_or_id_token_before_session():
     from alxprgs_sso.models import TokenResponse
 
     client = SSOClient(
-        "http://localhost:8000", "test_web_client", expected_issuer="https://auth.alxprgs.tech"
+        "http://localhost:8000",
+        "test_web_client",
+        expected_issuer="https://auth.alxprgs.tech",
+        transport_profile="local",
     )
     with patch.object(client, "exchange_code_for_tokens", new_callable=AsyncMock) as exchange:
         with pytest.raises(InvalidTokenError, match="nonce"):
@@ -425,7 +428,7 @@ def test_http_transport_does_not_disable_id_token_issuer_check():
         private_key,
         kid,
     )
-    client = SSOClient("http://localhost:8000", "test_web_client")
+    client = SSOClient("http://localhost:8000", "test_web_client", transport_profile="local")
     with patch.object(client, "get_jwks", return_value=jwks):
         with pytest.raises(InvalidTokenError):
             client.verify_id_token(token, expected_nonce="nonce")

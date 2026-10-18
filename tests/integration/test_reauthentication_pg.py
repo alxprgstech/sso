@@ -22,6 +22,57 @@ pytestmark = [pytest.mark.postgres, pytest.mark.asyncio]
 PASSWORD = "ReauthenticationRegression2026!"
 
 
+async def session_proof(client, headers, method="GET", path="/api/v1/auth/sessions"):
+    response = await client.post(
+        "/api/v1/auth/reauthentication",
+        headers=headers,
+        json={
+            "current_password": PASSWORD,
+            "action": f"{method} {path}",
+            "payload_hash": payload_digest(b""),
+        },
+    )
+    assert response.status_code == 200, response.json()
+    return {**headers, "X-Reauthentication": response.json()["authorization"]}
+
+
+async def test_session_read_grant_and_mutation_proof_are_separate(pg_session, pg_client):
+    headers = await login(pg_client, pg_session)
+    path = "/api/v1/auth/sessions"
+    assert (await pg_client.get(path)).status_code == 401
+    read = await session_proof(pg_client, headers)
+    assert (await pg_client.get(path, headers=read)).status_code == 200
+    assert (await pg_client.get(path, headers=read)).status_code == 200
+    assert (await pg_client.delete(path, headers=read)).status_code == 401
+    mutation = await session_proof(pg_client, headers, "DELETE")
+    assert (await pg_client.get(path, headers=mutation)).status_code == 401
+    assert (await pg_client.delete(path, headers=mutation)).status_code == 200
+    assert (await pg_client.delete(path, headers=mutation)).status_code == 401
+    row = await pg_session.scalar(select(SecurityAuthorization))
+    row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await pg_session.commit()
+    assert (await pg_client.get(path, headers=read)).status_code == 401
+
+
+async def test_denied_session_action_uses_trusted_actor_and_redacts_input(pg_session, pg_client):
+    from app.models.audit import AuditEvent
+
+    await login(pg_client, pg_session)
+    owner_id = await pg_session.scalar(select(User.id))
+    response = await pg_client.get(
+        "/api/v1/auth/sessions?token=never-record-this", headers={"X-Actor-ID": str(uuid.uuid4())}
+    )
+    assert response.status_code == 401
+    events = (
+        await pg_session.scalars(select(AuditEvent).where(AuditEvent.event_type == "action_denied"))
+    ).all()
+    assert len(events) == 1
+    assert events[0].user_id == owner_id
+    assert events[0].details["route"] == "list_sessions"
+    assert events[0].details["reason"] == "authentication_required"
+    assert "never-record-this" not in json.dumps(events[0].details)
+
+
 async def login(client, db):
     assert (await execute_bootstrap(db, "proof_admin", "proof@example.test", PASSWORD, "closed"))[
         0

@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+### Исправления аудита безопасности
+
+- Gmail action требует независимый секрет письма; resend инвалидирует прежний секрет. Google JWKS имеет общий bounded cache, single-flight, запрет redirects и лимит 64 KiB.
+- Канонические Passkey IDs и exact indexed lookup; миграция отказывается от коллизий без удаления credentials.
+- Просмотр своих сессий требует password/configured MFA grant на пять минут; каждый отзыв требует отдельного одноразового proof.
+- Успешная смена пароля закрывает форму без неявного запроса защищённого списка сессий; его загрузка требует явного перехода и отдельного подтверждения.
+- **Несовместимое изменение SDK:** HTTPS default, `verify_ssl=False` запрещён; для HTTP localhost/loopback явно задавайте `transport_profile="local"`.
+- Hash-checked Python installations, release SBOM и неподписанная local build provenance; notifications через transactional PostgreSQL outbox.
+- Windows key generator удаляет сторонние explicit ACE до записи ключей; backup ACL validator не зависит от загрузки модулей PowerShell.
+- Runtime frontend image: исправленные Alpine `libexpat` 2.9.0-r0 и `tiff` 4.7.2-r0; порог Trivy High/Critical сохранён.
+- Cookie Origin/Referer allowlist, строгие redirect URI и owner-only backup files. Требуются миграции 0011…0013; VERSION остаётся 0.2.0 до отдельного выпуска.
+
 ### Конфиденциальность и доступность
 
 - Публичные проектные политики и отдельное согласие; серверная проверка версий при регистрации и входе, gate для SSO.

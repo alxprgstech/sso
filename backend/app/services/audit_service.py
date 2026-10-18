@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import re
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,13 @@ class AuditService:
         safe_details = {}
         if details:
             for k, v in details.items():
+                if (
+                    k == "route"
+                    and isinstance(v, str)
+                    and re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]{0,63}", v)
+                ):
+                    safe_details[k] = v
+                    continue
                 if any(
                     secret_term in k.lower()
                     for secret_term in [
@@ -67,6 +75,14 @@ class AuditService:
             details=safe_details,
         )
         db.add(event)
+        from app.services.notification_service import NOTICES, enqueue
+        from app.models.user import User
+        from sqlalchemy import select
+
+        if user_id is not None and event_type in NOTICES:
+            user = await db.scalar(select(User).where(User.id == user_id))
+            if user is not None:
+                enqueue(db, user, event_type)
         await db.flush()
         if commit:
             await db.commit()
@@ -109,6 +125,9 @@ def scrub_detail(value: Any, depth: int = 0) -> Any:
     if isinstance(value, str):
         # Only finite server-selected labels or UUID references reach audit details.
         labels = {
+            "authentication_required",
+            "access_denied",
+            "rate_limit_exceeded",
             "smtp",
             "ses",
             "resend",

@@ -35,6 +35,7 @@ def make_demo_app(
         client_secret=os.getenv("CLIENT_SECRET"),
         expected_issuer=os.getenv("OIDC_ISSUER", "https://auth.alxprgs.tech"),
         expected_audience=client_id,
+        transport_profile=os.getenv("SSO_TRANSPORT_PROFILE", "strict"),
     )
     security = SSOFastAPISecurity(sso_client)
     store = DemoSessions()

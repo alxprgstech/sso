@@ -17,6 +17,7 @@ from webauthn.helpers.structs import (
 )
 
 from app.config import Settings, get_settings
+from app.core.credential_ids import canonical_credential_id
 from app.core.exceptions import (
     AuthenticationException,
 )
@@ -256,7 +257,6 @@ class WebAuthnService:
         db.add(new_cred)
         await db.delete(challenge_record)
         await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
 
         await AuditService.log_event(
             db,
@@ -383,24 +383,24 @@ class WebAuthnService:
         db: AsyncSession, user: User, credential_id: str, session_id: uuid.UUID | None = None
     ) -> bool:
         user = await lock_user(db, user.id)
-        stmt = select(WebAuthnCredential).where(
-            WebAuthnCredential.user_id == user.id,
+        try:
+            canonical = canonical_credential_id(credential_id)
+        except ValueError:
+            return False
+        target = await db.scalar(
+            select(WebAuthnCredential)
+            .where(
+                WebAuthnCredential.user_id == user.id,
+                WebAuthnCredential.credential_id == canonical,
+            )
+            .with_for_update()
         )
-        creds = (await db.execute(stmt)).scalars().all()
-        target = None
-        for c in creds:
-            if c.credential_id == credential_id or _cred_id_to_bytes(
-                c.credential_id
-            ) == _cred_id_to_bytes(credential_id):
-                target = c
-                break
         if not target:
             return False
 
         deleted_id = target.credential_id
         await db.delete(target)
         await invalidate_security_state(db, user, preserve_session_id=session_id)
-        await db.commit()
         await AuditService.log_event(
             db,
             event_type="passkey_deleted",
@@ -548,14 +548,20 @@ class EmailVerificationService:
         if not user.is_active or tok.security_revision != revision(user):
             return False
         tok.is_used = True
+        if user.email != tok.email:
+            from app.services.notification_service import enqueue
+
+            enqueue(db, user, "email_changed")
         user.email = tok.email
         user.email_verified = True
         try:
             await db.flush()
             await invalidate_security_state(db, user, preserve_email_token_id=tok.id)
+            await AuditService.log_event(
+                db, event_type="email_verified", user_id=user.id, commit=False
+            )
             await db.commit()
         except IntegrityError:
             await db.rollback()
             return False
-        await AuditService.log_event(db, event_type="email_verified", user_id=user.id)
         return True

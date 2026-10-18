@@ -16,6 +16,7 @@ from app.core.exceptions import (
 )
 from app.core.rbac import ROLE_ADMIN
 from app.core.security import hash_token
+from app.core.urls import origin
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
@@ -95,6 +96,7 @@ async def get_current_session(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> Session:
+    validate_cookie_origin(request, settings)
     cached = getattr(request.state, "validated_session", None)
     if cached is not None and getattr(request.state, "session_db_id", None) == id(db):
         return cached
@@ -144,6 +146,7 @@ async def get_current_session(
     await db.commit()
 
     request.state.session_id = session.id
+    request.state.audit_actor_id = session.user_id
     request.state.validated_session = session
     request.state.session_db_id = id(db)
     return session
@@ -233,6 +236,29 @@ async def require_admin_user(
     if not is_admin:
         raise AuthorizationException("Требуются права администратора")
     return current_user
+
+
+def validate_cookie_origin(request: Request, settings: Settings) -> None:
+    supplied = request.headers.get("Origin")
+    referer = request.headers.get("Referer")
+    if supplied is None and referer is None:
+        return
+    # OIDC front-channel navigation originates at the relying party. These GET
+    # routes validate their own protocol proofs (or show logout confirmation).
+    # Explicit Origin headers and every API/mutation retain the same checks.
+    if (
+        supplied is None
+        and request.scope.get("method") == "GET"
+        and request.scope.get("path") in {"/oauth/authorize", "/oauth/logout"}
+    ):
+        return
+    try:
+        allowed = {origin(settings.BASE_URL), origin(settings.FRONTEND_URL)}
+        candidate = supplied if supplied is not None else origin(referer or "")
+        if candidate not in allowed:
+            raise ValueError("Untrusted origin")
+    except ValueError:
+        raise HTTPException(status_code=403, detail={"error": "origin_invalid"}) from None
 
 
 def generate_csrf_token(session_id: uuid.UUID, settings: Settings) -> str:

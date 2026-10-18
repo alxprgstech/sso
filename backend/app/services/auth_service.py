@@ -282,6 +282,7 @@ class AuthService:
         """Отзыв конкретной сессии пользователя."""
         stmt = delete(Session).where(Session.id == session_id, Session.user_id == user_id)
         res = await db.execute(stmt)
+        await AuditService.log_event(db, "session_revoked", user_id=user_id, commit=False)
         await db.commit()
         return (getattr(res, "rowcount", 0) or 0) > 0
 
@@ -296,6 +297,7 @@ class AuthService:
         if except_session_id:
             stmt = stmt.where(Session.id != except_session_id)
         res = await db.execute(stmt)
+        await AuditService.log_event(db, "sessions_revoked", user_id=user_id, commit=False)
         await db.commit()
         return getattr(res, "rowcount", 0) or 0
 

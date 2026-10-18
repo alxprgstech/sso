@@ -1,6 +1,6 @@
 # ALXPRGS Single Sign-On (SSO)
 
-Актуализация: 06.10.2026. [Полный реестр и навигация](docs/index.md), [конфигурация](docs/configuration.md), [тестовый стенд](docs/testing/README.md). Сверка исходников не заменяет runtime-приёмку.
+Актуализация: 18.10.2026. [Полный реестр и навигация](docs/index.md), [конфигурация](docs/configuration.md), [тестовый стенд](docs/testing/README.md), [повторная проверка исправлений безопасности](docs/audit/security-remediation-20261018.md). Сверка исходников не заменяет runtime-приёмку.
 
 Закрытая программная система единого входа (Single Sign-On) и централизованной идентификации для экосистемы `alxprgs.tech`.
 
@@ -239,3 +239,11 @@ Frontend использует React Router7, Tailwind4 и семантическ
 Клиент обращается к native HTTPS API через уже установленный async HTTPX: проверка сертификатов, network timeout 5 секунд, без redirects, автоматического retry и fallback. При выбранном Resend пустой/некорректный ключ или sender отвергается при загрузке Settings. Отправляются исходные text и HTML общего шаблона, включая код, ссылку и Schema.org; опубликованный Resend API не имеет AMP/raw MIME поля, поэтому AMP доступен по прежним SES/SMTP путям. Provider ID означает принятие запроса, не доставку. Текущий проект не обрабатывает bounce/complaint/webhooks.
 
 Локальная разработка по умолчанию остаётся SMTP; обычные Resend tests работают с fake HTTP и синтетическими ключами, без внешних писем. Перед реальным использованием владелец проверяет домен/его DNS и права sending key в Resend, HTTPS-доступ к `api.resend.com`, а также оставляет open/click tracking выключенным для authentication писем. Реальная отправка и DNS не выполнялись в этой задаче. [Официальная настройка доменов](https://resend.com/docs/dashboard/domains/introduction), [ADR](docs/adr/0020-resend-email-provider.md), [результаты проверок](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md).
+
+## Исправления безопасности в Unreleased
+
+Gmail action требует секрет письма и Google bearer; Passkey lookup использует canonical ID. Просмотр сессий требует password/MFA подтверждение на пять минут, отзыв — отдельный одноразовый proof; обычный logout доступен как прежде. Требуются миграции до `0013_security_outbox`.
+
+Установка выбранных Python dependencies: `python -m pip install --require-hashes -r requirements-lock-hashed.txt`; затем локальный backend/SDK отдельно с `--no-deps --no-build-isolation`. Docker использует соответствующие build/runtime hashed companions. Проверка согласованности: `python scripts/hashed_locks.py`.
+
+SDK по умолчанию требует HTTPS и certificate verification. Для demo HTTP loopback явно выберите `SSO_TRANSPORT_PROFILE=local`, для server callback policy — `REDIRECT_TRANSPORT_PROFILE=local`; production HTTP запрещён. TOTP/Passkey/Recovery по-прежнему default-off; подтверждение самостоятельной регистрации обязательно. Детали: [API](docs/api.md), [миграция](docs/migration.md), [SDK](docs/sdk.md), [эксплуатация](docs/operations.md), [релизы](docs/releases.md).

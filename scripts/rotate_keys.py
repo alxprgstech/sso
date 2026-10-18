@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import os
 import secrets
 import subprocess
@@ -44,15 +43,26 @@ def private_directory(path: Path) -> None:
         raise ValueError("Output parent must already exist")
     path.mkdir(mode=0o700, exist_ok=False)
     if os.name == "nt":
-        identity = subprocess.run(
-            ["whoami", "/user", "/fo", "csv", "/nh"],
-            capture_output=True,
-            text=True,
-            check=True,
+        # Removing inheritance alone retains explicit default ACEs on Windows.
+        # Replace the complete DACL before any key material is written.
+        script = (
+            "$ErrorActionPreference='Stop'; "
+            "$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
+            "& icacls $env:SSO_KEY_DIRECTORY /inheritance:r /grant:r ('*'+$sid+':(OI)(CI)F'); "
+            "if($LASTEXITCODE -ne 0){throw 'Private directory ACL failed'}; "
+            "$acl=[System.IO.Directory]::GetAccessControl($env:SSO_KEY_DIRECTORY); "
+            "$others=[System.Collections.Generic.HashSet[string]]::new(); "
+            "foreach($entry in $acl.GetAccessRules($true,$true,"
+            "[System.Security.Principal.SecurityIdentifier])){"
+            "if($entry.IdentityReference.Value -ne $sid){"
+            "[void]$others.Add($entry.IdentityReference.Value)}}; "
+            "foreach($other in $others){"
+            "& icacls $env:SSO_KEY_DIRECTORY /remove ('*'+$other); "
+            "if($LASTEXITCODE -ne 0){throw 'Explicit directory ACL removal failed'}}"
         )
-        sid = next(csv.reader(identity.stdout.splitlines()))[1]
         subprocess.run(
-            ["icacls", str(path), "/inheritance:r", "/grant:r", f"*{sid}:(OI)(CI)F"],
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            env=os.environ | {"SSO_KEY_DIRECTORY": str(path)},
             capture_output=True,
             check=True,
         )

@@ -1,6 +1,6 @@
 # Документация ALXPRGS SSO
 
-Продукт 0.2.0. Актуализация: 06.10.2026. Источник версии — `VERSION`; состояние приёмки — [status.md](status.md). Целевой issuer `https://auth.alxprgs.tech` не подтверждает существование production.
+Продукт 0.2.0. Актуализация: 18.10.2026. Источник версии — `VERSION`; состояние приёмки — [status.md](status.md), [повторная проверка безопасности](audit/security-remediation-20261018.md). Целевой issuer `https://auth.alxprgs.tech` не подтверждает существование production.
 
 ## Как читать комплект
 
@@ -35,6 +35,7 @@
 | [ALXPRGS Design Language.md](../ALXPRGS%20Design%20Language.md) | обновлён | Нормативный дизайн, frontend tokens/маршруты и ADR0021/0022; исходный английский текст сохранён |
 | [CHANGELOG.md](../CHANGELOG.md) | исторический; проверен | История версий сверена с VERSION; не новый выпуск, прежние записи сохранены |
 | [README.md](../README.md) | обновлён | README/manifest/Compose/start scripts, API и навигация |
+| [SECURITY_AUDIT.md](../SECURITY_AUDIT.md) | новый, 07.10.2026 | SEC-AUDIT-20261007: evidence-based security audit, ASVS coverage, находки и NOT READY FOR PRODUCTION; без remediation |
 | [backend/README.md](../backend/README.md) | обновлён | README/manifest/Compose/start scripts, API и навигация |
 | [docs/01-technical-specification.md](../docs/01-technical-specification.md) | обновлён | Требования, API/services/config и фактическая топология |
 | [docs/02-program-description.md](../docs/02-program-description.md) | обновлён | Требования, API/services/config и фактическая топология |

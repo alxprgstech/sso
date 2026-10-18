@@ -229,8 +229,24 @@ def test_hostile_key_identifier_has_controlled_failure(kid):
         ("totp", "TOTP_ENCRYPTION_KEY"),
     ],
 )
-def test_generator_private_files_no_output_or_overwrite(tmp_path, capsys, kind, filename):
+def test_generator_private_files_no_output_or_overwrite(
+    tmp_path, capsys, monkeypatch, kind, filename
+):
     destination = tmp_path / "Ключи"
+    if os.name == "nt":
+        mkdir = Path.mkdir
+
+        def mkdir_with_explicit_access(path, *args, **kwargs):
+            mkdir(path, *args, **kwargs)
+            if path == destination:
+                # Reproduce explicit default ACEs, which /inheritance:r preserves.
+                subprocess.run(
+                    ["icacls", str(path), "/grant", "*S-1-1-0:(OI)(CI)R"],
+                    capture_output=True,
+                    check=True,
+                )
+
+        monkeypatch.setattr(Path, "mkdir", mkdir_with_explicit_access)
     generate_bundle(destination, kind, "synthetic-kid", 2048)
     contents = (destination / filename).read_bytes()
     assert contents
@@ -248,6 +264,44 @@ def test_generator_private_files_no_output_or_overwrite(tmp_path, capsys, kind, 
             write_private(destination / filename, b"replacement")
         acl = subprocess.run(["icacls", str(destination)], capture_output=True, check=True).stdout
         assert b"(I)" not in acl  # Native utility output is OEM bytes, not UTF-8.
+        script = (
+            "$ErrorActionPreference='Stop'; "
+            "$sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
+            "$acls=@([System.IO.Directory]::GetAccessControl($env:SSO_KEY_DIRECTORY)); "
+            "foreach($file in [System.IO.Directory]::GetFiles($env:SSO_KEY_DIRECTORY)){"
+            "$acls += [System.IO.File]::GetAccessControl($file)}; "
+            "foreach($acl in $acls){foreach($rule in $acl.GetAccessRules($true,$true,"
+            "[System.Security.Principal.SecurityIdentifier])){"
+            "if($rule.AccessControlType -eq 'Allow' -and "
+            "$rule.IdentityReference.Value -ne $sid){exit 1}}}"
+        )
+        assert (
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                env=os.environ | {"SSO_KEY_DIRECTORY": str(destination)},
+                capture_output=True,
+            ).returncode
+            == 0
+        )
+
+
+def test_backup_rejects_non_owner_directory(tmp_path):
+    from scripts.backup_db import require_private_directory
+
+    destination = tmp_path / "backup-private"
+    require_private_directory(destination)
+    if os.name == "nt":
+        subprocess.run(
+            ["icacls", str(destination), "/grant", "*S-1-1-0:(OI)(CI)R"],
+            capture_output=True,
+            check=True,
+        )
+        error = subprocess.CalledProcessError
+    else:
+        destination.chmod(0o755)
+        error = ValueError
+    with pytest.raises(error):
+        require_private_directory(destination)
 
 
 def test_session_generator_rejects_samples_that_fail_startup_policy(monkeypatch, production_values):

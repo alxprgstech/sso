@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.background import BackgroundTask
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
@@ -121,6 +122,15 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
     context_token = request_context_id.set(request_id)
     try:
         response: Response = await call_next(request)
+        if response.status_code in {401, 403, 429}:
+            previous = response.background
+
+            async def denied_after_response():
+                if previous is not None:
+                    await previous()
+                await record_denied_action(request, response.status_code)
+
+            response.background = BackgroundTask(denied_after_response)
         diagnostic(
             "http_request",
             "success"
@@ -145,6 +155,29 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
 
 
 # --- Обработчики исключений безопасности ---
+
+
+async def record_denied_action(request: Request, status_code: int) -> None:
+    from app.services.audit_service import AuditService
+
+    route = request.scope.get("route")
+    if route is None:
+        return
+    actor = getattr(request.state, "audit_actor_id", None)
+    reason = {401: "authentication_required", 403: "access_denied", 429: "rate_limit_exceeded"}[
+        status_code
+    ]
+    provider = app.dependency_overrides.get(get_db, get_db)
+    generator = provider()
+    try:
+        db = await anext(generator)
+        await AuditService.log_event(
+            db, "action_denied", user_id=actor, details={"route": route.name, "reason": reason}
+        )
+    except Exception:
+        diagnostic("security_audit", "database_unavailable", failed=True)
+    finally:
+        await generator.aclose()
 
 
 @app.exception_handler(IntegrityError)

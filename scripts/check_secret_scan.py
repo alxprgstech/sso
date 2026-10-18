@@ -11,7 +11,6 @@ import argparse
 import json
 import os
 import secrets
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -70,14 +69,12 @@ REVIEWED_CANDIDATE_PATHS = frozenset(
 )
 
 
-def scanner_command() -> str:
-    found = shutil.which("detect-secrets")
-    if found:
-        return found
-    candidate = Path(sys.executable).parent / "detect-secrets.exe"
-    if candidate.exists():
-        return str(candidate)
-    raise RuntimeError("detect-secrets 1.5.0 is required")
+def scanner_command() -> list[str]:
+    from importlib.metadata import version
+
+    if version("detect-secrets") != "1.5.0":
+        raise RuntimeError("detect-secrets 1.5.0 is required")
+    return [sys.executable, "-m", "detect_secrets"]
 
 
 def scanner_environment() -> dict[str, str]:
@@ -99,7 +96,7 @@ def tracked_and_new_files() -> list[str]:
 
 def scan(paths: list[str]) -> dict:
     result = subprocess.run(
-        [scanner_command(), "scan", "--all-files", *paths],
+        [*scanner_command(), "scan", "--no-verify", "--all-files", *paths],
         cwd=ROOT,
         capture_output=True,
         check=True,
@@ -131,7 +128,7 @@ def self_test() -> None:
         fixture = Path(directory) / "synthetic.py"
         fixture.write_text(f'password = "{secrets.token_urlsafe(48)}"\n', encoding="utf-8")
         result = subprocess.run(
-            [scanner_command(), "scan", "--all-files", str(fixture)],
+            [*scanner_command(), "scan", "--no-verify", "--all-files", str(fixture)],
             cwd=ROOT,
             capture_output=True,
             check=True,
@@ -161,10 +158,21 @@ def main() -> int:
         print(f"Baseline fingerprints written: {len(current_fingerprints)}")
         return 0
     baseline = normalized(json.loads(BASELINE.read_text(encoding="utf-8")))
+
+    # Offline scanning omits only the network-verification filter. All detectors
+    # and other filters must still match the untouched historical baseline.
+    def offline_filters(result):
+        return [
+            entry
+            for entry in result["filters_used"]
+            if entry["path"]
+            != "detect_secrets.filters.common.is_ignored_due_to_verification_policies"
+        ]
+
     if (
         current["version"] != baseline["version"]
         or current["plugins_used"] != baseline["plugins_used"]
-        or current["filters_used"] != baseline["filters_used"]
+        or offline_filters(current) != offline_filters(baseline)
     ):
         print("Scanner version or plugins changed; review required", file=sys.stderr)
         return 1

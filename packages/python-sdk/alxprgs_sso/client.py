@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import secrets
 import time
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 import jwt
@@ -43,7 +44,41 @@ class SSOClient:
         expected_issuer: str | None = None,
         expected_audience: str | None = None,
         max_stale_seconds: int = 300,
+        transport_profile: str = "strict",
     ) -> None:
+        if transport_profile not in {"strict", "local"} or verify_ssl is not True:
+            raise ConfigurationError("HTTPS certificate verification is mandatory")
+        if (
+            not isinstance(server_url, str)
+            or any(character.isspace() or ord(character) < 32 for character in server_url)
+            or "\\" in server_url
+        ):
+            raise ConfigurationError("Invalid SSO server URL")
+        try:
+            parsed = urlsplit(server_url)
+            hostname = parsed.hostname
+            _ = parsed.port
+        except ValueError:
+            raise ConfigurationError("Invalid SSO server URL") from None
+        if (
+            not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ConfigurationError("Invalid SSO server URL")
+        local = hostname.lower() == "localhost"
+        try:
+            local = local or ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            pass
+        if parsed.scheme != "https" and not (
+            parsed.scheme == "http" and transport_profile == "local" and local
+        ):
+            raise ConfigurationError(
+                "SSO requires HTTPS; local HTTP requires an explicit loopback profile"
+            )
         self.server_url = server_url.rstrip("/")
         self.client_id = client_id
         self.client_secret = client_secret
@@ -102,7 +137,7 @@ class SSOClient:
         if cached:
             return cached
         try:
-            with httpx.Client(verify=self.verify_ssl, timeout=10.0) as client:
+            with httpx.Client(verify=True, timeout=10.0) as client:
                 with client.stream("GET", f"{self.server_url}/.well-known/jwks.json") as resp:
                     resp.raise_for_status()
                     body = bytearray()
@@ -119,7 +154,7 @@ class SSOClient:
         if cached:
             return cached
         try:
-            async with httpx.AsyncClient(verify=self.verify_ssl, timeout=10.0) as client:
+            async with httpx.AsyncClient(verify=True, timeout=10.0) as client:
                 async with client.stream("GET", f"{self.server_url}/.well-known/jwks.json") as resp:
                     resp.raise_for_status()
                     body = bytearray()
@@ -484,7 +519,7 @@ class SSOClient:
         if self.client_secret:
             data["client_secret"] = self.client_secret
 
-        async with httpx.AsyncClient(verify=self.verify_ssl, timeout=15.0) as client:
+        async with httpx.AsyncClient(verify=True, timeout=15.0) as client:
             resp = await client.post(token_url, data=data)
             if resp.status_code != 200:
                 raise SSOError(f"Ошибка обмена кода авторизации (HTTP {resp.status_code})")
@@ -505,7 +540,7 @@ class SSOClient:
         if self.client_secret:
             data["client_secret"] = self.client_secret
 
-        async with httpx.AsyncClient(verify=self.verify_ssl, timeout=15.0) as client:
+        async with httpx.AsyncClient(verify=True, timeout=15.0) as client:
             resp = await client.post(token_url, data=data)
             if resp.status_code != 200:
                 raise SSOError(f"Ошибка обновления токена: {resp.text}")
@@ -524,6 +559,6 @@ class SSOClient:
         if self.client_secret:
             data["client_secret"] = self.client_secret
 
-        async with httpx.AsyncClient(verify=self.verify_ssl, timeout=10.0) as client:
+        async with httpx.AsyncClient(verify=True, timeout=10.0) as client:
             resp = await client.post(revoke_url, data=data)
             return resp.status_code == 200
