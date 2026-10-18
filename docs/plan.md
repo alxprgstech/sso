@@ -1319,3 +1319,10 @@ SEC-REMED-20261007-R5 — planned, P1, зависит R1–R4: все согла
 SEC-REMED-20261007 — продолжение 2026-10-18T11:13:05.0680659+03:00, in_progress: завершить R1–R5 на текущем дереве, затем commit/push/PR по поручению владельца. Чужие сервисы сохраняются; E2E backend 18000. DOC-VERSION-LOCK-01 вне scope.
 
 SEC-REMED-PR-01 — завершение 2026-10-18T16:15:08+03:00: commit f4b5fe52aa74c4fd010468eb8a3b9c2dec6eabb2 отправлен; PR https://github.com/alxprgstech/sso/pull/13 создан и прикреплён. CI run39130712008 выполняется; успех remote CI не заявлен. Финальный документальный checkpoint отправляется той же веткой.
+
+## CI-FRONTEND-PR13-01 — исправление падения Frontend Build & Typecheck
+
+- P0; done; начало: 2026-10-18T13:32:36+00:00; исполнитель: Codex; зависимость: CI run 39130782762/job 117685386895.
+- План: получить workflow/job logs → подтвердить root cause → внести минимальное исправление в frontend release image → повторить целевую проверку frontend typecheck/release build.
+- Готовность: job-блокер устранён локально, проверки шага Build and verify private source maps offline проходят.
+- Завершение: 2026-10-18T13:34:27+00:00. Root cause подтверждён по логам: недоступный pin `libexpat=2.8.5-r0` в `frontend/Dockerfile.release` (Alpine обновился до `2.9.0-r0`). Обновлён только этот pin; локально прошли `npm --prefix frontend run typecheck` и CI-эквивалент `ALX_RELEASE_BUILD=1 npm --prefix frontend run build && python scripts/check_sentry_build.py && docker build -f frontend/Dockerfile.release -t sso-release-frontend-check frontend`.

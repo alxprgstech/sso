@@ -1,6 +1,6 @@
 # Актуальный статус ALXPRGS SSO
 
-Обновлено: 2026-10-18T16:15:08+03:00. Продукт 0.2.0; ветка `new/security-remediation`, база `170175be06318645c0fd2ef222e2688edf31b37c`. SEC-REMED-20261007-R1–R5 — `done`: локальные исправления и приёмка завершены. SEC-REMED-PR-01 — `done`: commit `f4b5fe5` отправлен, [PR #13](https://github.com/alxprgstech/sso/pull/13) открыт и прикреплён.
+Обновлено: 2026-10-18T13:34:27+00:00. Продукт 0.2.0; ветка `new/security-remediation`, база `170175be06318645c0fd2ef222e2688edf31b37c`. SEC-REMED-20261007-R1–R5 — `done`: локальные исправления и приёмка завершены. SEC-REMED-PR-01 — `done`: commit `f4b5fe5` отправлен, [PR #13](https://github.com/alxprgstech/sso/pull/13) открыт и прикреплён. CI-FRONTEND-PR13-01 — `done`: устранён блокер job `Frontend Build & Typecheck` (job 117685386895) обновлением release image pin `libexpat` до `2.9.0-r0`.
 
 ## Реализовано
 
@@ -19,7 +19,7 @@ Ruff/format, mypy73files; full/runtime/build hash companions; clean hashed insta
 
 ## Ограничения и продолжение
 
-Локальные результаты сохранены в [приёмке](acceptance.md). [PR #13](https://github.com/alxprgstech/sso/pull/13) создан. Remote CI run39130712008 выполняется; итог и CI последнего документального checkpoint ещё не подтверждены.
+Локальные результаты сохранены в [приёмке](acceptance.md). [PR #13](https://github.com/alxprgstech/sso/pull/13) создан. Для run39130782762 подтверждён и локально исправлен отказ `apk add` в `frontend/Dockerfile.release`; требуется повторный remote CI прогон на обновлённом commit.
 
 Production-приёмка остаётся открытой: реальные SES/Gmail/Sentry, sender registration, public TLS/DNS/IAM/secret storage, внешние backup/storage ACL, OIF/multi-replica load и review исторических credentials не проверены локальным retest. [DOC-VERSION-LOCK-01](plan.md) остаётся отдельной planned задачей и не входит в remediation.
 
