@@ -2,7 +2,7 @@
 
 ## Текущий срез плана
 
-SEC-REMED-20261007-R1–R5 — done, завершение 2026-10-18T16:13:56+03:00: локальная реализация и retest завершены. SEC-REMED-PR-01 — in_progress, начало 2026-10-18T16:13:56+03:00: commit/push ветки new/security-remediation, PR в main, проверка его состояния; зависит R1–R5. Готовность: commit отправлен, PR создан и прикреплён, CI отражён по факту.
+SEC-REMED-20261007-R1–R5 — done, завершение 2026-10-18T16:13:56+03:00: локальная реализация и retest завершены. SEC-REMED-PR-01 — done, начало 2026-10-18T16:13:56+03:00: commit/push ветки new/security-remediation, PR в main, проверка его состояния; зависит R1–R5. Готовность: commit отправлен, PR создан и прикреплён, CI отражён по факту.
 
 DOC-REFRESH-01 — done: актуализация, конфигурация, тестовый стенд, реестр и проверки завершены; акт в acceptance.md. DOC-VERSION-LOCK-01 — planned, исправление кода вне документационной задачи. Общая production-приёмка не закрыта; текущие ограничения — [status](status.md).
 
@@ -1317,3 +1317,5 @@ SEC-REMED-20261007-R4 — in_progress, P1, зависит R2: atomic audit/outbo
 SEC-REMED-20261007-R5 — planned, P1, зависит R1–R4: все согласованные локальные проверки, adversarial второй проход, доказательная remediation матрица и external limitations.
 
 SEC-REMED-20261007 — продолжение 2026-10-18T11:13:05.0680659+03:00, in_progress: завершить R1–R5 на текущем дереве, затем commit/push/PR по поручению владельца. Чужие сервисы сохраняются; E2E backend 18000. DOC-VERSION-LOCK-01 вне scope.
+
+SEC-REMED-PR-01 — завершение 2026-10-18T16:15:08+03:00: commit f4b5fe52aa74c4fd010468eb8a3b9c2dec6eabb2 отправлен; PR https://github.com/alxprgstech/sso/pull/13 создан и прикреплён. CI run39130712008 выполняется; успех remote CI не заявлен. Финальный документальный checkpoint отправляется той же веткой.
