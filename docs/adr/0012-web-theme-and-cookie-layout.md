@@ -1,29 +1,9 @@
-# ADR-0012: общая тема и нижний баннер cookies
+# ADR-0012: тема и нижний баннер cookies
 
-> Сверка 06.10.2026: сохранено решение на дату принятия; это не новый результат приёмки. Действующий профиль: [архитектура](../architecture.md), [API](../api.md), [статус](../status.md).
+Принято 03.10.2026; layout и presentation foundation частично заменены [ADR-0013](0013-pr-quality-refactoring.md) и [ADR-0021](0021-frontend-design-platform.md).
 
-- Статус: принято.
-- Дата: 2026-10-03.
-- Контекст: WEB-UI-01/02; система SSO и оба demo должны поддерживать светлую/тёмную тему, cookies на коротких страницах должны оставаться снизу без перекрытия элементов.
+Исходное решение использовало общую palette/theme для SPA и demo, fixed banner и ResizeObserver reserve. Resize race сделал последнее ненадёжным: ADR-0013 заменил reserve нижней строкой CSS flex-shell. ADR-0021 выделил SPA tokens/Tailwind и Dark default; demo сохранили прежнюю palette/System default. Подробности текущего layout — [frontend](../frontend.md).
 
-## Решение
+Сохраняются System/light/dark, синхронный self-hosted bootstrap без CSP inline exception, локальный выбор без user identifier, cross-tab/no-storage поведение, независимость origins, keyboard/focus и privacy contracts. Выбор темы не является согласием на диагностику. Footer на коротких страницах прижат вниз растущим main, на длинных следует за содержимым; banner не перекрывает формы, QR сохраняет контрастную подложку.
 
-Общие palette.css и theme.js в frontend/public/theme используются frontend и двумя demo через явно перечисленные статические routes. Внешний синхронный script в head выставляет data-theme до отображения страницы, совместим с script-src self без inline exception. Скрипт идемпотентен. По умолчанию используется prefers-color-scheme; выбор system/light/dark хранится локально без идентификатора пользователя, синхронизируется между вкладками одного origin. Недоступное storage оставляет выбор в памяти страницы. Темы разных origins независимы. Общие переменные задают поверхности, текст, границы и семантические состояния. QR сохраняет белую подложку и тёмные модули.
-
-Общий flex-shell занимает viewport; footer следует за содержимым. Баннер fixed снизу; ResizeObserver резервирует его фактическую высоту в shell, включая раскрытые настройки и мобильные переносы. Прокручиваемая область приложения ограничена оставшейся высотой viewport и заканчивается над баннером, поэтому он не перекрывает её элементы. Высота баннера ограничена, внутри доступна прокрутка. Он не является modal и не забирает фокус при первом показе; явное открытие настроек переводит фокус в панель, сохранение возвращает его к инициатору. Диалоги остаются выше баннера.
-
-## Альтернативы и последствия
-
-Только React theme не покрывает demo и может вызвать вспышку светлой темы. Inline script потребовал бы изменения CSP. Дублирование палитры увеличивает риск расхождений. Общие self-hosted файлы добавляют ранние запросы без внешних провайдеров; выбор темы не является согласием на диагностику. Sticky footer/banner не обеспечивает постоянное положение cookies на длинных страницах. Fixed без резерва перекрывает формы.
-
-Парольная политика, MFA, consent, CSRF, OIDC и last-admin guard не меняются. Запрет последнего администратора выделяется на клиенте как сообщение об ошибке без изменения серверного решения.
-
-
-Обновление 2026-10-03: решение об измеряемом fixed-баннере заменено [ADR-0013](0013-pr-quality-refactoring.md) после воспроизведённого resize race в CI. Тема, CSP и управление фокусом сохраняются; баннер теперь занимает нижнюю строку CSS flex-shell без JavaScript reserve.
-
-
-## Уточнение05.10.2026 — FRONTEND-REDESIGN-01
-
-[ADR0021](0021-frontend-design-platform.md) заменяет presentation foundation SSO: SPA использует отдельный design-tokens.css и Tailwind, default identity Dark. Явный System/light/dark, privacy preference/cross-tab/no-storage и synchronous CSP-compatible bootstrap сохраняются. Два demos используют прежний palette.css/System default. Исходное решение выше сохраняется как история, но не описывает текущий CSS import/default SPA. Нижний banner/scroll/QR и focus/privacy contracts остаются.
-
-Уточнение UI-LAYOUT-01 от 05.10.2026: футер внутри основной прокручиваемой области прижат к её нижнему краю на коротких страницах растущим main; на длинных следует за содержимым. Это дополняет положение футера, а нижняя строка баннера из ADR-0013 сохраняется. Точный текущий макет описан в [frontend.md](../frontend.md).
+Альтернативы React-only/inline bootstrap не покрывают demo либо ослабляют CSP; fixed без CSS layout/reserve перекрывает контент. [Историческая версия](https://github.com/alxprgstech/sso/blob/7d1585e7bdd40104be7a8b933b998cbc843d46a5/docs/adr/0012-web-theme-and-cookie-layout.md) сохраняет полную причину и последовательность замен.
