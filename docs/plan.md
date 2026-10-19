@@ -102,6 +102,7 @@
 Начало: 2026-10-20T02:46:26.6291142+03:00; исполнитель Codex. Завершение: 2026-10-20T02:49:55+03:00. Удалены SECURITY_AUDIT.md и docs/audit/security-remediation-20261018.md после переноса действующих сведений; разовый незакоммиченный documentation-value-review.md также удалён. Сокращены plan/acceptance/index/defects/checklist/ADR/CodeScene chronology, обновлён status. UTF-8:64 Markdown, 292 локальные ссылки/0 отсутствующих, 9 исторических Git targets существуют; secret self-test PASS,126 candidates/0new, baseline неизменён. Финальный diff --check выполняется после этой записи. Runtime и remote CI не запускались. Продолжение: review diff; открытая production-приёмка и DOC-VERSION-LOCK-01 сохранены.
 
 ## DOC-CLEANUP-PR-01 — PR очистки документации
-- P2; in_progress; начало: 2026-10-20T02:51:20.8409615+03:00; исполнитель: Codex; зависит от DOC-CLEANUP-02.
+- P2; done; начало: 2026-10-20T02:51:20.8409615+03:00; исполнитель: Codex; зависит от DOC-CLEANUP-02.
 - План: итоговый diff/проверки → commit → push → PR в main и фиксация ссылки.
 - Готовность: изменения сохранены и отправлены, PR создан, проверки отражены без объявления remote CI PASS.
+- Завершение: 2026-10-20T02:52:33.9718516+03:00. Commit1fc28b5 отправлен в new/documentation-value-review; PR https://github.com/alxprgstech/sso/pull/14 создан в main и прикреплён. Локальные проверки PASS, remote CI итогового checkpoint ещё не проверен. Финальная запись отправляется отдельным docs commit; merge не выполняется.

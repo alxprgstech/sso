@@ -21,3 +21,5 @@ DOC-VALUE-01 завершён. DOC-CLEANUP-02 завершён: сокращен
 - Последующая работа — [план](plan.md). Начатые ранее внешние проверки не отменены очисткой. Release publication/deployment/CD activation/реальные рассылки не выполнялись.
 
 TOTP/Passkey/Recovery выключены по умолчанию; email confirmation самостоятельной регистрации обязательно. Защита и тесты этой очисткой не меняются.
+
+DOC-CLEANUP-PR-01 — done (2026-10-20T02:52:33.9718516+03:00): [PR #14](https://github.com/alxprgstech/sso/pull/14) открыт в main из new/documentation-value-review; основной commit1fc28b5. Локальные документационные проверки успешны; remote CI финального checkpoint не проверен. Продолжение — review/CI PR; merge не выполнялся.
