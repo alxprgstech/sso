@@ -1,26 +1,23 @@
 # Актуальный статус ALXPRGS SSO
 
-Обновлено: 2026-10-18T13:34:27+00:00. Продукт 0.2.0; ветка `new/security-remediation`, база `170175be06318645c0fd2ef222e2688edf31b37c`. SEC-REMED-20261007-R1–R5 — `done`: локальные исправления и приёмка завершены. SEC-REMED-PR-01 — `done`: commit `f4b5fe5` отправлен, [PR #13](https://github.com/alxprgstech/sso/pull/13) открыт и прикреплён. CI-FRONTEND-PR13-01 — `done`: устранён блокер job `Frontend Build & Typecheck` (job 117685386895) обновлением release image pin `libexpat` до `2.9.0-r0`.
+Обновлено 20.10.2026. Продукт 0.2.0, база `7d1585e7bdd40104be7a8b933b998cbc843d46a5` содержит merge [PR #13](https://github.com/alxprgstech/sso/pull/13). Текущая рабочая ветка `new/documentation-value-review`. Production-приёмка открыта.
 
-## Реализовано
+## Реализация и подтверждения
 
-- R1: независимый Gmail action secret, resend rotation, атомарное погашение code/link/action; bounded fail-closed Google JWKS.
-- R2: canonical Passkey IDs, миграция с отказом коллизий, indexed lookup; отдельный пятиминутный session read grant и одноразовые mutation proofs.
-- R3: strict SDK TLS/local loopback, Origin/Referer policy с OIDC front-channel границей, безопасные redirect URI; hash companions/CI/Docker, SBOM и unsigned provenance.
-- R4: transactional audit/outbox, bounded delivery, owner-only backup/key ACL; устранено сохранение сторонних explicit Windows ACE. Обновлены два уязвимых Alpine package pins frontend image.
+SEC-REMED-20261007-R1–R5 завершены локально 18.10.2026: Gmail action binding/rotation, canonical indexed Passkey lookup, separate session grants/proofs, строгие TLS/Origin/redirect policies, hashed dependencies/SBOM/provenance, transactional audit/outbox и private key/backup ACL. Решения — [ADR-0023](adr/0023-security-remediation.md).
 
-Решения: [ADR-0023](adr/0023-security-remediation.md). Матрица и пределы evidence: [повторная проверка](audit/security-remediation-20261018.md). Исходный [аудит](../SECURITY_AUDIT.md) — исторический документ до исправлений.
+Последний локальный retest: full PostgreSQL 687 PASS/18 subtests, enabled20, post-change OIDC54; browser default48/enabled9; SDK29, frontend unit13/components40; Compose/CSP/outage/recovery, builds/release dry-run/Trivy/secrets успешны. Пять внешних email tests исключены. Точные команды, окружение, scope и ограничение dirty source — [приёмка](acceptance.md); failures — [worklog](worklog.md). Это результаты прежнего кандидата, не новый прогон merge SHA. Remote CI merge SHA в текущей задаче не проверен.
 
-## Подтверждённые проверки продолжения
+## Документация
 
-Ruff/format, mypy73files; full/runtime/build hash companions; clean hashed install и pip check; SDK wheel/sdist и29installed-wheel tests; frontend lint/types/test-types/unit13/components40/build; secrets127/0new и self-test; pip-audit/npm audit0known; Trivy backend/исправленный frontend High/Critical0; Compose и3CSP browser tests до последней Origin-правки; ACL+backup53PASS; Origin policy36PASS; генерация RSA/session/TOTP с owner-onlyACL3PASS.
+DOC-VALUE-01 завершён. DOC-CLEANUP-02 завершён: сокращены старые BUG/checklist/планы/CI chronology, evidence перенесено в приёмку, threat model — в security. Старый security audit, отдельный remediation report и разовый отчёт анализа удалены; tracked версии доступны по точным Git-ссылкам в действующих документах. Worklog, audit replay/probe map и CodeScene policy сохранены.
 
-Финальный full pytest:687PASS/18subtestsPASS,5external email deselected; enabled PG20PASS; post-change OIDC PG+boundary54PASS. Browser default-off48PASS/enabled9PASS. Финальные images Trivy0High/Critical, release dry-run PASS; Compose runtime/CSP3/outage/recovery PASS с owned cleanup. Неуспешные диагностические запуски сохранены в [журнале](worklog.md).
+Проверки очистки: 64 Markdown UTF-8, 292 локальные ссылки без отсутствующих целей, 9 исторических Git targets; secret self-test успешен, 126 candidates/0new. Полный журнал сохранён.
 
-## Ограничения и продолжение
+## Продолжение
 
-Локальные результаты сохранены в [приёмке](acceptance.md). [PR #13](https://github.com/alxprgstech/sso/pull/13) создан. Для run39130782762 подтверждён и локально исправлен отказ `apk add` в `frontend/Dockerfile.release`; требуется повторный remote CI прогон на обновлённом commit.
+- DOC-VERSION-LOCK-01 — planned: согласовать version metadata npm lock с bump/check и regression; [дефект](testing/defects.md).
+- Production: live SES/Gmail/Sentry и sender registration; public TLS/DNS/IAM/secret storage; внешние backup/storage ACL/alerts, OIF/multi-replica load, owner review исторических credentials — не проверены локальной приёмкой.
+- Последующая работа — [план](plan.md). Начатые ранее внешние проверки не отменены очисткой. Release publication/deployment/CD activation/реальные рассылки не выполнялись.
 
-Production-приёмка остаётся открытой: реальные SES/Gmail/Sentry, sender registration, public TLS/DNS/IAM/secret storage, внешние backup/storage ACL, OIF/multi-replica load и review исторических credentials не проверены локальным retest. [DOC-VERSION-LOCK-01](plan.md) остаётся отдельной planned задачей и не входит в remediation.
-
-Default-off TOTP/Passkey/Recovery и обязательное email confirmation сохранены. Release publication, deployment, CD activation и реальные рассылки не выполняются. Чужие контейнеры/данные сохраняются; тестовый backend использует порт18000.
+TOTP/Passkey/Recovery выключены по умолчанию; email confirmation самостоятельной регистрации обязательно. Защита и тесты этой очисткой не меняются.

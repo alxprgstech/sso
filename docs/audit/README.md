@@ -13,7 +13,7 @@
 ```powershell
 $env:PYTHONUTF8 = '1'
 $env:PYTHONPATH = 'backend;packages/python-sdk;.'
-# Сначала выделенная synthetic PostgreSQL с marker/guard по testing/plan.md.
+# Сначала выделенная synthetic PostgreSQL с marker/guard по ../testing/README.md.
 # TEST_DATABASE_URL и остальные private variables задаются вне Git/вывода.
 python -m pytest -p tests.conftest docs/audit/test_readiness_probes.py -q --junitxml=artifacts/audit/probes-current.xml
 ```

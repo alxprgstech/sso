@@ -1,8 +1,8 @@
 # Модель угроз и политики безопасности ALXPRGS SSO
 
-Сверка документации: 06.10.2026, продукт 0.2.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
+Актуализация документации: 20.10.2026, продукт 0.2.0; runtime-проверки не повторялись. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
 
-Версия продукта 0.2.0; актуализировано 04.10.2026 по F-01…F-27. Документ описывает реализацию, а не сертификацию. Доказательства и ограничения: [приёмка](acceptance.md), [аудит](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT.md).
+Профиль F-01…F-27 дополнен решениями SEC-01…04 (ADR-0023). Документ описывает реализацию, а не сертификацию. Доказательства и ограничения: [приёмка](acceptance.md), [аудит](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT.md).
 
 | Угроза | Реализованная защита | Проверки |
 | --- | --- | --- |
@@ -33,3 +33,41 @@ Default flags: `FEATURE_TOTP_ENABLED=false`, `FEATURE_PASSKEY_ENABLED=false`, `F
 [Sentry privacy](observability.md): bodies/headers/cookies/query/user/IP/geo/exception values/SQL удаляются allowlist projection; Replay только разрешённая staging-оболочка, production hard-off. Live privacy/source-map/ingestion настройки не подтверждаются unit-тестами.
 
 [Privacy/erasure](privacy.md): deletion pending выдаёт limited cookie и отзывает grants; после отмены нужен новый login; backup restore требует актуальный erasure journal. Собственные данные RP не удаляются автоматически через SSO. OIF/public HTTPS/live mail/container/staging proof имеют отдельные записи приёмки, не выводятся из кода или mock tests.
+
+## Границы доверия и остаточные риски
+
+Рассмотрены анонимный сетевой атакующий, обычный пользователь, обладатель украденного bearer/session, контролируемый сайт и RP, злонамеренные входные данные, конкурентные запросы и ошибочная конфигурация оператором. Администратор может регистрировать клиентов, но не считается доверенным источником любых данных для browser rendering. Контроль build runner, signing key или БД способен разрушить основные trust assumptions; ASVS не устраняет такую компрометацию автоматически.
+
+Приоритетные сценарии: перенос Gmail action между регистрациями, replay code/refresh/proofs, подмена access токена ID token, stale roles, IDOR, bypass UV, forged forwarded IP, mail brute force, смешение OP/RP logout, утечки telemetry/query/backups. После remediation Gmail JWT подтверждает источник, а отдельный случайный action secret — доступ к конкретному письму; code/link/action погашаются атомарно. Passkey ID нормализуется и ищется по индексу. Просмотр сессий требует отдельный пятиминутный read grant, DELETE — одноразовое action-bound подтверждение. Python artifacts устанавливаются с обязательными hashes; audit/outbox согласованы транзакцией. Реализация и альтернативы — [ADR-0023](adr/0023-security-remediation.md), фактические проверки — [приёмка](acceptance.md).
+
+До production остаются controlled Gmail sender/action и synthetic live mail acceptance, публичные TLS/edge/DNS/IAM и DB transport, custody/rotation секретов и ключей, внешние storage ACL/backup drills, live Sentry privacy/retention/maps/alerts, multi-replica load и OIF, приватная оценка исторических credentials с отзывом при реальном использовании. Локальный Compose/backup PASS не подтверждает внешнюю инфраструктуру. Перед release нужно повторить обязательные scans на точных артефактах; старый Trivy PASS не является текущим сканом.
+
+Администраторский RP требует review exact HTTPS redirect URI; независимый RP может принимать ранее выданный access JWT до exp (до 300 секунд). Компрометация runner, signing key или БД нарушает базовые допущения. Backup dump и source maps чувствительны даже без plaintext паролей.
+
+## Охват security review
+
+Ниже сохранена карта областей ASVS 5.0.0 исходного review, с указанием уже реализованного remediation. Это границы рассмотрения, не новая сертификация или PASS текущего SHA.
+
+| ASVS 5.0.0 area | Применимость и проверка | Ограничения / основные gaps |
+| --- | --- | --- |
+| V1 Encoding and Sanitization | SQL/argv/CSV/React/URL sinks | Не исчерпывающий browser fuzz всех UI inputs |
+| V2 Validation and Business Logic | Models, quotas, pending/one-use/roles, privacy races | Live mail acceptance; scale/load не измерены |
+| V3 Web Frontend Security | CORS, CSRF token, browser MIME, escaping/storage/CSP source | 3.4.2/3.5.1/3.5.2 рассмотрены; actual edge headers не проверены |
+| V4 API and Web Service | JSON endpoints, auth deps, error models, feature gates | Production request smuggling/edge parser chain не проверена |
+| V5 File Handling | Operator backup/source maps/artifacts | Public uploads отсутствуют; operator ACL/encryption нужны |
+| V6 Authentication | Password/email/TOTP/Passkey/recovery/reauth | Live mail acceptance; delivery и notifications live не проверены |
+| V7 Session Management | Host-only cookie, TTL, revocation, OP/RP separation | Fresh-factor checks описаны ADR-0023; 7.6.1 lifecycle документирован |
+| V8 Authorization | Server RBAC/ownership/admin invariants/action proofs | Browser/RP stale token window300s; не мгновенная offline revocation |
+| V9 Self-contained Tokens | RS256 claims/profiles/key/cache/replay | Actual production key rotation и custody не проверены |
+| V10 OAuth and OIDC | S256/URI/state/nonce, codes, refresh families | 10.1.2/10.4.5 рассмотрены; live OIF/DPoP/mTLS не проверены/не реализованы |
+| V11 Cryptography | Argon2id/RSA/Fernet/HMAC/CSPRNG | Production entropy/HSM/backup ключей требуют оператора |
+| V12 Secure Communication | HTTPS/STARTTLS validation/TLS config | Реальный DNS/сертификат/DB transport не обследованы |
+| V13 Configuration | Secrets flags, quotas, resource budgets, Docker | Нагрузочная приёмка; ownership IAM/firewall/container CVEs не доказаны |
+| V14 Data Protection | Privacy lifecycle, redaction, sensitive view blocks | SaaS retention/storage ACL и native backups внешняя приёмка |
+| V15 Secure Coding and Architecture | Layering, error handling, dependencies | Supply-chain operational acceptance; review не гарантирует отсутствие неизвестных sinks |
+| V16 Security Logging and Error Handling | Safe fields, fixed labels, audit/telemetry | Semantic denied actions/alerts/notifications operational tests нужны |
+| V17 WebRTC | Не применимо: реализации нет | Не переносится на будущие функции |
+
+Полная требование-за-требованием L2/L3 acceptance не проводилась. Там, где нет достаточного доказательства, статус не объявлен PASS. Top10 применён как классификация риска, а не checklist сертификата.
+
+Полный исходный анализ, отклонённые гипотезы и исходные находки: [Историческая версия](https://github.com/alxprgstech/sso/blob/7d1585e7bdd40104be7a8b933b998cbc843d46a5/SECURITY_AUDIT.md). Полное старое threat/evidence содержание доступно по этому точному SHA; исторический verdict не переносится на исправленный код.

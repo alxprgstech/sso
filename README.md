@@ -1,6 +1,6 @@
 # ALXPRGS Single Sign-On (SSO)
 
-Актуализация: 18.10.2026. [Полный реестр и навигация](docs/index.md), [конфигурация](docs/configuration.md), [тестовый стенд](docs/testing/README.md), [повторная проверка исправлений безопасности](docs/audit/security-remediation-20261018.md). Сверка исходников не заменяет runtime-приёмку.
+Актуализация: 18.10.2026. [Полный реестр и навигация](docs/index.md), [конфигурация](docs/configuration.md), [тестовый стенд](docs/testing/README.md), [повторная проверка исправлений безопасности](docs/acceptance.md). Сверка исходников не заменяет runtime-приёмку.
 
 Закрытая программная система единого входа (Single Sign-On) и централизованной идентификации для экосистемы `alxprgs.tech`.
 
