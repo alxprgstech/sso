@@ -110,3 +110,5 @@
 P1; in_progress; начало 2026-10-20T16:31:42.5772362+03:00; Codex; main7555f47. План: persistent source+identifier/source+account quotas5/60с с alias protection и source30/60с; bounded Argon2 admission16total/2source/2workers,429+RetryAfter вместо503 перегрузки; trusted-source context и cancellation reservation. Regression targeted lockout/aliases/spoofing и8requestburst с реальным Argon2+легитимным другим источником. Готовность: PG/unit/crypto/MFA/static, PR/comment. Distributed/NAT ограничения явно документировать.
 
 SSO-SEC-0006 local done (2026-10-20T16:35:55.3927006+03:00):23PASS; отдельный PR далее. До завершения всех6PR исправить обнаруженные image/libx11 и schema-guard CI blockers, не ослабляя обязательные проверки.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.

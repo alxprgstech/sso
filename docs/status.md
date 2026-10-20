@@ -25,3 +25,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 SSO-SEC-0006 in_progress; первые5issues опубликованы независимыми PR21–25, не merged.
 
 SSO-SEC-0006 локально проверен23PASS. Общая кампания продолжается: remoteCI выявил libx11image CVE вPR21–24 и устаревший schema guard вPR25; исправления и повторы обязательны до итогового отчёта.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.

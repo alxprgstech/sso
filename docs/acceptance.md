@@ -69,3 +69,5 @@
 
 ### SSO-SEC-0006 / #20 — 2026-10-20T16:35:55.3927006+03:00
 PG16/Python3.12.14 final23PASS: tests/integration/test_login_source_budget_pg.py, tests/test_password_work_budget.py, tests/integration/test_security_revision_pg.py, test_distributed_rate_limiting_pg.py, tests/test_security_and_negative_scenarios.py. Original lockout/aliases/spoofedXFF refusal + correct owner other source200;8realArgon2burst→2×401/6×429 + legit200/no503; concurrentArgon2≤2. Cancellation keeps global/source reservations until actualworker exit; dummyhashparams/eventloop tests retained. Ruff/format/mypy64PASS; secret scan beforecommit. NAT/distributed flood/production/multi-replicaCPU load не проверены. Другие PR CI имеют image/schema blockers, журнал содержит точные сведения.
+
+CI image follow-up 2026-10-20T16:42:02.1140334+03:00: inherited libx11CVE-2026-88806 pin1.8.14-r0; source/release manifests согласованы (tiff4.7.2-r0 тоже). Officialnginx apk install/source buildPASS; прежний image scanFAILED, повтор CI pending. Функциональные результаты этой ветки выше; zero-CVE до scan не объявляется.
