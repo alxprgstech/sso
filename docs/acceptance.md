@@ -74,3 +74,19 @@ CI image follow-up 2026-10-20T16:41:53.9386077+03:00: inherited libx11CVE-2026-8
 
 ### SSO-SEC-0003 окончательный uniform-path retest — 2026-10-20T16:56:04.6698984+03:00
 Этот результат заменяет ранний response-only UUID/no-mail вариант выше: повторныеID/sendcap/providerfailure могли различать его пути. Финальный start не проверяет User: все identities проходят одинаковые Argon2/pending/mail операции, collision только после mailboxproof вconfirm.26PASS: test_registration_uniform_path_pg.py(2), test_registration.py, integration/test_registration_pg.py, test_registration_consent_guard_pg.py, test_resend_email_pg.py. Проверены stable repeatIDs, обе последовательности202×3→429 (MAX_SENDS3 не менялся), одинаковые503transport failures, реальные Argon2, duplicate refusal после validproof и неизменность existingUser/password. Первый test assumption5 ошибочен: исправлен до actual3, кодлимит неизменён. Mypy64/Ruff/format/secret0new/diffPASS. Source/releaseTrivy0PASS ранее; finalCI этого follow-up выполняется после push. Точное wallclock constanttime не обещано, preproof Userbranch удалён.
+
+## Итог шести security issues — 2026-10-20T17:02:01.9691227+03:00
+Все6подтверждены и исправлены отдельными PR вmain; каждый issue имеет доказательные комментарии. Финальные функциональные SHA проверены обязательным GitHub CI (SUCCESS); SESexternal job штатно skipped, не считается live-доставкой.
+
+| Issue / ID | PR | Локальный targeted результат | Проверенный функциональный SHA / CI |
+| --- | --- | --- | --- |
+| #15 / SSO-SEC-0001 | [21](https://github.com/alxprgstech/sso/pull/21) | PG1+10, source/operation quota | 370e466 / [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39432649902) |
+| #16 / SSO-SEC-0002 | [22](https://github.com/alxprgstech/sso/pull/22) | PG6+10, both refresh/revoke lock orders | 852ce9b / [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39432656119) |
+| #17 / SSO-SEC-0003 | [23](https://github.com/alxprgstech/sso/pull/23) | final26, uniform pending/mail path | d951639 / [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39434748425) |
+| #18 / SSO-SEC-0004 | [24](https://github.com/alxprgstech/sso/pull/24) | final20, counted bounded batches | 28af0c7 / [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39432674860) |
+| #19 / SSO-SEC-0005 | [25](https://github.com/alxprgstech/sso/pull/25) | final46, frontend40, migration/Compose/CSP3 | e1e1092 / [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39432532318) |
+| #20 / SSO-SEC-0006 | [26](https://github.com/alxprgstech/sso/pull/26) | final23 + scheduling6, both vectors | e451632 / [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39433445951) |
+
+Обязательные backend/default+enabled, E2E, security/dependency/secret, SDKcleaninstall, frontend/windows/version/CD и image/runtime jobs прошли на указанных SHA. Source/release localTrivy0HIGH/CRITICAL; initialimage/schema/testfixture failures исправлены и не засчитаныPASS. Этот итоговый commit меняет только документацию; его обычный CI проверяется отдельно, функциональные результаты выше относятся к точным указанным SHA.
+
+Не выполнялись production, реальные рассылки/live Gmail rendering/sender registration, arbitrary/distributed load. JWT у автономногоRP до300с; NAT и per-worker audit budgets/crash-loss последнего anonymous окна описаны в соответствующих ADR.0014 требует restart legacy pending, Gmail shortcut — browser ViewAction. Функциональных PR-зависимостей нет; при последовательном merge сохранить все append-only записи и совместить uniform start с browser binding. PR не merged, issues вручную не закрыты.

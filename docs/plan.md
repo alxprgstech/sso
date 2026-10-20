@@ -116,3 +116,5 @@ SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, не�
 SSO-SEC-0003 follow-up in_progress (2026-10-20T16:52:08.5777631+03:00): дополнительные repeat-ID/MAX_SENDS/mail-error oracles устранить единым start-путём для всех identities; коллизии разрешать только после mailbox proof в confirm. Это предусмотренная issue альтернатива. Background delivery/canonical IDs не нужны, quotas/503transport semantics сохранить. Критерий: повторныеID/5sendcap/ошибкаSMTP одинаковы, existing User/credentials неизменны, validmailproofcollision отказ, mandatoryemail/newregistration работают.
 
 SSO-SEC-0003 uniform follow-up done (2026-10-20T16:56:04.6698984+03:00):26PASS, repeat-ID/sendcap/providerfailure пути унифицированы; ADR0028/API/security актуальны. PR23 finalCI после push; другие5PR finalCI success. Все6PR/issue comments созданы, merge/manualclose не выполнялись.
+
+SEC-ISSUES-20261020 done (2026-10-20T17:02:01.9691227+03:00): все6отдельных PR/issue comments созданы, все6finalfunctionalCI SUCCESS; матрица точныхSHA/ограничения вacceptance. Дальше owner review/merge, не выполняются автоматически. Documentation-only checkpoint проходит обычный CI отдельно.
