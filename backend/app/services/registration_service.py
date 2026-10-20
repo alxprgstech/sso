@@ -140,17 +140,9 @@ class RegistrationService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        # Both available and occupied identities pay the same Argon2 cost.
+        # All identities follow the same pending/mail path. Resolve collisions
+        # only after mailbox proof in confirm(), never through start/resend.
         password_digest = await async_hash_password(password)
-        existing_user = await db.scalar(
-            select(User.id).where(
-                (func.lower(User.username) == clean_username.lower())
-                | (func.lower(User.email) == clean_email)
-            )
-        )
-        if existing_user:
-            return RegistrationService.neutral_challenge(details)
-
         now = datetime.now(timezone.utc)
         code = new_code()
         link = new_link()

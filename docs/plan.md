@@ -107,8 +107,12 @@
 - Готовность: изменения сохранены и отправлены, PR создан, проверки отражены без объявления remote CI PASS.
 
 ## SSO-SEC-0003 / #17
-P1; in_progress; начало 2026-10-20T16:09:15.4876516+03:00; Codex; main7555f47. План: нейтральные start/resend для существующих identities, одинаковая Argon2 работа до проверки коллизии, без новых users/mail для коллизии; PG контракт и сохранение uniqueness/confirmation/quotas. Старые assertions409 заменить по изменённому security-требованию, сохранив негативное покрытие. Готовность: проверки/отдельный PR/комментарий.
+P1; done; начало 2026-10-20T16:09:15.4876516+03:00; Codex; main7555f47. План: единый start/pending/mail путь для всех identities, collision только после mailbox proof; existing User/credentials неизменны; PG контракт и сохранение uniqueness/confirmation/quotas. Старые assertions409 заменить по изменённому security-требованию, сохранив негативное покрытие. Готовность: проверки/отдельный PR/комментарий.
 
 SSO-SEC-0003 done (2026-10-20T16:10:59.2619568+03:00): PG/unit20 + усиленный collision1PASS, публичный status oracle устранён, uniqueness/consent/quotas сохранены. Далее отдельный PR и #18–20.
 
 SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
+
+SSO-SEC-0003 follow-up in_progress (2026-10-20T16:52:08.5777631+03:00): дополнительные repeat-ID/MAX_SENDS/mail-error oracles устранить единым start-путём для всех identities; коллизии разрешать только после mailbox proof в confirm. Это предусмотренная issue альтернатива. Background delivery/canonical IDs не нужны, quotas/503transport semantics сохранить. Критерий: повторныеID/5sendcap/ошибкаSMTP одинаковы, existing User/credentials неизменны, validmailproofcollision отказ, mandatoryemail/newregistration работают.
+
+SSO-SEC-0003 uniform follow-up done (2026-10-20T16:56:04.6698984+03:00):26PASS, repeat-ID/sendcap/providerfailure пути унифицированы; ADR0028/API/security актуальны. PR23 finalCI после push; другие5PR finalCI success. Все6PR/issue comments созданы, merge/manualclose не выполнялись.

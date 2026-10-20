@@ -450,10 +450,11 @@ async def test_registration_duplicate_collisions_pg(
         )
     assert r_dup_case.status_code == 202
     assert set(r_dup_case.json()) == set(r1.json())
-    assert len(messages) == 1  # No unsolicited email or duplicate identity.
+    assert len(messages) == 4  # Identical mail path, including occupied identities.
     assert password_work == [True] * 4  # Real Argon2 for new, username/email/case collision.
     assert await pg_session.scalar(text("SELECT count(*) FROM users")) == 1
-    assert await pg_session.scalar(text("SELECT count(*) FROM pending_registrations")) == 0
+    assert await pg_session.scalar(text("SELECT count(*) FROM pending_registrations")) == 2
+    assert r_dup_email.json()["challenge_id"] == r_dup_case.json()["challenge_id"]
     # Random response-only challenges cannot authorize an account.
     denied = await pg_client.post(
         "/api/v1/auth/register/confirm-code",
@@ -472,7 +473,20 @@ async def test_registration_duplicate_collisions_pg(
         )
         assert neutral.status_code == 202
         assert set(neutral.json()) == set(r1.json())
-        assert len(messages) == 1
+        assert len(messages) == 5
+        # Correct mailbox proof permits resolving a collision, never overwrites a user.
+        plain = messages[-1].get_body(preferencelist=("plain",)).get_content()
+        valid = re.search(r"Ваш код подтверждения: ([0-9]{6})", plain).group(1)
+        collision = await resender.post(
+            "/api/v1/auth/register/confirm-code",
+            json={"challenge_id": r_dup_uname.json()["challenge_id"], "code": valid},
+        )
+        assert collision.status_code == 409
+        assert await pg_session.scalar(text("SELECT count(*) FROM users")) == 1
+        original_hash = await pg_session.scalar(
+            text("SELECT password_hash FROM password_credentials")
+        )
+        assert verify_password("RegistrationPassword2026!", original_hash)
 
 
 @pytest.mark.postgres

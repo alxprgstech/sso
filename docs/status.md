@@ -27,3 +27,5 @@ SSO-SEC-0003 in_progress; #15PR21/#16PR22 опубликованы отдель�
 SSO-SEC-0003 локально done 2026-10-20T16:10:59.2619568+03:00:20PASS + realArgon2 collision1PASS. PR подготавливается; #18–20 продолжаются.
 
 Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
+Последний #17 follow-up (2026-10-20T16:56:04.6698984+03:00): единый pending/mail путь без Userlookup устраняет дополнительные repeat-ID/quota/providerfailure oracles;26PASS+static/secretPASS, ADR0028. Коллизия раскрывается только после mailbox proof, existing credentials не меняются; MAX_SENDS3 сохранён. PR23 ждёт финальный CI. Другие5PR21/22/24/25/26 уже имеют SUCCESS на финальных functional SHA; ссылки в worklog. Общая production-приёмка и live SES/Gmail/load вне этой кампании.
