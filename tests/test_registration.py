@@ -19,7 +19,6 @@ from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User
 from app.services.auth_service import AuthService
 from app.services.system_service import SystemService
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -224,17 +223,16 @@ def test_registration_validation_errors():
     assert r3.status_code == 422
 
 
-def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
-    """REG-06: При совпадении логина или email возвращается единая ошибка 409 без раскрытия поля."""
+def test_registration_collision_neutral_202(monkeypatch: pytest.MonkeyPatch):
+    """SSO-SEC-0003 supersedes REG-06: public schema is the same neutral202."""
     mock_db = AsyncMock(spec=AsyncSession)
     config = SystemConfiguration(id=1, bootstrap_completed=True, registration_mode="open")
     existing_user = User(username="existing", email="existing@alxprgs.tech")
 
     async def fake_register(**_kwargs):
-        raise HTTPException(
-            status_code=409,
-            detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
-        )
+        from app.services.registration_service import RegistrationService
+
+        return RegistrationService.neutral_challenge({"ip": "testclient"})
 
     monkeypatch.setattr(AuthService, "register_user", fake_register)
 
@@ -265,11 +263,10 @@ def test_registration_collision_conflict_409(monkeypatch: pytest.MonkeyPatch):
                 "confirm_password": "RegistrationPassword2026!",
             },
         )
-        assert res.status_code == 409
+        assert res.status_code == 202
         data = res.json()
-        assert data["detail"]["error"] == "user_already_exists"
-        # Сообщение не раскрывает, какое именно поле совпало
-        assert "уже существует" in data["detail"]["detail"]
+        assert data["status"] == "verification_pending"
+        assert "user_already_exists" not in str(data)
     finally:
         app.dependency_overrides.pop(get_db, None)
 

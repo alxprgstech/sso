@@ -42,10 +42,6 @@ class OIDCService:
         client_secret: str | None = None,
         require_secret: bool = True,
     ) -> OIDCClient:
-        if require_secret:
-            from app.services.privacy_service import RateLimit, consume_rate_limit
-
-            await consume_rate_limit(db, settings, RateLimit("oauth-client", client_id, 30))
         stmt = select(OIDCClient).where(OIDCClient.client_id == client_id)
         client = (await db.execute(stmt)).scalar_one_or_none()
 
