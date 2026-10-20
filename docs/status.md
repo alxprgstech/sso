@@ -25,3 +25,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 SSO-SEC-0003 in_progress; #15PR21/#16PR22 опубликованы отдельно, не merged.
 
 SSO-SEC-0003 локально done 2026-10-20T16:10:59.2619568+03:00:20PASS + realArgon2 collision1PASS. PR подготавливается; #18–20 продолжаются.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.

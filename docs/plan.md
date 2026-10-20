@@ -110,3 +110,5 @@
 P1; in_progress; начало 2026-10-20T16:09:15.4876516+03:00; Codex; main7555f47. План: нейтральные start/resend для существующих identities, одинаковая Argon2 работа до проверки коллизии, без новых users/mail для коллизии; PG контракт и сохранение uniqueness/confirmation/quotas. Старые assertions409 заменить по изменённому security-требованию, сохранив негативное покрытие. Готовность: проверки/отдельный PR/комментарий.
 
 SSO-SEC-0003 done (2026-10-20T16:10:59.2619568+03:00): PG/unit20 + усиленный collision1PASS, публичный status oracle устранён, uniqueness/consent/quotas сохранены. Далее отдельный PR и #18–20.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.

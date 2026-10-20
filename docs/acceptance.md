@@ -69,3 +69,5 @@
 
 ### SSO-SEC-0003 / #17 — 2026-10-20T16:10:59.2619568+03:00
 main7555f47:409/202 и пропуск password hash подтверждены кодом. Изолированная PG16/Python3.12.14: tests/test_registration.py + tests/integration/test_registration_pg.py + test_registration_consent_guard_pg.py20PASS; усиленный collision regression1PASS (четыре реальные Argon2id операции, одинаковая202-схема, username/email/case, отсутствие mail/duplicates/pending, confirm-denied, neutral resend). Unit mocks не выдаются за интеграцию. Ruff/format/mypy64PASS; secret/diff перед commit. Исходный REG-06/ПР-15 контракт409 заменён по SSO-SEC-0003 с сохранением отрицательных assertions. Точное выравнивание SMTP/DB timing, production/browser/load не проверялись и не обещаются.
+
+CI image follow-up 2026-10-20T16:41:53.9386077+03:00: inherited libx11CVE-2026-88806 pin1.8.14-r0; source/release manifests согласованы (tiff4.7.2-r0 тоже). Officialnginx apk install/source buildPASS; прежний image scanFAILED, повтор CI pending. Функциональные результаты этой ветки выше; zero-CVE до scan не объявляется.
