@@ -106,12 +106,16 @@
 - План: итоговый diff/проверки → commit → push → PR в main и фиксация ссылки.
 - Готовность: изменения сохранены и отправлены, PR создан, проверки отражены без объявления remote CI PASS.
 
+## SSO-SEC-0002 / #16
+P1; in_progress; начало 2026-10-20T16:05:11.3295866+03:00; Codex; независимая main7555f47. План: атомарный отзыв всех OIDC refresh/code грантов при успешном self-service revoke/logout, сохранить выбранные browser sessions и security_revision; проверить ownership, logout API/OIDC и refresh/code. Готовность: PG regression/существующие lifecycle, PR+комментарий. Offline JWT остаётся до exp.
+
+SSO-SEC-0002 done (2026-10-20T16:07:24.3035665+03:00): PG6+10PASS, ownership/lock orders/JWT scope подтверждены; PR публикация далее.
 ## SEC-ISSUES-20261020
 Начало: 2026-10-20T16:00:07.3287809+03:00; Codex; P1; база main7555f47. SSO-SEC-0001–0006 (#15–20): in_progress. План: полные отчёты/повторный аудит → сверка main/PR → regression → исправление → PostgreSQL/статические проверки → независимые new/ ветки и PR → комментарии issues. Готовность каждого: устранена подтверждённая первопричина, проверки сохранены; иначе доказательный комментарий без фиктивного PR. Production/нагрузка/merge исключены.
 
 SSO-SEC-0001 done (2026-10-20T16:03:30.6105628+03:00): критерий source isolation/PKCE/replay/revoke подтверждён PG1+10; публикация PR далее. SSO-SEC-0002–0006 остаются in_progress.
 
-
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
 
 ## SEC-MERGE-20261020
 P1; in_progress; начало 2026-10-20T20:32:43.1105797+03:00; Codex. По прямому поручению владельца слить PR21–26 в main, разрешая конфликты без потери шести security-исправлений. PR21 уже merged при первичной проверке. План: последовательные merge main в PR-ветки, проверка конфликтов и целевые regression, push, обязательный CI, merge с проверкой SHA. Готовность: все6merged, совместные проверки и точные результаты записаны. Production/deploy не входят.
