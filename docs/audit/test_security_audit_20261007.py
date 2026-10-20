@@ -43,6 +43,15 @@ async def test_gmail_bearer_reused_for_unrelated_mailboxes(pg_session, pg_client
     )
     await pg_session.commit()
     challenges = []
+    browser_proofs = []
+    action_secrets = []
+    original_send = registration_service.RegistrationService._send
+
+    async def capture_action(db, pending, code, link, action, settings):
+        action_secrets.append(action)
+        await original_send(db, pending, code, link, action, settings)
+
+    monkeypatch.setattr(registration_service.RegistrationService, "_send", capture_action)
     for index in range(2):
         reply = await pg_client.post(
             "/api/v1/auth/register",
@@ -58,6 +67,8 @@ async def test_gmail_bearer_reused_for_unrelated_mailboxes(pg_session, pg_client
         )
         assert reply.status_code == 202
         challenges.append(reply.json()["challenge_id"])
+        browser_proofs.append(pg_client.cookies.get("alx_registration"))
+    pg_client.cookies.clear()  # Model the Gmail service, which has no initiating-browser proof.
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
     jwk.update(kid="audit-google-fixture", alg="RS256", use="sig")
@@ -93,30 +104,36 @@ async def test_gmail_bearer_reused_for_unrelated_mailboxes(pg_session, pg_client
             )
             assert reply.status_code == 422
         import re
-        from urllib.parse import parse_qs, urlsplit
 
-        secrets = []
         for message in messages:
             html = message.get_body(preferencelist=("html",)).get_content()
             schema = json.loads(
                 re.search(r'<script type="application/ld\+json">(.*?)</script>', html).group(1)
             )
-            secrets.append(
-                parse_qs(urlsplit(schema["potentialAction"]["handler"]["url"]).query)[
-                    "action_token"
-                ][0]
-            )
+            assert schema["potentialAction"]["@type"] == "ViewAction"
+            assert "/verify-email?mode=registration" in schema["potentialAction"]["target"]
         wrong = await pg_client.post(
             "/api/v1/auth/register/confirm-gmail",
-            params={"challenge_id": challenges[1], "action_token": secrets[0]},
+            params={"challenge_id": challenges[1], "action_token": action_secrets[0]},
             headers={"Authorization": "Bearer " + encoded},
         )
         assert wrong.status_code == 401
-        for challenge, secret in zip(challenges, secrets, strict=True):
-            result = await pg_client.post(
+        for challenge, secret, browser in zip(
+            challenges, action_secrets, browser_proofs, strict=True
+        ):
+            no_browser = await pg_client.post(
                 "/api/v1/auth/register/confirm-gmail",
                 params={"challenge_id": challenge, "action_token": secret},
                 headers={"Authorization": "Bearer " + encoded},
+            )
+            assert no_browser.status_code == 401
+            result = await pg_client.post(
+                "/api/v1/auth/register/confirm-gmail",
+                params={"challenge_id": challenge, "action_token": secret},
+                headers={
+                    "Authorization": "Bearer " + encoded,
+                    "Cookie": "alx_registration=" + browser,
+                },
             )
             assert result.status_code == 200
             replay = await pg_client.post(

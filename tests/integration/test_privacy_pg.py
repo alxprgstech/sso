@@ -506,8 +506,11 @@ async def test_stale_documents_block_direct_oidc_and_userinfo(pg_session, pg_cli
 
 
 async def test_stale_registration_consent_cannot_trigger_resend(pg_session, monkeypatch):
+    from app.core.security import generate_random_token, hash_token
     from app.models.registration import PendingRegistration
     from app.services.registration_service import RegistrationService
+
+    browser = generate_random_token(32)
 
     async def forbidden_send(*args, **kwargs):
         pytest.fail("No mail may be sent for obsolete consent")
@@ -516,6 +519,7 @@ async def test_stale_registration_consent_cannot_trigger_resend(pg_session, monk
     now = await privacy.database_now(pg_session)
     pending = PendingRegistration(
         username="privacy_pending",
+        browser_secret_hash=hash_token(browser),
         email="privacy_pending@example.test",
         password_hash=hash_password(PASSWORD),
         code_hash="c" * 64,
@@ -528,6 +532,8 @@ async def test_stale_registration_consent_cannot_trigger_resend(pg_session, monk
     pg_session.add(pending)
     await pg_session.commit()
     with pytest.raises(HTTPException) as error:
-        await RegistrationService.resend(pg_session, pending.id, "192.0.2.50", get_settings())
+        await RegistrationService.resend(
+            pg_session, pending.id, "192.0.2.50", get_settings(), browser_secret=browser
+        )
     assert error.value.status_code == 409
     assert pending.code_hash == "c" * 64

@@ -71,3 +71,5 @@ Default flags: `FEATURE_TOTP_ENABLED=false`, `FEATURE_PASSKEY_ENABLED=false`, `F
 Полная требование-за-требованием L2/L3 acceptance не проводилась. Там, где нет достаточного доказательства, статус не объявлен PASS. Top10 применён как классификация риска, а не checklist сертификата.
 
 Полный исходный анализ, отклонённые гипотезы и исходные находки: [Историческая версия](https://github.com/alxprgstech/sso/blob/7d1585e7bdd40104be7a8b933b998cbc843d46a5/SECURITY_AUDIT.md). Полное старое threat/evidence содержание доступно по этому точному SHA; исторический verdict не переносится на исправленный код.
+
+SSO-SEC-0005: почтовое подтверждение регистрации привязано к независимому HttpOnly browser secret (только SHA-256 в pending); replacement вращает оба proofs. Все code/link/action/resend пути требуют исходный browser, legacy pending fail-closed. Gmail shortcut переходит в browser через ViewAction; Google bearer+mail secret без browser proof недостаточны. [ADR0026](adr/0026-registration-browser-binding.md) заменяет server-to-server enrollment часть ADR0023.

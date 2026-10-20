@@ -67,6 +67,7 @@ export const VerifyEmailPage: React.FC = () => {
             <p>
               Нажмите кнопку, чтобы подтвердить адрес. Новая ссылка действует 10
               минут.
+              Для регистрации используйте браузер, в котором отправили заявку.
             </p>
             {details && (
               <details className="rounded border p-3 text-sm">

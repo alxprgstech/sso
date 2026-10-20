@@ -123,6 +123,7 @@ def build_message(
     action_url: str | None,
     details: dict[str, str],
     settings: Settings,
+    browser_confirmation: bool = False,
 ) -> EmailMessage:
     subject = "Код подтверждения ALXPRGS"
     text_details = "\n".join(f"{label}: {value}" for label, value in _detail_lines(details))
@@ -147,7 +148,13 @@ def build_message(
         "@type": "EmailMessage",
         "description": "Подтверждение адреса электронной почты ALXPRGS",
     }
-    if action_url:
+    if browser_confirmation:
+        schema_data["potentialAction"] = {
+            "@type": "ViewAction",
+            "name": "Подтвердить адрес",
+            "target": link,
+        }
+    elif action_url:
         schema_data["potentialAction"] = {
             "@type": "ConfirmAction",
             "name": "Подтвердить адрес",

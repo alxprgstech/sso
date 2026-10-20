@@ -26,7 +26,6 @@ from app.services.verification_email import (
     CODE_TTL_SECONDS,
     MAX_CODE_ATTEMPTS,
     MAX_SENDS,
-    action_url,
     build_message,
     code_hash,
     code_matches,
@@ -107,6 +106,7 @@ class RegistrationService:
         details: dict[str, str],
         settings: Settings,
         legal_versions: dict[str, str],
+        browser_secret: str | None = None,
     ) -> PendingRegistration:
 
         validate_versions(legal_versions)
@@ -179,6 +179,7 @@ class RegistrationService:
             )
             db.add(pending)
         pending.code_hash = code_hash(settings, pending.id, code)
+        pending.browser_secret_hash = hash_token(browser_secret) if browser_secret else None
         pending.link_hash = link_digest(link)
         pending.action_hash = hash_token(action)
         pending.request_details = details
@@ -202,6 +203,7 @@ class RegistrationService:
         challenge_id: uuid.UUID,
         ip_address: str,
         settings: Settings,
+        browser_secret: str | None = None,
     ) -> PendingRegistration:
         await check_email_request_rate_limit(db, ip_address)
         pending = await db.scalar(
@@ -212,6 +214,7 @@ class RegistrationService:
         now = datetime.now(timezone.utc)
         if not pending or pending.created_at <= now - timedelta(hours=1):
             raise _invalid_challenge()
+        RegistrationService._require_browser(pending, browser_secret)
         validate_versions(pending.legal_versions)
         if pending.send_count >= MAX_SENDS:
             raise HTTPException(status_code=429, detail={"error": "rate_limit_exceeded"})
@@ -241,11 +244,10 @@ class RegistrationService:
             username=pending.username,
             code=code,
             link=link_url(settings, link, "registration"),
-            action_url=(
-                action_url(settings, pending.id, action)
-                if settings.BASE_URL.startswith("https://")
-                else None
-            ),
+            # A server-to-server Gmail action cannot possess the initiating
+            # browser proof. Use the ordinary mail link/code in that browser.
+            action_url=None,
+            browser_confirmation=True,
             details=pending.request_details,
             settings=settings,
         )
@@ -297,6 +299,7 @@ class RegistrationService:
         link: str | None = None,
         action_id: uuid.UUID | None = None,
         action_token: str | None = None,
+        browser_secret: str | None = None,
     ) -> User:
         if code is not None and challenge_id is not None:
             stmt = select(PendingRegistration).where(PendingRegistration.id == challenge_id)
@@ -311,6 +314,7 @@ class RegistrationService:
         pending = await db.scalar(stmt.with_for_update())
         if not pending or pending.expires_at <= datetime.now(timezone.utc):
             raise _invalid_challenge()
+        RegistrationService._require_browser(pending, browser_secret)
         if action_id is not None and (
             not pending.action_hash
             or not action_token
@@ -374,3 +378,13 @@ class RegistrationService:
                 detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
             ) from error
         return user
+
+    @staticmethod
+    def _require_browser(pending: PendingRegistration, secret: str | None) -> None:
+        if (
+            not pending.browser_secret_hash
+            or not secret
+            or len(secret) != 43
+            or not hmac.compare_digest(pending.browser_secret_hash, hash_token(secret))
+        ):
+            raise _invalid_challenge()

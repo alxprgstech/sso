@@ -21,3 +21,7 @@ DOC-VALUE-01 завершён. DOC-CLEANUP-02 завершён: сокращен
 - Последующая работа — [план](plan.md). Начатые ранее внешние проверки не отменены очисткой. Release publication/deployment/CD activation/реальные рассылки не выполнялись.
 
 TOTP/Passkey/Recovery выключены по умолчанию; email confirmation самостоятельной регистрации обязательно. Защита и тесты этой очисткой не меняются.
+
+SSO-SEC-0005 in_progress; PR21–24 для #15–18 опубликованы отдельно, не merged.
+
+SSO-SEC-0005 локально done 2026-10-20T16:30:27.5799474+03:00:46PASS; миграция0014 и Gmail ViewAction требуют review. Live Gmail/browserE2E не заявлены. Последний issue#20 продолжается.
