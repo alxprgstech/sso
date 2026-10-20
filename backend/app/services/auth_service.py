@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -352,18 +353,28 @@ class AuthService:
     ) -> None:
         from app.services.privacy_service import RateLimit, consume_rate_limit
 
-        await consume_rate_limit(
-            db, settings, RateLimit("login-identifier", attempt.username.strip().casefold(), 5)
-        )
+        source = attempt.ip_address or "unknown"
         if attempt.ip_address:
             await consume_rate_limit(db, settings, RateLimit("login-ip", attempt.ip_address, 30))
+        await consume_rate_limit(
+            db,
+            settings,
+            RateLimit(
+                "login-identifier-source",
+                json.dumps([source, attempt.username.strip().casefold()]),
+                5,
+            ),
+        )
         owner = await db.scalar(
             select(User.id).where(
                 (User.username == attempt.username) | (User.email == attempt.username)
             )
         )
         if owner:
-            await consume_rate_limit(db, settings, RateLimit("login-account", str(owner), 5))
+            # Username and email aliases share one source/account budget.
+            await consume_rate_limit(
+                db, settings, RateLimit("login-account-source", json.dumps([source, str(owner)]), 5)
+            )
 
     @staticmethod
     async def _verify_password(db: AsyncSession, user: User | None, attempt: LoginAttempt) -> User:

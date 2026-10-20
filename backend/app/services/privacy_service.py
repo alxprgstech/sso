@@ -120,8 +120,13 @@ async def consume_rate_limit(db: AsyncSession, settings: Settings, policy: RateL
             "service_unavailable", "Не удалось проверить лимиты безопасности.", 503
         ) from error
     if attempts > policy.limit:
-        raise rejection(
-            "rate_limit_exceeded", "Слишком много запросов. Повторите через минуту.", 429
+        raise HTTPException(
+            429,
+            detail={
+                "error": "rate_limit_exceeded",
+                "detail": "Слишком много запросов. Повторите позже.",
+            },
+            headers={"Retry-After": str(policy.seconds)},
         )
 
 

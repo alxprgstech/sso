@@ -9,6 +9,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
@@ -38,7 +39,12 @@ _password_hasher = PasswordHasher(
 )
 _dummy_password_hash = _password_hasher.hash(secrets.token_urlsafe(32))
 _password_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="argon2")
-_password_capacity = threading.BoundedSemaphore(4)
+PASSWORD_MAX_PENDING = 16
+PASSWORD_MAX_PER_SOURCE = 2
+_password_capacity = threading.BoundedSemaphore(PASSWORD_MAX_PENDING)
+_password_sources: dict[str, int] = {}
+_password_source_lock = threading.Lock()
+password_source: ContextVar[str | None] = ContextVar("password_source", default=None)
 _Result = TypeVar("_Result")
 _common_passwords = frozenset(
     (Path(__file__).resolve().parents[1] / "data" / "common-passwords.txt")
@@ -48,16 +54,29 @@ _common_passwords = frozenset(
 
 
 async def password_work(operation: Callable[..., _Result], *arguments: Any) -> _Result:
+    source = password_source.get()
     if not _password_capacity.acquire(blocking=False):
-        raise HTTPException(
-            503, detail={"error": "authentication_busy", "detail": "Повторите позже"}
-        )
+        raise _password_busy()
+    with _password_source_lock:
+        if source is not None:
+            if _password_sources.get(source, 0) >= PASSWORD_MAX_PER_SOURCE:
+                _password_capacity.release()
+                raise _password_busy()
+            _password_sources[source] = _password_sources.get(source, 0) + 1
+
+    def release() -> None:
+        with _password_source_lock:
+            if source is not None:
+                _password_sources[source] -= 1
+                if not _password_sources[source]:
+                    del _password_sources[source]
+        _password_capacity.release()
 
     def execute() -> _Result:
         try:
             return operation(*arguments)
         finally:
-            _password_capacity.release()
+            release()
 
     # Shield keeps the capacity reserved until the actual worker completes even
     # if the request disconnects; cancellation cannot create an unbounded queue.
@@ -65,9 +84,17 @@ async def password_work(operation: Callable[..., _Result], *arguments: Any) -> _
     try:
         future = loop.run_in_executor(_password_executor, execute)
     except BaseException:
-        _password_capacity.release()
+        release()
         raise
     return await asyncio.shield(future)
+
+
+def _password_busy() -> HTTPException:
+    return HTTPException(
+        429,
+        detail={"error": "authentication_busy", "detail": "Повторите позже"},
+        headers={"Retry-After": "1"},
+    )
 
 
 async def async_hash_password(password: str) -> str:

@@ -39,7 +39,8 @@ from app.core.exceptions import (
     FeatureDisabledException,
     OAuthErrorException,
 )
-from app.core.security import get_jwks
+from app.core.security import get_jwks, password_source
+from app.core.rate_limit import get_client_ip
 from app.database import get_db
 from app.logging_config import configure_logging
 from app.telemetry import TelemetryFastAPI, initialize_sentry, register_routes
@@ -120,6 +121,7 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
     request_id = correlation(request.headers.get("X-Request-ID"))
     request.state.request_id = request_id
     context_token = request_context_id.set(request_id)
+    source_token = password_source.set(get_client_ip(request, settings.TRUSTED_PROXIES))
     try:
         response: Response = await call_next(request)
         if response.status_code in {401, 403, 429}:
@@ -142,6 +144,7 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
         diagnostic("http_request", "server_failed", failed=True)
         raise
     finally:
+        password_source.reset(source_token)
         request_context_id.reset(context_token)
 
     response.headers["X-Request-ID"] = request_id
