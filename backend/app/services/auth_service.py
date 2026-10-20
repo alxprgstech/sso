@@ -30,6 +30,7 @@ from app.services.security_state import (
     invalidate_security_state,
     lock_user,
     require_account_access,
+    revoke_oidc_grants,
     revision,
 )
 
@@ -280,11 +281,15 @@ class AuthService:
         user_id: uuid.UUID,
     ) -> bool:
         """Отзыв конкретной сессии пользователя."""
+        await lock_user(db, user_id)
         stmt = delete(Session).where(Session.id == session_id, Session.user_id == user_id)
         res = await db.execute(stmt)
+        removed = (getattr(res, "rowcount", 0) or 0) > 0
+        if removed:
+            await revoke_oidc_grants(db, user_id)
         await AuditService.log_event(db, "session_revoked", user_id=user_id, commit=False)
         await db.commit()
-        return (getattr(res, "rowcount", 0) or 0) > 0
+        return removed
 
     @staticmethod
     async def revoke_all_sessions(
@@ -293,10 +298,12 @@ class AuthService:
         except_session_id: uuid.UUID | None = None,
     ) -> int:
         """Отзыв всех сессий пользователя."""
+        await lock_user(db, user_id)
         stmt = delete(Session).where(Session.user_id == user_id)
         if except_session_id:
             stmt = stmt.where(Session.id != except_session_id)
         res = await db.execute(stmt)
+        await revoke_oidc_grants(db, user_id)
         await AuditService.log_event(db, "sessions_revoked", user_id=user_id, commit=False)
         await db.commit()
         return getattr(res, "rowcount", 0) or 0

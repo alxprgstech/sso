@@ -106,6 +106,40 @@
 - План: итоговый diff/проверки → commit → push → PR в main и фиксация ссылки.
 - Готовность: изменения сохранены и отправлены, PR создан, проверки отражены без объявления remote CI PASS.
 
+## SSO-SEC-0002 / #16
+P1; in_progress; начало 2026-10-20T16:05:11.3295866+03:00; Codex; независимая main7555f47. План: атомарный отзыв всех OIDC refresh/code грантов при успешном self-service revoke/logout, сохранить выбранные browser sessions и security_revision; проверить ownership, logout API/OIDC и refresh/code. Готовность: PG regression/существующие lifecycle, PR+комментарий. Offline JWT остаётся до exp.
+
+SSO-SEC-0002 done (2026-10-20T16:07:24.3035665+03:00): PG6+10PASS, ownership/lock orders/JWT scope подтверждены; PR публикация далее.
+## SEC-ISSUES-20261020
+Начало: 2026-10-20T16:00:07.3287809+03:00; Codex; P1; база main7555f47. SSO-SEC-0001–0006 (#15–20): in_progress. План: полные отчёты/повторный аудит → сверка main/PR → regression → исправление → PostgreSQL/статические проверки → независимые new/ ветки и PR → комментарии issues. Готовность каждого: устранена подтверждённая первопричина, проверки сохранены; иначе доказательный комментарий без фиктивного PR. Production/нагрузка/merge исключены.
+
+SSO-SEC-0001 done (2026-10-20T16:03:30.6105628+03:00): критерий source isolation/PKCE/replay/revoke подтверждён PG1+10; публикация PR далее. SSO-SEC-0002–0006 остаются in_progress.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
+
+## SEC-MERGE-20261020
+P1; in_progress; начало 2026-10-20T20:32:43.1105797+03:00; Codex. По прямому поручению владельца слить PR21–26 в main, разрешая конфликты без потери шести security-исправлений. PR21 уже merged при первичной проверке. План: последовательные merge main в PR-ветки, проверка конфликтов и целевые regression, push, обязательный CI, merge с проверкой SHA. Готовность: все6merged, совместные проверки и точные результаты записаны. Production/deploy не входят.
+
+## SSO-SEC-0003 / #17
+P1; done; начало 2026-10-20T16:09:15.4876516+03:00; Codex; main7555f47. План: единый start/pending/mail путь для всех identities, collision только после mailbox proof; existing User/credentials неизменны; PG контракт и сохранение uniqueness/confirmation/quotas. Старые assertions409 заменить по изменённому security-требованию, сохранив негативное покрытие. Готовность: проверки/отдельный PR/комментарий.
+
+SSO-SEC-0003 done (2026-10-20T16:10:59.2619568+03:00): PG/unit20 + усиленный collision1PASS, публичный status oracle устранён, uniqueness/consent/quotas сохранены. Далее отдельный PR и #18–20.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
+
+SSO-SEC-0003 follow-up in_progress (2026-10-20T16:52:08.5777631+03:00): дополнительные repeat-ID/MAX_SENDS/mail-error oracles устранить единым start-путём для всех identities; коллизии разрешать только после mailbox proof в confirm. Это предусмотренная issue альтернатива. Background delivery/canonical IDs не нужны, quotas/503transport semantics сохранить. Критерий: повторныеID/5sendcap/ошибкаSMTP одинаковы, existing User/credentials неизменны, validmailproofcollision отказ, mandatoryemail/newregistration работают.
+
+SSO-SEC-0003 uniform follow-up done (2026-10-20T16:56:04.6698984+03:00):26PASS, repeat-ID/sendcap/providerfailure пути унифицированы; ADR0028/API/security актуальны. PR23 finalCI после push; другие5PR finalCI success. Все6PR/issue comments созданы, merge/manualclose не выполнялись.
+
+SEC-ISSUES-20261020 done (2026-10-20T17:02:01.9691227+03:00): все6отдельных PR/issue comments созданы, все6finalfunctionalCI SUCCESS; матрица точныхSHA/ограничения вacceptance. Дальше owner review/merge, не выполняются автоматически. Documentation-only checkpoint проходит обычный CI отдельно.
+
+## SSO-SEC-0004 / #18
+P1; in_progress; начало 2026-10-20T16:12:56.2905732+03:00; Codex; независимая main7555f47. План: bounded process aggregation анонимных action_denied до background/DB; periodic batch flush60с и shutdown, bounded retry при ошибке БД. Сохранить authenticated audit/login_failed и retention90дней. Готовность: малые серии401/403/429, counts/cardinality/failure/actor tests, PR+comment.
+
+SSO-SEC-0004 done (2026-10-20T16:17:10.7190217+03:00):20PASS targeted, bounded writes/counts/failures/actor evidence; PR далее.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
+
 ## SSO-SEC-0005 / #19
 P1; in_progress; начало 2026-10-20T16:18:36.9114901+03:00; Codex; main7555f47. План: browser-held HttpOnly flow secret/hash в pending; повторный start вращает proof и инвалидирует чужой browser/старые email secrets; resend/confirm требуют flow proof. Gmail shortcut — GoTo/ViewAction в исходный browser; legacy server action тоже требует browser proof. Mailbox-mark/complete отвергнуты (ADR0026). Legacy pending fail-closed. Миграция0014, ADR, API/UI, regression original/reverse/interleaving/replay. Готовность: PG+frontend+static, отдельный PR/comment.
 

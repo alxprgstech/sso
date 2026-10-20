@@ -22,6 +22,35 @@ DOC-VALUE-01 завершён. DOC-CLEANUP-02 завершён: сокращен
 
 TOTP/Passkey/Recovery выключены по умолчанию; email confirmation самостоятельной регистрации обязательно. Защита и тесты этой очисткой не меняются.
 
+SSO-SEC-0002 in_progress (2026-10-20T16:05:11.3295866+03:00); #15 опубликован PR21 в независимой ветке, не merged.
+
+SSO-SEC-0002 завершён локально 2026-10-20T16:07:24.3035665+03:00: PG6+10PASS; scope — все grants, JWT до exp. #17–20 продолжаются.
+## Текущая security-кампания
+SEC-ISSUES-20261020 in_progress с 2026-10-20T16:00:07.3287809+03:00: отдельные исправления/PR для #15–20; результаты прежней приёмки не переносятся на новые изменения.
+
+SSO-SEC-0001: локальное исправление и PG1+10/Ruff/mypy завершены 2026-10-20T16:03:30.6105628+03:00; PR подготавливается. Остальные пять issues in_progress.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
+SEC-MERGE-20261020 in_progress (2026-10-20T20:32:43.1105797+03:00): merge разрешён владельцем; PR21 уже merged,22–26 ожидают последовательного объединения и CI. Старые статусы выше исторические.
+
+SSO-SEC-0003 in_progress; #15PR21/#16PR22 опубликованы отдельно, не merged.
+
+SSO-SEC-0003 локально done 2026-10-20T16:10:59.2619568+03:00:20PASS + realArgon2 collision1PASS. PR подготавливается; #18–20 продолжаются.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
+Последний #17 follow-up (2026-10-20T16:56:04.6698984+03:00): единый pending/mail путь без Userlookup устраняет дополнительные repeat-ID/quota/providerfailure oracles;26PASS+static/secretPASS, ADR0028. Коллизия раскрывается только после mailbox proof, existing credentials не меняются; MAX_SENDS3 сохранён. PR23 ждёт финальный CI. Другие5PR21/22/24/25/26 уже имеют SUCCESS на финальных functional SHA; ссылки в worklog. Общая production-приёмка и live SES/Gmail/load вне этой кампании.
+
+## Финальный результат (2026-10-20T17:02:01.9691227+03:00)
+Все6issues обработаны: #15→PR21, #16→PR22, #17→PR23, #18→PR24, #19→PR25, #20→PR26. Все6finalfunctionalCI SUCCESS; exactSHA/runlinks/localtests — acceptance. Security blockers image/schema устранены без ослабления проверок. Final#17 использует единый pending/mail путь, а не ранний response-only вариант. Каждому issue оставлен результат; PR не merged, issues вручную не закрыты. Следующий шаг — review владельца; возможны конфликты append-only документов при последовательном merge, сохранить оба registration изменения. Production/liveSES/GmailRendering/distributedload остаются вне подтверждённой приёмки. Этот итоговый documentation-only checkpoint проверяется обычным CI.
+
+SSO-SEC-0004 in_progress; #15–17 PR21–23 опубликованы, не merged.
+
+SSO-SEC-0004 локально done 2026-10-20T16:17:10.7190217+03:00:20PASS,65typechecked; #19–20 продолжаются.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
 SSO-SEC-0005 in_progress; PR21–24 для #15–18 опубликованы отдельно, не merged.
 
 SSO-SEC-0005 локально done 2026-10-20T16:30:27.5799474+03:00:46PASS; миграция0014 и Gmail ViewAction требуют review. Live Gmail/browserE2E не заявлены. Последний issue#20 продолжается.

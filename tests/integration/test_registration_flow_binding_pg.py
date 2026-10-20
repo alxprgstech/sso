@@ -135,3 +135,48 @@ async def test_legacy_pending_without_browser_hash_fails_closed(pg_session):
             pg_session, identifier, "192.0.2.40", get_settings(), browser_secret=browser
         )
     assert await pg_session.scalar(select(func.count(User.id))) == 0
+
+
+async def test_neutral_resend_keeps_browser_proof_even_when_send_budget_is_exhausted(
+    pg_session, pg_client, monkeypatch
+):
+    """Combined #17/#19: neutral replies must never bypass the originating browser."""
+    import uuid
+
+    from tests.integration.test_registration_uniform_path_pg import payload, prepare
+
+    await prepare(pg_session)
+    messages = []
+
+    async def capture(message, settings):
+        messages.append(message)
+
+    monkeypatch.setattr(registration_service, "deliver_message", capture)
+    identifier = None
+    owner_cookies = None
+    for source in (151, 152, 153):
+        transport = httpx.ASGITransport(app=app, client=(f"192.0.2.{source}", 123))
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as browser:
+            reply = await browser.post("/api/v1/auth/register", json=payload(True))
+            assert reply.status_code == 202
+            if identifier is not None:
+                assert reply.json()["challenge_id"] == identifier
+            identifier = reply.json()["challenge_id"]
+            owner_cookies = httpx.Cookies(browser.cookies)
+    transport = httpx.ASGITransport(app=app, client=("192.0.2.154", 123))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as stranger:
+        assert (
+            await stranger.post("/api/v1/auth/register/resend", json={"challenge_id": identifier})
+        ).status_code == 401
+        reply = await stranger.post(
+            "/api/v1/auth/register/resend", json={"challenge_id": str(uuid.uuid4())}
+        )
+        assert reply.status_code == 202
+    transport = httpx.ASGITransport(app=app, client=("192.0.2.155", 123))
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver", cookies=owner_cookies
+    ) as owner:
+        reply = await owner.post("/api/v1/auth/register/resend", json={"challenge_id": identifier})
+        assert reply.status_code == 202 and reply.json()["challenge_id"] == identifier
+    assert len(messages) == 3
+    assert await pg_session.scalar(select(func.count(User.id))) == 1
