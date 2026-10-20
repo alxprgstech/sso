@@ -146,3 +146,17 @@ P1; in_progress; начало 2026-10-20T16:18:36.9114901+03:00; Codex; main7555
 SSO-SEC-0005 done (2026-10-20T16:30:27.5799474+03:00): final46PASS, frontend40/types/lint/build/static65/secret0newPASS; mandatory browser+mail proofs на всех путях и legacy отказ проверены. PR публикация далее; #20 остаётся in_progress.
 
 SSO-SEC-0005 CI follow-up: schema guard0014 + ownedCompose/migration regressions выполнены; общий libx11pin внесён, повтор CI pending.
+
+## SSO-SEC-0006 / #20
+P1; in_progress; начало 2026-10-20T16:31:42.5772362+03:00; Codex; main7555f47. План: persistent source+identifier/source+account quotas5/60с с alias protection и source30/60с; bounded Argon2 admission16total/2source/2workers,429+RetryAfter вместо503 перегрузки; trusted-source context и cancellation reservation. Regression targeted lockout/aliases/spoofing и8requestburst с реальным Argon2+легитимным другим источником. Готовность: PG/unit/crypto/MFA/static, PR/comment. Distributed/NAT ограничения явно документировать.
+
+SSO-SEC-0006 local done (2026-10-20T16:35:55.3927006+03:00):23PASS; отдельный PR далее. До завершения всех6PR исправить обнаруженные image/libx11 и schema-guard CI blockers, не ослабляя обязательные проверки.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
+
+## SEC-ISSUES-20261020: итог реализации
+Все SSO-SEC-0001–0006 реализованы, локально проверены и опубликованы: #15 PR21 (PG1+10), #16 PR22 (PG6+10), #17 PR23 (20+collision1), #18 PR24 (20), #19 PR25 (46+frontend40+migration/Compose), #20 PR26 (23+source scheduling6). Каждый issue получил комментарий. Общие image/schema CI blockers исправлены с сохранением guard/scan; PR25 finalcode CI success, остальные finalCI проверяются перед итоговым отчётом. Функциональных зависимостей междуPR нет; append-only документы при последовательном merge сверить вручную.
+
+SEC-MERGE-20261020 checkpoint (2026-10-20T20:42:24.7276264+03:00): PR21/22merged; PR23CIjobsSUCCESS; PR24–26 продолжаются. Все6fixes локально совместимы,36combinedtestsPASS; единственный ручной codeconflict resend решён с дополнительным regression. До done остаются обязательныйCI и merge остальных PR.
+
+SEC-MERGE-20261020 (2026-10-20T20:48:49.4847872+03:00): in_progress; PR21–25merged. До PR26merge исправить test teardown synchronization, не освобождать production slots раньше worker. Targeted6PASS; критерий оставшегося шага — CI новогоSHA success,merge26,проверка всех6GitHubstates.

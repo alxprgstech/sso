@@ -56,3 +56,17 @@ SSO-SEC-0005 in_progress; PR21–24 для #15–18 опубликованы о�
 SSO-SEC-0005 локально done 2026-10-20T16:30:27.5799474+03:00:46PASS; миграция0014 и Gmail ViewAction требуют review. Live Gmail/browserE2E не заявлены. Последний issue#20 продолжается.
 
 PR25: schema guard исправлен до0014, localCompose/CSP3/migrationrolePASS; runtime image CVE patch внесён. Общий CI ещё не подтверждён.
+
+SSO-SEC-0006 in_progress; первые5issues опубликованы независимыми PR21–25, не merged.
+
+SSO-SEC-0006 локально проверен23PASS. Общая кампания продолжается: remoteCI выявил libx11image CVE вPR21–24 и устаревший schema guard вPR25; исправления и повторы обязательны до итогового отчёта.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
+## Завершение обработки #15–20 (2026-10-20T16:46:52.2264279+03:00)
+Созданы PR21–26 вmain, комментарии оставлены в6issues. Все подтверждённые сценарии имеют regression; локальные результаты в acceptance. Общий inheritedlibx11CVE исправлен во всех ветках; source/releaseTrivy0HIGH/CRITICALPASS. PR25 schema guard0014 исправлен, ComposeCSP3/migrationrole и GitHubCI39432532318SUCCESS. Остальные обязательные CI повторяются; актуальные итоги смотреть в checks соответствующих PR и финальных issue-comments. Merge, ручное закрытие, production и реальные рассылки не выполнялись. Внешние SES/Gmail rendering/load ограничения остаются; общая production-приёмка этим не закрыта.
+
+## Актуальный merge checkpoint (2026-10-20T20:42:24.7276264+03:00)
+Владелец разрешил merge всех6PR. PR21/22merged, PR23CIjobsSUCCESS; PR24–26 продолжаются. Совместный код содержит все6исправлений,36targetedtestsPASS, новый resend/browserproof regressionPASS. Окончательные merge SHA/CI проверяются в GitHub; прежние notmerged записи выше исторические. Production/live email/load не проверялись в mergeзадаче.
+
+Merge checkpoint 2026-10-20T20:48:49.4847872+03:00: PR21–25merged после успешногоCI. PR26 задержан гонкой unit-test teardown (не завершён shielded worker), исправленной join настоящего pool2; targeted6PASS. Runtimeзащита не менялась. Ожидается новый обязательныйCI перед последним merge.
