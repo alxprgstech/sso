@@ -88,7 +88,13 @@ async def limit_security_endpoint(
         "/api/v1/mfa/passkey/register/options",
         "/api/v1/mfa/passkey/register/verify",
     }:
-        await consume_rate_limit(db, settings, RateLimit("security-ip", get_client_ip(request), 40))
+        ip = get_client_ip(request, settings.TRUSTED_PROXIES)
+        if path in {"/oauth/token", "/oauth/revoke"}:
+            # Public client IDs cannot own a shared, attacker-consumable quota.
+            # Bound each source before client-secret/PKCE work; operations are isolated.
+            await consume_rate_limit(db, settings, RateLimit(f"oauth-source:{path}", ip, 30))
+        else:
+            await consume_rate_limit(db, settings, RateLimit("security-ip", ip, 40))
 
 
 async def get_current_session(
