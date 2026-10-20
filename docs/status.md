@@ -25,3 +25,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 SSO-SEC-0005 in_progress; PR21–24 для #15–18 опубликованы отдельно, не merged.
 
 SSO-SEC-0005 локально done 2026-10-20T16:30:27.5799474+03:00:46PASS; миграция0014 и Gmail ViewAction требуют review. Live Gmail/browserE2E не заявлены. Последний issue#20 продолжается.
+
+PR25: schema guard исправлен до0014, localCompose/CSP3/migrationrolePASS; runtime image CVE patch внесён. Общий CI ещё не подтверждён.

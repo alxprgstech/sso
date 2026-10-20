@@ -110,3 +110,5 @@
 P1; in_progress; начало 2026-10-20T16:18:36.9114901+03:00; Codex; main7555f47. План: browser-held HttpOnly flow secret/hash в pending; повторный start вращает proof и инвалидирует чужой browser/старые email secrets; resend/confirm требуют flow proof. Gmail shortcut — GoTo/ViewAction в исходный browser; legacy server action тоже требует browser proof. Mailbox-mark/complete отвергнуты (ADR0026). Legacy pending fail-closed. Миграция0014, ADR, API/UI, regression original/reverse/interleaving/replay. Готовность: PG+frontend+static, отдельный PR/comment.
 
 SSO-SEC-0005 done (2026-10-20T16:30:27.5799474+03:00): final46PASS, frontend40/types/lint/build/static65/secret0newPASS; mandatory browser+mail proofs на всех путях и legacy отказ проверены. PR публикация далее; #20 остаётся in_progress.
+
+SSO-SEC-0005 CI follow-up: schema guard0014 + ownedCompose/migration regressions выполнены; общий libx11pin внесён, повтор CI pending.
