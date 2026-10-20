@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from app.core import security
@@ -71,7 +72,9 @@ async def test_worker_capacity_stays_reserved_after_request_cancellation():
 
 
 @pytest.mark.asyncio
-async def test_source_reservation_survives_cancellation_and_other_source_is_admitted():
+async def test_source_reservation_survives_cancellation_and_other_source_is_admitted(monkeypatch):
+    executor = ThreadPoolExecutor(max_workers=2)
+    monkeypatch.setattr(security, "_password_executor", executor)
     gate, entered = threading.Event(), threading.Event()
     counter = 0
     lock = threading.Lock()
@@ -104,6 +107,9 @@ async def test_source_reservation_survives_cancellation_and_other_source_is_admi
     finally:
         gate.set()
         await asyncio.gather(*tasks, *([other] if other else []), return_exceptions=True)
+        # Awaiting a cancelled asyncio task does not join its shielded worker.
+        # Join the real two-worker pool before asserting that all slots are free.
+        await asyncio.to_thread(executor.shutdown, wait=True)
         security.password_source.reset(token)
     assert other.result() is True
     assert not security._password_sources

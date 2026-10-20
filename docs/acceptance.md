@@ -119,3 +119,5 @@ SEC-ISSUES-20261020 final publication checkpoint 2026-10-20T16:46:52.2264279+03:
 
 ## SEC-MERGE-20261020 — совместная проверка
 2026-10-20T20:42:24.7276264+03:00; Windows/Python3.12.14, dedicated fresh PostgreSQL16 container, schema0014 + safety marker. PR22 combined17PASS32.58s; PR23combined17PASS51.13s; PR24audit20PASS14.35s; PR25registration/browserproof32PASS31.34s, включая новый combined resend test. PR26combined35PASS/1FAIL39.99s (worker importapp отсутствовал в PYTHONPATH); повтор independent-worker с backend+root и testDSN1PASS9.80s. Итого36совместных tests прошли. Ruff/format240/mypy75PASS, secrets126candidates0newPASS. Новая интеграция не заменяет live SES/Gmail или load benchmark. CI на обновлённых ветках проверяется перед merge; точные remote результаты в GitHub и worklog.
+
+PR26CI39468423241:701PASS/1FAIL,14subtests; cancellationtest имел преждевременный empty assertion после asyncio cancellation. Исправлена синхронизация реального worker join в unit test, runtime неизменён. Targetedpasswordbudget/PGburst6PASS5.82s; обязательныйCI новогоSHA ожидается.

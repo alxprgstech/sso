@@ -158,3 +158,5 @@ SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, не�
 Все SSO-SEC-0001–0006 реализованы, локально проверены и опубликованы: #15 PR21 (PG1+10), #16 PR22 (PG6+10), #17 PR23 (20+collision1), #18 PR24 (20), #19 PR25 (46+frontend40+migration/Compose), #20 PR26 (23+source scheduling6). Каждый issue получил комментарий. Общие image/schema CI blockers исправлены с сохранением guard/scan; PR25 finalcode CI success, остальные finalCI проверяются перед итоговым отчётом. Функциональных зависимостей междуPR нет; append-only документы при последовательном merge сверить вручную.
 
 SEC-MERGE-20261020 checkpoint (2026-10-20T20:42:24.7276264+03:00): PR21/22merged; PR23CIjobsSUCCESS; PR24–26 продолжаются. Все6fixes локально совместимы,36combinedtestsPASS; единственный ручной codeconflict resend решён с дополнительным regression. До done остаются обязательныйCI и merge остальных PR.
+
+SEC-MERGE-20261020 (2026-10-20T20:48:49.4847872+03:00): in_progress; PR21–25merged. До PR26merge исправить test teardown synchronization, не освобождать production slots раньше worker. Targeted6PASS; критерий оставшегося шага — CI новогоSHA success,merge26,проверка всех6GitHubstates.

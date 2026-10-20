@@ -68,3 +68,5 @@ SSO-SEC-0006 локально проверен23PASS. Общая кампани�
 
 ## Актуальный merge checkpoint (2026-10-20T20:42:24.7276264+03:00)
 Владелец разрешил merge всех6PR. PR21/22merged, PR23CIjobsSUCCESS; PR24–26 продолжаются. Совместный код содержит все6исправлений,36targetedtestsPASS, новый resend/browserproof regressionPASS. Окончательные merge SHA/CI проверяются в GitHub; прежние notmerged записи выше исторические. Production/live email/load не проверялись в mergeзадаче.
+
+Merge checkpoint 2026-10-20T20:48:49.4847872+03:00: PR21–25merged после успешногоCI. PR26 задержан гонкой unit-test teardown (не завершён shielded worker), исправленной join настоящего pool2; targeted6PASS. Runtimeзащита не менялась. Ожидается новый обязательныйCI перед последним merge.
