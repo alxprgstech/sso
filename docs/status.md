@@ -26,3 +26,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 SEC-ISSUES-20261020 in_progress с 2026-10-20T16:00:07.3287809+03:00: отдельные исправления/PR для #15–20; результаты прежней приёмки не переносятся на новые изменения.
 
 SSO-SEC-0001: локальное исправление и PG1+10/Ruff/mypy завершены 2026-10-20T16:03:30.6105628+03:00; PR подготавливается. Остальные пять issues in_progress.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
