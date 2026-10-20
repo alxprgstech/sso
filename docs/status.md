@@ -25,3 +25,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 SSO-SEC-0004 in_progress; #15–17 PR21–23 опубликованы, не merged.
 
 SSO-SEC-0004 локально done 2026-10-20T16:17:10.7190217+03:00:20PASS,65typechecked; #19–20 продолжаются.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.

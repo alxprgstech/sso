@@ -3629,3 +3629,5 @@ Default browser: 48 PASS; enabled: 5 PASS / 4 FAIL. Снимок показыв�
 2026-10-20T16:16:18.5034271+03:00 — Codex, SSO-SEC-0004 environment correction. Два unit запуска в Windows sandbox остановлены: faulthandler показал asyncio selector/socketpair при создании event loop. Разрешённый запуск вне sandbox3PASS0.05с; это не изменение timeout/защиты. Окончательный полный targeted набор повторяется после rollback-failure fix.
 
 2026-10-20T16:17:10.7190217+03:00 — Codex, SSO-SEC-0004 done. Final20PASS; bounded anonymous batch/retention/authenticated semantics подтверждены, static65/secret0newPASS. Следующий шаг commit/push/PR, затем #19–20.
+
+2026-10-20T16:41:57.4338874+03:00 — Codex, SEC-ISSUES-20261020 CI follow-up (new/sec-0004-aggregate-anonymous-audit). Общий исходный frontend image содержит libx11CVE-2026-88806 (1.8.13-r0, fixed1.8.14-r0), подтверждено CI39427872973/job118644905794. Source/release pins libx11=1.8.14-r0, release tiff=4.7.2-r0 синхронизирован source. Officialnginx apk install и source buildPASS; локальный image scan/remoteCI повторяются. Scans/thresholds не отключены, ветка остаётся независимой.

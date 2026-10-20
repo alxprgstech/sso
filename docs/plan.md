@@ -110,3 +110,5 @@
 P1; in_progress; начало 2026-10-20T16:12:56.2905732+03:00; Codex; независимая main7555f47. План: bounded process aggregation анонимных action_denied до background/DB; periodic batch flush60с и shutdown, bounded retry при ошибке БД. Сохранить authenticated audit/login_failed и retention90дней. Готовность: малые серии401/403/429, counts/cardinality/failure/actor tests, PR+comment.
 
 SSO-SEC-0004 done (2026-10-20T16:17:10.7190217+03:00):20PASS targeted, bounded writes/counts/failures/actor evidence; PR далее.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.

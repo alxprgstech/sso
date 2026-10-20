@@ -69,3 +69,5 @@
 
 ### SSO-SEC-0004 / #18 — 2026-10-20T16:17:10.7190217+03:00
 main7555f47 per-request action_denied INSERT подтверждён кодом. PG16/Python3.12.14: окончательный набор tests/test_denied_audit_buffer.py + tests/integration/test_anonymous_audit_budget_pg.py + tests/integration/test_reauthentication_pg.py + tests/test_security_context_redaction.py20PASS.20anonymous401→0rows before flush/1row count20 после; actor-specific audit, cardinality900events→≤259keys,401/403/429, saturation, rollback/concurrentflush failure recovery. Ruff/format/mypy65PASS, secret self-test0new. Два sandbox unit запуска прерваны из-за Windows asyncio socketpair, вне sandbox3PASS, затем final20PASS. Retention90дней сохранён. Нет sustainedload/disk exhaustion/production проверки; crash-loss последнего anonymous окна и per-worker budget описаны ADR0025.
+
+CI image follow-up 2026-10-20T16:41:57.4338874+03:00: inherited libx11CVE-2026-88806 pin1.8.14-r0; source/release manifests согласованы (tiff4.7.2-r0 тоже). Officialnginx apk install/source buildPASS; прежний image scanFAILED, повтор CI pending. Функциональные результаты этой ветки выше; zero-CVE до scan не объявляется.
