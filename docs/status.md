@@ -50,3 +50,9 @@ SSO-SEC-0004 in_progress; #15–17 PR21–23 опубликованы, не merg
 SSO-SEC-0004 локально done 2026-10-20T16:17:10.7190217+03:00:20PASS,65typechecked; #19–20 продолжаются.
 
 Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
+SSO-SEC-0005 in_progress; PR21–24 для #15–18 опубликованы отдельно, не merged.
+
+SSO-SEC-0005 локально done 2026-10-20T16:30:27.5799474+03:00:46PASS; миграция0014 и Gmail ViewAction требуют review. Live Gmail/browserE2E не заявлены. Последний issue#20 продолжается.
+
+PR25: schema guard исправлен до0014, localCompose/CSP3/migrationrolePASS; runtime image CVE patch внесён. Общий CI ещё не подтверждён.

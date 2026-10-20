@@ -319,6 +319,7 @@ class AuthService:
         settings: Settings | None = None,
         request_details: dict[str, str] | None = None,
         legal_versions: dict[str, str] | None = None,
+        browser_secret: str | None = None,
     ) -> PendingRegistration:
         """Begin registration; the user is created only after mailbox verification."""
         from app.services.registration_service import RegistrationService
@@ -326,6 +327,7 @@ class AuthService:
         return await RegistrationService.start(
             db,
             username=username,
+            browser_secret=browser_secret,
             email=email,
             password=password,
             ip_address=ip_address or "127.0.0.1",

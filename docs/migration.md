@@ -16,8 +16,11 @@
 
 ## Unreleased: исправления SEC-01…04
 
-Перед запуском новой реализации выполните `alembic upgrade head` до `0013_security_outbox`. 0011 добавляет nullable Gmail action hash: прежние code/link работают, прежние Gmail action без секрета отвергаются; отправьте новое письмо. 0012 нормализует binary credential IDs в base64url без padding; коллизия или invalid ID останавливают миграцию с общей диагностикой без удаления записей. Сначала исследуйте конфликт в приватной копии, не удаляйте credentials автоматически. 0013 добавляет notification outbox.
+Перед запуском новой реализации выполните `alembic upgrade head` до `0014_registration_browser`. 0011 добавляет nullable Gmail action hash: прежние code/link работают, прежние Gmail action без секрета отвергаются; отправьте новое письмо. 0012 нормализует binary credential IDs в base64url без padding; коллизия или invalid ID останавливают миграцию с общей диагностикой без удаления записей. Сначала исследуйте конфликт в приватной копии, не удаляйте credentials автоматически. 0013 добавляет notification outbox.
 
 SDK теперь отвергает HTTP по умолчанию и запрещает отключение проверки TLS. Локальные клиенты должны явно выбрать `transport_profile="local"`; demo processes — `SSO_TRANSPORT_PROFILE=local`. Серверу для HTTP loopback callbacks требуется `REDIRECT_TRANSPORT_PROFILE=local`; production всё равно требует HTTPS. VERSION этой задачей не изменяется.
 
 Сторонние cookie-клиенты управления сессиями должны получать отдельный read grant через password/configured MFA. Каждый DELETE получает отдельный one-use proof. Все Python dependency installations используют hashed companions и `--require-hashes`, локальные пакеты устанавливаются отдельно с `--no-deps --no-build-isolation`.
+
+### 0014_registration_browser / SSO-SEC-0005
+Выполните alembic upgrade head до0014_registration_browser. Добавляется nullable browser_secret_hash в pending_registrations. Существующие незавершённые регистрации больше не подтверждаются/resend без нового browser proof: пользователю нужно повторно начать регистрацию; старые письма не использовать. Существующие аккаунты/сессии не изменяются. Новые письма предлагают Gmail ViewAction в исходный browser; legacy server ConfirmAction без browser cookie отвергается. Downgrade удаляет binding и возвращает риск prehijack; не используйте его как security rollback на открытой регистрации.

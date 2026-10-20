@@ -210,6 +210,9 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               <Button variant="ghost" disabled={loading} onClick={handleResend}>
                 Отправить новый код
               </Button>
+              <p className="text-xs text-secondary">
+                Завершайте регистрацию в этом браузере. При новой заявке предыдущая перестаёт действовать.
+              </p>
               <details className="text-xs text-secondary">
                 <summary className="cursor-pointer py-2">
                   Сведения о запросе

@@ -80,3 +80,5 @@ SSO-SEC-0003: start для всех identities выполняет одинако
 
 ### SSO-SEC-0004: объём anonymous denied audit
 Анонимные401/403/429 агрегируются до DB/task по server route/reason в bounded counters (256+3overflow), flush60с/worker одной транзакцией и при graceful shutdown. action_denied содержит count/aggregated/window_seconds; request_id/IP/субъект агрегату не приписываются. Ошибка БД сохраняет bounded counts. Authenticated и предметные события остаются индивидуальными. Retention90дней сохранён. Crash может потерять несохранённое anonymous окно; worker count влияет на общий бюджет. [ADR0025](adr/0025-anonymous-audit-aggregation.md).
+
+SSO-SEC-0005: почтовое подтверждение регистрации привязано к независимому HttpOnly browser secret (только SHA-256 в pending); replacement вращает оба proofs. Все code/link/action/resend пути требуют исходный browser, legacy pending fail-closed. Gmail shortcut переходит в browser через ViewAction; Google bearer+mail secret без browser proof недостаточны. [ADR0026](adr/0026-registration-browser-binding.md) заменяет server-to-server enrollment часть ADR0023.

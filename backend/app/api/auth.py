@@ -14,9 +14,12 @@ from app.api.deps import (
     get_current_user,
     require_recent_reauthentication,
     verify_csrf,
+    validate_cookie_origin,
 )
 from app.config import Settings, get_settings
 from app.core.rate_limit import get_client_ip
+from app.core.registration_flow import browser_secret, set_browser_secret
+from app.core.security import generate_random_token
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
@@ -106,6 +109,7 @@ async def get_capabilities(
 async def register(
     payload: RegisterRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RegisterResponse:
@@ -129,6 +133,7 @@ async def register(
     ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
 
+    flow_secret = generate_random_token(32)
     pending = await AuthService.register_user(
         db=db,
         username=payload.username,
@@ -139,7 +144,9 @@ async def register(
         settings=settings,
         request_details=request_details(request, settings),
         legal_versions=payload.legal_versions,
+        browser_secret=flow_secret,
     )
+    set_browser_secret(response, request, settings, flow_secret)
 
     return RegisterResponse(
         challenge_id=pending.id,
@@ -151,11 +158,17 @@ async def register(
 @router.post("/register/confirm-code", response_model=RegistrationCompleteResponse)
 async def confirm_registration_code(
     payload: RegistrationCodeConfirmRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RegistrationCompleteResponse:
+    validate_cookie_origin(request, settings)
     user = await RegistrationService.confirm(
-        db, settings=settings, challenge_id=payload.challenge_id, code=payload.code
+        db,
+        settings=settings,
+        challenge_id=payload.challenge_id,
+        code=payload.code,
+        browser_secret=browser_secret(request, settings),
     )
     return RegistrationCompleteResponse(user_id=user.id)
 
@@ -163,10 +176,14 @@ async def confirm_registration_code(
 @router.post("/register/confirm-link", response_model=RegistrationCompleteResponse)
 async def confirm_registration_link(
     payload: RegistrationLinkConfirmRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RegistrationCompleteResponse:
-    user = await RegistrationService.confirm(db, settings=settings, link=payload.token)
+    validate_cookie_origin(request, settings)
+    user = await RegistrationService.confirm(
+        db, settings=settings, link=payload.token, browser_secret=browser_secret(request, settings)
+    )
     return RegistrationCompleteResponse(user_id=user.id)
 
 
@@ -187,8 +204,13 @@ async def resend_registration(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RegisterResponse:
+    validate_cookie_origin(request, settings)
     pending = await RegistrationService.resend(
-        db, payload.challenge_id, get_client_ip(request), settings
+        db,
+        payload.challenge_id,
+        get_client_ip(request),
+        settings,
+        browser_secret=browser_secret(request, settings),
     )
     return RegisterResponse(
         challenge_id=pending.id,
@@ -205,12 +227,17 @@ async def confirm_registration_gmail(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RegistrationCompleteResponse:
+    validate_cookie_origin(request, settings)
     from app.services.privacy_service import RateLimit, consume_rate_limit
 
     await consume_rate_limit(db, settings, RateLimit("gmail-action", get_client_ip(request), 10))
     await verify_gmail_bearer(request.headers.get("Authorization", ""), settings)
     user = await RegistrationService.confirm(
-        db, settings=settings, action_id=challenge_id, action_token=action_token
+        db,
+        settings=settings,
+        action_id=challenge_id,
+        action_token=action_token,
+        browser_secret=browser_secret(request, settings),
     )
     return RegistrationCompleteResponse(user_id=user.id)
 
