@@ -21,7 +21,7 @@ class BodyLimitMiddleware:
                         return
                     chunk = message.get("body", b"")
                     size += len(chunk)
-                    if size > self.limit + 1:
+                    if size > self.limit:
                         return await JSONResponse(
                             {"error": "invalid_request", "detail": "Превышен размер запроса"},
                             status_code=413,
