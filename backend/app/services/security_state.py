@@ -96,3 +96,11 @@ async def invalidate_security_state(
         if model is EmailVerificationToken and preserve_email_token_id is not None:
             statement = statement.where(model.id != preserve_email_token_id)
         await db.execute(statement)
+
+
+async def revoke_oidc_grants(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Caller holds User lock. Revoke all grants without invalidating other browser sessions."""
+    await db.execute(delete(AuthorizationCode).where(AuthorizationCode.user_id == user_id))
+    await db.execute(
+        update(RefreshToken).where(RefreshToken.user_id == user_id).values(is_revoked=True)
+    )

@@ -67,6 +67,10 @@
 
 Документационная очистка по поручению владельца: старые аудиты удалены после переноса действующих сведений; закрытая диагностика сокращена, журнал/открытые требования/тестовые зависимости сохранены. Проверены UTF-8 всех 64 оставшихся tracked Markdown, 292 локальные ссылки действующего комплекта (0 отсутствующих, исторический worklog исключён из проверки ссылок), 9 Git-целей по точному SHA через git cat-file. Secret scan с контрольным секретом: PASS, 126 candidates/0new, baseline без изменений. Формат diff проверяется после финальной записи. Исходники, миграции, тесты, lock и CI policy не менялись; runtime/remote CI не повторялись.
 
+### SSO-SEC-0002 / #16 — 2026-10-20T16:07:24.3035665+03:00
+На main7555f47 refresh-gap подтверждён кодом; accessJWT до exp — согласованное поведение. Изолированная PG16/Python3.12.14: tests/integration/test_self_revoke_grants_pg.py6PASS (logout API/OIDC, one/others, ownership, offlineJWT, оба реальных lock orders refresh/revoke); test_security_revision_pg.py + test_oidc_pg.py10PASS. Ruff/format/mypy64 и secret/diff проверяются перед commit. Production/браузер/нагрузка не запускались. Политика отзывает все grants, сохраняемые browser sessions могут начать новый SSO-flow.
+
+CI image follow-up 2026-10-20T16:41:50.7021040+03:00: inherited libx11CVE-2026-88806 pin1.8.14-r0; source/release manifests согласованы (tiff4.7.2-r0 тоже). Officialnginx apk install/source buildPASS; прежний image scanFAILED, повтор CI pending. Функциональные результаты этой ветки выше; zero-CVE до scan не объявляется.
 ### SSO-SEC-0001 / #15 — 2026-10-20T16:03:30.6105628+03:00
 main7555f47: общий oauth-client bucket подтверждён кодом. Изолированная PostgreSQL16, fresh schema0013 + guard; Python3.12.14. Новый tests/integration/test_oauth_source_quota_pg.py:1PASS; существующие test_oidc_pg.py + test_distributed_rate_limiting_pg.py:10PASS. Ruff и mypy64PASS. Первый новый тест FAILED из-за async lazy-load fixture, исправлен явной загрузкой; повтор1PASS. Первоначальная .venv не содержала sentry_sdk — тесты не собраны, использована .venv-sentry. Без production/внешней почты/нагрузки; NAT и distributed flood не устранены.
 
