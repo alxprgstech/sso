@@ -132,3 +132,10 @@ SSO-SEC-0003 follow-up in_progress (2026-10-20T16:52:08.5777631+03:00): допо
 SSO-SEC-0003 uniform follow-up done (2026-10-20T16:56:04.6698984+03:00):26PASS, repeat-ID/sendcap/providerfailure пути унифицированы; ADR0028/API/security актуальны. PR23 finalCI после push; другие5PR finalCI success. Все6PR/issue comments созданы, merge/manualclose не выполнялись.
 
 SEC-ISSUES-20261020 done (2026-10-20T17:02:01.9691227+03:00): все6отдельных PR/issue comments созданы, все6finalfunctionalCI SUCCESS; матрица точныхSHA/ограничения вacceptance. Дальше owner review/merge, не выполняются автоматически. Documentation-only checkpoint проходит обычный CI отдельно.
+
+## SSO-SEC-0004 / #18
+P1; in_progress; начало 2026-10-20T16:12:56.2905732+03:00; Codex; независимая main7555f47. План: bounded process aggregation анонимных action_denied до background/DB; periodic batch flush60с и shutdown, bounded retry при ошибке БД. Сохранить authenticated audit/login_failed и retention90дней. Готовность: малые серии401/403/429, counts/cardinality/failure/actor tests, PR+comment.
+
+SSO-SEC-0004 done (2026-10-20T16:17:10.7190217+03:00):20PASS targeted, bounded writes/counts/failures/actor evidence; PR далее.
+
+SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.

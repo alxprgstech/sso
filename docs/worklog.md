@@ -3660,3 +3660,15 @@ Default browser: 48 PASS; enabled: 5 PASS / 4 FAIL. Снимок показыв�
 2026-10-20T17:09:40.3059591+03:00 — Codex, SEC-ISSUES-20261020 final compatibility checkpoint. DocumentationCI39435719936SUCCESS на85ba66f, все6PR CIзелёные. Перед будущим совместным merge PR23/25 collision fixture дополнен переносом настоящих response cookies исходной заявки в явно создаваемыйHTTPclient; это сохраняет browser proof изPR25 без mocks/feature toggles, assertions/квоты не меняются. Runtime-код не менялся. Следующий обычныйCI проверяет этот test-only follow-up.
 
 2026-10-20T20:37:07.2696867+03:00 — Codex, SEC-MERGE-20261020 PR23 checkpoint. Совместные registration/uniform_path/consent/self_revoke/oauth_source PostgreSQL17PASS51.13s; RuffPASS,mypy73PASS. Только docs-конфликты, обе стороны сохранены; register единый mail-path, logout grant-revoke сохранены. Примечание: счётчик check_docs во время unmerged index учитывает stage-дубликаты, окончательный count выполнять после git add. Далее CI и PR24.
+
+2026-10-20T16:12:56.2905732+03:00 — Codex, SSO-SEC-0004 in_progress. Retention90дней уже есть; проблема1request→1audit insert подтверждена main middleware. Выбрана bounded агрегация route/reason без IP/query/cookie keys до DB, flush по60с на worker; отдельные authenticated security events сохраняются. Риск crash-loss последнего окна документировать, sustained load не проводить.
+
+2026-10-20T16:14:15.5524626+03:00 — Codex, SSO-SEC-0004 checkpoint. PG/unit/redaction/reauth19PASS; малые20anonymous401 дают0строк доflush и1aggregate count20 после. Authenticated denial regression сохранён. Mypy65PASS. Добавлена защита recount при rollback failure и concurrent flush regression, выполняется повтор; ADR0025/security/ops обновлены.
+
+2026-10-20T16:16:18.5034271+03:00 — Codex, SSO-SEC-0004 environment correction. Два unit запуска в Windows sandbox остановлены: faulthandler показал asyncio selector/socketpair при создании event loop. Разрешённый запуск вне sandbox3PASS0.05с; это не изменение timeout/защиты. Окончательный полный targeted набор повторяется после rollback-failure fix.
+
+2026-10-20T16:17:10.7190217+03:00 — Codex, SSO-SEC-0004 done. Final20PASS; bounded anonymous batch/retention/authenticated semantics подтверждены, static65/secret0newPASS. Следующий шаг commit/push/PR, затем #19–20.
+
+2026-10-20T16:41:57.4338874+03:00 — Codex, SEC-ISSUES-20261020 CI follow-up (new/sec-0004-aggregate-anonymous-audit). Общий исходный frontend image содержит libx11CVE-2026-88806 (1.8.13-r0, fixed1.8.14-r0), подтверждено CI39427872973/job118644905794. Source/release pins libx11=1.8.14-r0, release tiff=4.7.2-r0 синхронизирован source. Officialnginx apk install и source buildPASS; локальный image scan/remoteCI повторяются. Scans/thresholds не отключены, ветка остаётся независимой.
+
+2026-10-20T20:37:56.0455449+03:00 — Codex, SEC-MERGE-20261020 PR24 checkpoint. Deniedaudit/PGaudit/reauth/redaction20PASS14.35s; RuffPASS,mypy74PASS. Source без конфликтов, docs объединены с обеих сторон; retention90d и индивидуальные authenticated events сохранены. PR22/23 CI выполняются; далее PR25browserbinding.

@@ -44,3 +44,9 @@ SSO-SEC-0003 локально done 2026-10-20T16:10:59.2619568+03:00:20PASS + re
 
 ## Финальный результат (2026-10-20T17:02:01.9691227+03:00)
 Все6issues обработаны: #15→PR21, #16→PR22, #17→PR23, #18→PR24, #19→PR25, #20→PR26. Все6finalfunctionalCI SUCCESS; exactSHA/runlinks/localtests — acceptance. Security blockers image/schema устранены без ослабления проверок. Final#17 использует единый pending/mail путь, а не ранний response-only вариант. Каждому issue оставлен результат; PR не merged, issues вручную не закрыты. Следующий шаг — review владельца; возможны конфликты append-only документов при последовательном merge, сохранить оба registration изменения. Production/liveSES/GmailRendering/distributedload остаются вне подтверждённой приёмки. Этот итоговый documentation-only checkpoint проверяется обычным CI.
+
+SSO-SEC-0004 in_progress; #15–17 PR21–23 опубликованы, не merged.
+
+SSO-SEC-0004 локально done 2026-10-20T16:17:10.7190217+03:00:20PASS,65typechecked; #19–20 продолжаются.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
