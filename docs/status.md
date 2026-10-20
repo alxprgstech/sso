@@ -25,3 +25,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 SSO-SEC-0002 in_progress (2026-10-20T16:05:11.3295866+03:00); #15 опубликован PR21 в независимой ветке, не merged.
 
 SSO-SEC-0002 завершён локально 2026-10-20T16:07:24.3035665+03:00: PG6+10PASS; scope — все grants, JWT до exp. #17–20 продолжаются.
+
+Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.

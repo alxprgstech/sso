@@ -69,3 +69,5 @@
 
 ### SSO-SEC-0002 / #16 — 2026-10-20T16:07:24.3035665+03:00
 На main7555f47 refresh-gap подтверждён кодом; accessJWT до exp — согласованное поведение. Изолированная PG16/Python3.12.14: tests/integration/test_self_revoke_grants_pg.py6PASS (logout API/OIDC, one/others, ownership, offlineJWT, оба реальных lock orders refresh/revoke); test_security_revision_pg.py + test_oidc_pg.py10PASS. Ruff/format/mypy64 и secret/diff проверяются перед commit. Production/браузер/нагрузка не запускались. Политика отзывает все grants, сохраняемые browser sessions могут начать новый SSO-flow.
+
+CI image follow-up 2026-10-20T16:41:50.7021040+03:00: inherited libx11CVE-2026-88806 pin1.8.14-r0; source/release manifests согласованы (tiff4.7.2-r0 тоже). Officialnginx apk install/source buildPASS; прежний image scanFAILED, повтор CI pending. Функциональные результаты этой ветки выше; zero-CVE до scan не объявляется.
