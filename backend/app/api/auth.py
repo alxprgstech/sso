@@ -193,7 +193,7 @@ async def resend_registration(
     return RegisterResponse(
         challenge_id=pending.id,
         expires_at=pending.expires_at,
-        request_details=pending.request_details,
+        request_details=request_details(request, settings),
     )
 
 

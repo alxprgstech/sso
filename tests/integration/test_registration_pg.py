@@ -345,7 +345,7 @@ async def test_registration_duplicate_collisions_pg(
 ):
     """
     QA-05, REG-03, TEST-REG-03: Защита от перечисления пользователей при коллизиях.
-    При совпадении username или email сервер возвращает нейтральный 409 Conflict без раскрытия конкретного поля.
+    SSO-SEC-0003 заменяет старый409 на202; uniqueness/confirmation сохраняются.
     """
     # 1. Включаем открытый режим
     await pg_session.execute(
@@ -356,6 +356,15 @@ async def test_registration_duplicate_collisions_pg(
     await pg_session.commit()
 
     messages = []
+    password_work = []
+    real_hash = registration_service.async_hash_password
+
+    async def counted_hash(password):
+        digest = await real_hash(password)
+        password_work.append(digest.startswith("$argon2id$"))
+        return digest
+
+    monkeypatch.setattr(registration_service, "async_hash_password", counted_hash)
 
     async def capture_message(message, _settings):
         messages.append(message)
@@ -398,13 +407,9 @@ async def test_registration_duplicate_collisions_pg(
             "confirm_password": "RegistrationPassword2026!",
         },
     )
-    assert r_dup_uname.status_code == 409
-    err_uname = r_dup_uname.json()["detail"]
-    assert err_uname["error"] == "user_already_exists"
-    assert "уже существует" in err_uname["detail"]
-    # Проверяем отсутствие утечки
-    assert "username" not in str(err_uname).lower()
-    assert "логин" not in str(err_uname).lower()
+    assert r_dup_uname.status_code == 202
+    assert set(r_dup_uname.json()) == set(r1.json())
+    assert r_dup_uname.json()["status"] == r1.json()["status"]
 
     # Попытка 2: другой username, тот же email -> 409 Conflict
     r_dup_email = await pg_client.post(
@@ -419,9 +424,9 @@ async def test_registration_duplicate_collisions_pg(
             "confirm_password": "RegistrationPassword2026!",
         },
     )
-    assert r_dup_email.status_code == 409
-    err_email = r_dup_email.json()["detail"]
-    assert err_email == err_uname  # Ответы абсолютно идентичны!
+    assert r_dup_email.status_code == 202
+    assert set(r_dup_email.json()) == set(r1.json())
+    assert r_dup_email.json()["status"] == r1.json()["status"]
 
     # Попытка 3: email с другим регистром -> 409 Conflict
     # Isolate the case-folding assertion from the already consumed three-attempt mail quota.
@@ -443,7 +448,47 @@ async def test_registration_duplicate_collisions_pg(
                 "confirm_password": "RegistrationPassword2026!",
             },
         )
-    assert r_dup_case.status_code == 409
+    assert r_dup_case.status_code == 202
+    assert set(r_dup_case.json()) == set(r1.json())
+    assert len(messages) == 4  # Identical mail path, including occupied identities.
+    assert password_work == [True] * 4  # Real Argon2 for new, username/email/case collision.
+    assert await pg_session.scalar(text("SELECT count(*) FROM users")) == 1
+    assert await pg_session.scalar(text("SELECT count(*) FROM pending_registrations")) == 2
+    assert r_dup_email.json()["challenge_id"] == r_dup_case.json()["challenge_id"]
+    # Random response-only challenges cannot authorize an account.
+    pg_client.cookies.update(r_dup_uname.cookies)
+    denied = await pg_client.post(
+        "/api/v1/auth/register/confirm-code",
+        json={"challenge_id": r_dup_uname.json()["challenge_id"], "code": "000000"},
+    )
+    assert denied.status_code == 401
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(
+            app=__import__("app.main", fromlist=["app"]).app, client=("192.0.2.39", 123)
+        ),
+        base_url="http://testserver",
+    ) as resender:
+        resender.cookies.update(r_dup_uname.cookies)
+        neutral = await resender.post(
+            "/api/v1/auth/register/resend",
+            json={"challenge_id": r_dup_uname.json()["challenge_id"]},
+        )
+        assert neutral.status_code == 202
+        assert set(neutral.json()) == set(r1.json())
+        assert len(messages) == 5
+        # Correct mailbox proof permits resolving a collision, never overwrites a user.
+        plain = messages[-1].get_body(preferencelist=("plain",)).get_content()
+        valid = re.search(r"Ваш код подтверждения: ([0-9]{6})", plain).group(1)
+        collision = await resender.post(
+            "/api/v1/auth/register/confirm-code",
+            json={"challenge_id": r_dup_uname.json()["challenge_id"], "code": valid},
+        )
+        assert collision.status_code == 409
+        assert await pg_session.scalar(text("SELECT count(*) FROM users")) == 1
+        original_hash = await pg_session.scalar(
+            text("SELECT password_hash FROM password_credentials")
+        )
+        assert verify_password("RegistrationPassword2026!", original_hash)
 
 
 @pytest.mark.postgres
