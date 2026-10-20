@@ -84,7 +84,7 @@ docker compose exec -it backend python -m app.cli.bootstrap_admin
 - **Открытый режим (`open`)**: на странице входа отображается ссылка на форму регистрации (`RegisterPage.tsx`). После ввода данных создаётся заявка, письмо содержит шестизначный код и одноразовую ссылку. Учётная запись с ролью `user` появляется только после подтверждения email.
 - **Закрытый режим (`closed`)**: по умолчанию при первой установке и обновлении существующих инстансов. API блокирует самостоятельную регистрацию (HTTP 403), интерфейс скрывает ссылку на регистрацию.
 - **Управление из панели администратора**: администратор может переключать режим в реальном времени в разделе «Конфигурация» (`/admin/system`) с обязательным подтверждением текущего пароля администратора (re-auth, REG-02). Изменение немедленно вступает в силу для всех процессов без перезапуска.
-- **Безопасность регистрации**: защита от коллизий без раскрытия полей (HTTP 409), строгая запрещающая схема (`extra="forbid"`), межпроцессные квоты в PostgreSQL privacy_rate_windows; cookie-auth mutations дополнительно требуют Origin/CSRF.
+- **Безопасность регистрации**: защита от перечисления при коллизиях (нейтральный HTTP 202), строгая запрещающая схема (`extra="forbid"`), межпроцессные квоты в PostgreSQL privacy_rate_windows; cookie-auth mutations дополнительно требуют Origin/CSRF.
 
 ### 2.2. Сервер аутентификации и OIDC Provider (`backend/`)
 - FastAPI + PostgreSQL 16 + SQLAlchemy 2.0 (драйвер `psycopg`);
@@ -247,3 +247,5 @@ Gmail action требует секрет письма и Google bearer; Passkey 
 Установка выбранных Python dependencies: `python -m pip install --require-hashes -r requirements-lock-hashed.txt`; затем локальный backend/SDK отдельно с `--no-deps --no-build-isolation`. Docker использует соответствующие build/runtime hashed companions. Проверка согласованности: `python scripts/hashed_locks.py`.
 
 SDK по умолчанию требует HTTPS и certificate verification. Для demo HTTP loopback явно выберите `SSO_TRANSPORT_PROFILE=local`, для server callback policy — `REDIRECT_TRANSPORT_PROFILE=local`; production HTTP запрещён. TOTP/Passkey/Recovery по-прежнему default-off; подтверждение самостоятельной регистрации обязательно. Детали: [API](docs/api.md), [миграция](docs/migration.md), [SDK](docs/sdk.md), [эксплуатация](docs/operations.md), [релизы](docs/releases.md).
+
+Подтверждение самостоятельной регистрации (SSO-SEC-0005) требует исходный browser: HttpOnly cookie связывает email proof с заявкой. При потере cookie/legacy pending начните заново. Gmail shortcut открывает verification page (ViewAction), затем требуется явное подтверждение в исходном browser. [Миграция0014](docs/migration.md), [ADR0026](docs/adr/0026-registration-browser-binding.md).

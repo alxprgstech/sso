@@ -465,7 +465,7 @@ async def logout(
     settings: Settings = Depends(get_settings),
 ) -> Response:
 
-    from app.services.security_state import lock_user
+    from app.services.security_state import lock_user, revoke_oidc_grants
 
     claims = await _logout_claims(db, values)
     redirect_uri = values.get("post_logout_redirect_uri")
@@ -487,6 +487,7 @@ async def logout(
         current = await db.scalar(select(Session).where(Session.id == session.id).with_for_update())
         if current:
             await db.delete(current)
+            await revoke_oidc_grants(db, session.user_id)
         await db.commit()
     target = redirect_uri or settings.FRONTEND_URL
     result = redirect_parameters(target, {"state": state} if state and redirect_uri else {})

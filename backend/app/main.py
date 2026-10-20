@@ -76,6 +76,14 @@ async def lifespan(app: FastAPI):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        from app.database import async_session_maker
+        from app.services.denied_audit import anonymous_denials
+
+        try:
+            async with async_session_maker() as db:
+                await anonymous_denials.flush(db)
+        except Exception:
+            diagnostic("privacy_maintenance", "database_unavailable", failed=True)
     import sentry_sdk
 
     sentry_sdk.get_client().close(timeout=2)
@@ -132,7 +140,11 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
                     await previous()
                 await record_denied_action(request, response.status_code)
 
-            response.background = BackgroundTask(denied_after_response)
+            if getattr(request.state, "audit_actor_id", None) is None:
+                # Anonymous floods create neither per-request tasks nor DB writes.
+                await record_denied_action(request, response.status_code)
+            else:
+                response.background = BackgroundTask(denied_after_response)
         diagnostic(
             "http_request",
             "success"
@@ -167,6 +179,11 @@ async def record_denied_action(request: Request, status_code: int) -> None:
     if route is None:
         return
     actor = getattr(request.state, "audit_actor_id", None)
+    if actor is None:
+        from app.services.denied_audit import anonymous_denials
+
+        anonymous_denials.record(route.name, status_code)
+        return
     reason = {401: "authentication_required", 403: "access_denied", 429: "rate_limit_exceeded"}[
         status_code
     ]

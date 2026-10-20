@@ -26,7 +26,6 @@ from app.services.verification_email import (
     CODE_TTL_SECONDS,
     MAX_CODE_ATTEMPTS,
     MAX_SENDS,
-    action_url,
     build_message,
     code_hash,
     code_matches,
@@ -96,6 +95,17 @@ async def verify_gmail_bearer(header: str, settings: Settings) -> None:
 
 class RegistrationService:
     @staticmethod
+    def neutral_challenge(
+        details: dict[str, str], challenge_id: uuid.UUID | None = None
+    ) -> PendingRegistration:
+        # A response-only object: never store a duplicate identity or usable secret.
+        return PendingRegistration(
+            id=challenge_id or uuid.uuid4(),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=CODE_TTL_SECONDS),
+            request_details=details,
+        )
+
+    @staticmethod
     async def start(
         db: AsyncSession,
         *,
@@ -107,6 +117,7 @@ class RegistrationService:
         details: dict[str, str],
         settings: Settings,
         legal_versions: dict[str, str],
+        browser_secret: str | None = None,
     ) -> PendingRegistration:
 
         validate_versions(legal_versions)
@@ -129,23 +140,13 @@ class RegistrationService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        existing_user = await db.scalar(
-            select(User.id).where(
-                (func.lower(User.username) == clean_username.lower())
-                | (func.lower(User.email) == clean_email)
-            )
-        )
-        if existing_user:
-            raise HTTPException(
-                status_code=409,
-                detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
-            )
-
+        # All identities follow the same pending/mail path. Resolve collisions
+        # only after mailbox proof in confirm(), never through start/resend.
+        password_digest = await async_hash_password(password)
         now = datetime.now(timezone.utc)
         code = new_code()
         link = new_link()
         action = generate_random_token(32)
-        password_digest = await async_hash_password(password)
         # The transaction-scoped lock serializes first requests for one email across workers.
         await db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:email))"), {"email": clean_email}
@@ -179,6 +180,7 @@ class RegistrationService:
             )
             db.add(pending)
         pending.code_hash = code_hash(settings, pending.id, code)
+        pending.browser_secret_hash = hash_token(browser_secret) if browser_secret else None
         pending.link_hash = link_digest(link)
         pending.action_hash = hash_token(action)
         pending.request_details = details
@@ -202,6 +204,7 @@ class RegistrationService:
         challenge_id: uuid.UUID,
         ip_address: str,
         settings: Settings,
+        browser_secret: str | None = None,
     ) -> PendingRegistration:
         await check_email_request_rate_limit(db, ip_address)
         pending = await db.scalar(
@@ -211,10 +214,11 @@ class RegistrationService:
         )
         now = datetime.now(timezone.utc)
         if not pending or pending.created_at <= now - timedelta(hours=1):
-            raise _invalid_challenge()
+            return RegistrationService.neutral_challenge({}, challenge_id)
+        RegistrationService._require_browser(pending, browser_secret)
         validate_versions(pending.legal_versions)
         if pending.send_count >= MAX_SENDS:
-            raise HTTPException(status_code=429, detail={"error": "rate_limit_exceeded"})
+            return RegistrationService.neutral_challenge({}, challenge_id)
         code, link = new_code(), new_link()
         action = generate_random_token(32)
         pending.code_hash = code_hash(settings, pending.id, code)
@@ -241,11 +245,10 @@ class RegistrationService:
             username=pending.username,
             code=code,
             link=link_url(settings, link, "registration"),
-            action_url=(
-                action_url(settings, pending.id, action)
-                if settings.BASE_URL.startswith("https://")
-                else None
-            ),
+            # A server-to-server Gmail action cannot possess the initiating
+            # browser proof. Use the ordinary mail link/code in that browser.
+            action_url=None,
+            browser_confirmation=True,
             details=pending.request_details,
             settings=settings,
         )
@@ -297,6 +300,7 @@ class RegistrationService:
         link: str | None = None,
         action_id: uuid.UUID | None = None,
         action_token: str | None = None,
+        browser_secret: str | None = None,
     ) -> User:
         if code is not None and challenge_id is not None:
             stmt = select(PendingRegistration).where(PendingRegistration.id == challenge_id)
@@ -311,6 +315,7 @@ class RegistrationService:
         pending = await db.scalar(stmt.with_for_update())
         if not pending or pending.expires_at <= datetime.now(timezone.utc):
             raise _invalid_challenge()
+        RegistrationService._require_browser(pending, browser_secret)
         if action_id is not None and (
             not pending.action_hash
             or not action_token
@@ -374,3 +379,13 @@ class RegistrationService:
                 detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
             ) from error
         return user
+
+    @staticmethod
+    def _require_browser(pending: PendingRegistration, secret: str | None) -> None:
+        if (
+            not pending.browser_secret_hash
+            or not secret
+            or len(secret) != 43
+            or not hmac.compare_digest(pending.browser_secret_hash, hash_token(secret))
+        ):
+            raise _invalid_challenge()
