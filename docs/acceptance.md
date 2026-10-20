@@ -66,3 +66,6 @@
 ## DOC-CLEANUP-02 — 2026-10-20T02:49:55+03:00
 
 Документационная очистка по поручению владельца: старые аудиты удалены после переноса действующих сведений; закрытая диагностика сокращена, журнал/открытые требования/тестовые зависимости сохранены. Проверены UTF-8 всех 64 оставшихся tracked Markdown, 292 локальные ссылки действующего комплекта (0 отсутствующих, исторический worklog исключён из проверки ссылок), 9 Git-целей по точному SHA через git cat-file. Secret scan с контрольным секретом: PASS, 126 candidates/0new, baseline без изменений. Формат diff проверяется после финальной записи. Исходники, миграции, тесты, lock и CI policy не менялись; runtime/remote CI не повторялись.
+
+### SSO-SEC-0001 / #15 — 2026-10-20T16:03:30.6105628+03:00
+main7555f47: общий oauth-client bucket подтверждён кодом. Изолированная PostgreSQL16, fresh schema0013 + guard; Python3.12.14. Новый tests/integration/test_oauth_source_quota_pg.py:1PASS; существующие test_oidc_pg.py + test_distributed_rate_limiting_pg.py:10PASS. Ruff и mypy64PASS. Первый новый тест FAILED из-за async lazy-load fixture, исправлен явной загрузкой; повтор1PASS. Первоначальная .venv не содержала sentry_sdk — тесты не собраны, использована .venv-sentry. Без production/внешней почты/нагрузки; NAT и distributed flood не устранены.

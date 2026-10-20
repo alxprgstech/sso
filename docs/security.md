@@ -71,3 +71,6 @@ Default flags: `FEATURE_TOTP_ENABLED=false`, `FEATURE_PASSKEY_ENABLED=false`, `F
 Полная требование-за-требованием L2/L3 acceptance не проводилась. Там, где нет достаточного доказательства, статус не объявлен PASS. Top10 применён как классификация риска, а не checklist сертификата.
 
 Полный исходный анализ, отклонённые гипотезы и исходные находки: [Историческая версия](https://github.com/alxprgstech/sso/blob/7d1585e7bdd40104be7a8b933b998cbc843d46a5/SECURITY_AUDIT.md). Полное старое threat/evidence содержание доступно по этому точному SHA; исторический verdict не переносится на исправленный код.
+
+### SSO-SEC-0001: квоты OAuth
+Token и revoke имеют раздельные квоты 30/60 секунд на проверенный source IP (trusted-proxy policy), до дорогой проверки client_secret. Публичный client_id не расходует глобальную квоту других источников. Общие NAT-источники разделяют лимит; распределённая нагрузка требует edge admission. PostgreSQL outage остаётся fail-closed.
