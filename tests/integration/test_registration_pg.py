@@ -456,6 +456,7 @@ async def test_registration_duplicate_collisions_pg(
     assert await pg_session.scalar(text("SELECT count(*) FROM pending_registrations")) == 2
     assert r_dup_email.json()["challenge_id"] == r_dup_case.json()["challenge_id"]
     # Random response-only challenges cannot authorize an account.
+    pg_client.cookies.update(r_dup_uname.cookies)
     denied = await pg_client.post(
         "/api/v1/auth/register/confirm-code",
         json={"challenge_id": r_dup_uname.json()["challenge_id"], "code": "000000"},
@@ -467,6 +468,7 @@ async def test_registration_duplicate_collisions_pg(
         ),
         base_url="http://testserver",
     ) as resender:
+        resender.cookies.update(r_dup_uname.cookies)
         neutral = await resender.post(
             "/api/v1/auth/register/resend",
             json={"challenge_id": r_dup_uname.json()["challenge_id"]},
