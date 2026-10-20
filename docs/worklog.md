@@ -3621,3 +3621,11 @@ Default browser: 48 PASS; enabled: 5 PASS / 4 FAIL. Снимок показыв�
 2026-10-20T02:51:20.8409615+03:00 — Codex, DOC-CLEANUP-PR-01, in_progress. Владелец поручил PR. Проверены текущая ветка new/documentation-value-review, origin и diff:15Markdown paths, включая2удалённых tracked отчёта. gh CLI отсутствует; создание PR через GitHub connector после Git push. План записан до commit; следующий шаг — итоговая проверка и сохранение изменений.
 
 2026-10-20T02:51:57.7976558+03:00 — Codex, DOC-CLEANUP-PR-01, checkpoint перед commit. Финальные secret self-test/scan126candidates/0new и diff whitespace PASS. origin/main подтверждён7d1585e, удалённой рабочей ветки ещё нет. GitHub metadata: default main, repo public; публикуется только прямо порученный документационный diff. Доступ Git из sandbox не имел DNS; разрешённый network access подтвердил origin. Следующий шаг — commit/push и создание PR через connector; merge/deploy не выполняются.
+
+2026-10-20T16:12:56.2905732+03:00 — Codex, SSO-SEC-0004 in_progress. Retention90дней уже есть; проблема1request→1audit insert подтверждена main middleware. Выбрана bounded агрегация route/reason без IP/query/cookie keys до DB, flush по60с на worker; отдельные authenticated security events сохраняются. Риск crash-loss последнего окна документировать, sustained load не проводить.
+
+2026-10-20T16:14:15.5524626+03:00 — Codex, SSO-SEC-0004 checkpoint. PG/unit/redaction/reauth19PASS; малые20anonymous401 дают0строк доflush и1aggregate count20 после. Authenticated denial regression сохранён. Mypy65PASS. Добавлена защита recount при rollback failure и concurrent flush regression, выполняется повтор; ADR0025/security/ops обновлены.
+
+2026-10-20T16:16:18.5034271+03:00 — Codex, SSO-SEC-0004 environment correction. Два unit запуска в Windows sandbox остановлены: faulthandler показал asyncio selector/socketpair при создании event loop. Разрешённый запуск вне sandbox3PASS0.05с; это не изменение timeout/защиты. Окончательный полный targeted набор повторяется после rollback-failure fix.
+
+2026-10-20T16:17:10.7190217+03:00 — Codex, SSO-SEC-0004 done. Final20PASS; bounded anonymous batch/retention/authenticated semantics подтверждены, static65/secret0newPASS. Следующий шаг commit/push/PR, затем #19–20.
