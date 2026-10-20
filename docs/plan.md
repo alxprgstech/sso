@@ -112,3 +112,6 @@ P1; in_progress; начало 2026-10-20T16:31:42.5772362+03:00; Codex; main7555
 SSO-SEC-0006 local done (2026-10-20T16:35:55.3927006+03:00):23PASS; отдельный PR далее. До завершения всех6PR исправить обнаруженные image/libx11 и schema-guard CI blockers, не ослабляя обязательные проверки.
 
 SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, независимая ветка сохранена; обязательный scan/CI pending.
+
+## SEC-ISSUES-20261020: итог реализации
+Все SSO-SEC-0001–0006 реализованы, локально проверены и опубликованы: #15 PR21 (PG1+10), #16 PR22 (PG6+10), #17 PR23 (20+collision1), #18 PR24 (20), #19 PR25 (46+frontend40+migration/Compose), #20 PR26 (23+source scheduling6). Каждый issue получил комментарий. Общие image/schema CI blockers исправлены с сохранением guard/scan; PR25 finalcode CI success, остальные finalCI проверяются перед итоговым отчётом. Функциональных зависимостей междуPR нет; append-only документы при последовательном merge сверить вручную.

@@ -27,3 +27,6 @@ SSO-SEC-0006 in_progress; первые5issues опубликованы неза�
 SSO-SEC-0006 локально проверен23PASS. Общая кампания продолжается: remoteCI выявил libx11image CVE вPR21–24 и устаревший schema guard вPR25; исправления и повторы обязательны до итогового отчёта.
 
 Общий inherited image-CVE blocker исправлен pinned libx11/tiff; повтор обязательного CI pending.
+
+## Завершение обработки #15–20 (2026-10-20T16:46:52.2264279+03:00)
+Созданы PR21–26 вmain, комментарии оставлены в6issues. Все подтверждённые сценарии имеют regression; локальные результаты в acceptance. Общий inheritedlibx11CVE исправлен во всех ветках; source/releaseTrivy0HIGH/CRITICALPASS. PR25 schema guard0014 исправлен, ComposeCSP3/migrationrole и GitHubCI39432532318SUCCESS. Остальные обязательные CI повторяются; актуальные итоги смотреть в checks соответствующих PR и финальных issue-comments. Merge, ручное закрытие, production и реальные рассылки не выполнялись. Внешние SES/Gmail rendering/load ограничения остаются; общая production-приёмка этим не закрыта.

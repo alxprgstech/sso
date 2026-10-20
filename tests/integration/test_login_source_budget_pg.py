@@ -107,6 +107,13 @@ async def test_eight_login_burst_leaves_capacity_for_other_source_real_argon2(
                     assert not owner.done()
                     await asyncio.sleep(0.01)
             assert security._password_sources["192.0.2.101"] == 2
+            # Observe all six rejections before unblocking the two real workers.
+            # Otherwise a late-arriving burst request could be admitted after release.
+            async with asyncio.timeout(5):
+                while sum(task.done() for task in tasks) != 6:
+                    assert sum(task.done() for task in tasks) < 6
+                    await asyncio.sleep(0.01)
+            assert all(task.result().status_code == 429 for task in tasks if task.done())
             gate.set()
             results = await asyncio.gather(*tasks)
             legitimate = await owner
