@@ -3621,3 +3621,9 @@ Default browser: 48 PASS; enabled: 5 PASS / 4 FAIL. Снимок показыв�
 2026-10-20T02:51:20.8409615+03:00 — Codex, DOC-CLEANUP-PR-01, in_progress. Владелец поручил PR. Проверены текущая ветка new/documentation-value-review, origin и diff:15Markdown paths, включая2удалённых tracked отчёта. gh CLI отсутствует; создание PR через GitHub connector после Git push. План записан до commit; следующий шаг — итоговая проверка и сохранение изменений.
 
 2026-10-20T02:51:57.7976558+03:00 — Codex, DOC-CLEANUP-PR-01, checkpoint перед commit. Финальные secret self-test/scan126candidates/0new и diff whitespace PASS. origin/main подтверждён7d1585e, удалённой рабочей ветки ещё нет. GitHub metadata: default main, repo public; публикуется только прямо порученный документационный diff. Доступ Git из sandbox не имел DNS; разрешённый network access подтвердил origin. Следующий шаг — commit/push и создание PR через connector; merge/deploy не выполняются.
+
+2026-10-20T16:09:15.4876516+03:00 — Codex, SSO-SEC-0003 in_progress. Повторный аудит подтверждает409/202 и пропуск Argon2 для collision. Старое REG-06 о нейтральном409 меняется по текущему поручению на202; фиктивный неперсистентный challenge и нейтральный resend исключают вторичный oracle. Почтовый transport timing не объявлять constant-time.
+
+2026-10-20T16:10:43.4995065+03:00 — Codex, SSO-SEC-0003 checkpoint. Нейтральный response-only challenge для existing User, realArgon2 до collision, нейтральный unknown/exhausted resend с request-context. Старые409 assertions заменены по новому требованию, усилены count/no-mail/no-pending/confirm-denied проверками. PG/unit/consent20PASS; realArgon2 instrumentation повторяется; Ruff unused import исправлен, mypy64PASS. README/ТЗ/ПМИ/API/security обновлены.
+
+2026-10-20T16:10:59.2619568+03:00 — Codex, SSO-SEC-0003 done. Усиленный regression1PASS с реальным Argon2,20PASS ранее; mypy64PASS. Следующий шаг final static/secret/diff,commit/push/PR.

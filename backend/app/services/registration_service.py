@@ -96,6 +96,17 @@ async def verify_gmail_bearer(header: str, settings: Settings) -> None:
 
 class RegistrationService:
     @staticmethod
+    def neutral_challenge(
+        details: dict[str, str], challenge_id: uuid.UUID | None = None
+    ) -> PendingRegistration:
+        # A response-only object: never store a duplicate identity or usable secret.
+        return PendingRegistration(
+            id=challenge_id or uuid.uuid4(),
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=CODE_TTL_SECONDS),
+            request_details=details,
+        )
+
+    @staticmethod
     async def start(
         db: AsyncSession,
         *,
@@ -129,6 +140,8 @@ class RegistrationService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
+        # Both available and occupied identities pay the same Argon2 cost.
+        password_digest = await async_hash_password(password)
         existing_user = await db.scalar(
             select(User.id).where(
                 (func.lower(User.username) == clean_username.lower())
@@ -136,16 +149,12 @@ class RegistrationService:
             )
         )
         if existing_user:
-            raise HTTPException(
-                status_code=409,
-                detail={"error": "user_already_exists", "detail": "Учётная запись уже существует"},
-            )
+            return RegistrationService.neutral_challenge(details)
 
         now = datetime.now(timezone.utc)
         code = new_code()
         link = new_link()
         action = generate_random_token(32)
-        password_digest = await async_hash_password(password)
         # The transaction-scoped lock serializes first requests for one email across workers.
         await db.execute(
             text("SELECT pg_advisory_xact_lock(hashtext(:email))"), {"email": clean_email}
@@ -211,10 +220,10 @@ class RegistrationService:
         )
         now = datetime.now(timezone.utc)
         if not pending or pending.created_at <= now - timedelta(hours=1):
-            raise _invalid_challenge()
+            return RegistrationService.neutral_challenge({}, challenge_id)
         validate_versions(pending.legal_versions)
         if pending.send_count >= MAX_SENDS:
-            raise HTTPException(status_code=429, detail={"error": "rate_limit_exceeded"})
+            return RegistrationService.neutral_challenge({}, challenge_id)
         code, link = new_code(), new_link()
         action = generate_random_token(32)
         pending.code_hash = code_hash(settings, pending.id, code)
