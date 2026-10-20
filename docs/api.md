@@ -99,7 +99,7 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 
 ## Изменения безопасности SEC-REMED-20261007
 
-Gmail action `POST /api/v1/auth/register/confirm-gmail` требует query `challenge_id` и `action_token` (43 base64url символа, 32 случайных байта), а также действительный Google bearer. Секрет хранится как SHA-256, действует десять минут и меняется при resend. Подтверждение code/link/action атомарно удаляет pending; старые Gmail URL без секрета отвергаются. После0014 code/link/action также требуют browser proof; legacy pending требует повторного старта.
+Gmail action `POST /api/v1/auth/register/confirm-gmail` требует query `challenge_id` и `action_token` (43 base64url символа, 32 случайных байта), а также действительный Google bearer и browser proof исходной регистрации (SSO-SEC-0005). Новые письма используют ViewAction для открытия страницы в исходном браузере. Секрет хранится как SHA-256, действует десять минут и меняется при resend. Подтверждение code/link/action атомарно удаляет pending; старые Gmail URL без секрета отвергаются. После0014 code/link/action также требуют browser proof; legacy pending требует повторного старта.
 
 GET `/api/v1/auth/sessions` требует `X-Reauthentication` с exact action `GET /api/v1/auth/sessions` и digest пустого body. Допуск read-only действует пять минут, связан с user/session/security_revision и допускает повторные GET. DELETE списка или конкретной сессии требует собственного exact action/body одноразового proof; read grant для него не подходит. Отказ — 401 `reauthentication_required`. Logout не требует дополнительного proof.
 

@@ -121,3 +121,21 @@ SEC-ISSUES-20261020 final publication checkpoint 2026-10-20T16:46:52.2264279+03:
 2026-10-20T20:42:24.7276264+03:00; Windows/Python3.12.14, dedicated fresh PostgreSQL16 container, schema0014 + safety marker. PR22 combined17PASS32.58s; PR23combined17PASS51.13s; PR24audit20PASS14.35s; PR25registration/browserproof32PASS31.34s, включая новый combined resend test. PR26combined35PASS/1FAIL39.99s (worker importapp отсутствовал в PYTHONPATH); повтор independent-worker с backend+root и testDSN1PASS9.80s. Итого36совместных tests прошли. Ruff/format240/mypy75PASS, secrets126candidates0newPASS. Новая интеграция не заменяет live SES/Gmail или load benchmark. CI на обновлённых ветках проверяется перед merge; точные remote результаты в GitHub и worklog.
 
 PR26CI39468423241:701PASS/1FAIL,14subtests; cancellationtest имел преждевременный empty assertion после asyncio cancellation. Исправлена синхронизация реального worker join в unit test, runtime неизменён. Targetedpasswordbudget/PGburst6PASS5.82s; обязательныйCI новогоSHA ожидается.
+
+## SEC-MERGE-20261020 — завершение (2026-10-20T20:54:27.8702087+03:00)
+
+Все шесть PR merged в main, issues #15–20 закрылись автоматически. PR21 уже был merged при начале этой задачи; PR22–26 слиты последовательно после SUCCESS обязательного CI обновлённых heads. Временная цепочка веток разрешена в порядке merge; итоговые PR не оставляют зависимостей вне main.
+
+| Issue | PR | Проверенный head SHA | Merge SHA | CI |
+| --- | --- | --- | --- | --- |
+| #15 | [#21](https://github.com/alxprgstech/sso/pull/21) | `370e4662249b303c3772f873ef0009812a07bd24` | `8af4008befe36bb56d2a8012ea1149d61d42ee29` | [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39432649902) |
+| #16 | [#22](https://github.com/alxprgstech/sso/pull/22) | `782a646a4db512641e9c15174e351966ec8559cf` | `594031605e0591be52ba35dabeef2eb52cfaf1a5` | [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39467439456) |
+| #17 | [#23](https://github.com/alxprgstech/sso/pull/23) | `0e3f1b5918b3619ed81a9b48e58c430800a28fa6` | `ced7def59bb00791df99961c24ab7de744867919` | [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39467664603) |
+| #18 | [#24](https://github.com/alxprgstech/sso/pull/24) | `40c23f3d8b333568306b7e99af66c5f550e77903` | `bd54a4d31874f714c507cb48fdb7a34ba7ea34b3` | [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39467795407) |
+| #19 | [#25](https://github.com/alxprgstech/sso/pull/25) | `84dbe7bec736893be23de29cfd4c24a0e91ef529` | `88a15562c7aca7ede83547c93fcfdb7e10b19355` | [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39468045365) |
+| #20 | [#26](https://github.com/alxprgstech/sso/pull/26) | `1ca240b2245dccb77500df01ed940207e310f708` | `941d3f1ccc2b2fee6de5b58e8fb697755ba436ae` | [SUCCESS](https://github.com/alxprgstech/sso/actions/runs/39469344990) |
+
+
+Ручной code conflict: resend сохраняет нейтральный202 неизвестной/устаревшей заявки и browser proof существующей заявки до MAX_SENDS. Добавлен совместный regression. Все разделы документов обеих сторон восстановлены; история worklog сохранена. После CI failure исправлена синхронизация cancellation unit-test (join реального pool2), runtime admission не менялся. Финальный обязательный CI указан выше; локальные наборы17/17/20/32 и36 combined, дополнительный cancellation/burst6PASS описаны выше (это пересекающиеся наборы, не сумма уникальных tests).
+
+Live SES job был условно пропущен по существующей политике без AWS credentials; это не проверка доставки. Production/deploy, live Gmail и распределённая нагрузка не выполнялись. Завершающий documentation-only checkpoint проверяется локально на UTF-8/ссылки/diff; SUCCESS PR CI не выдаётся за CI его будущего commit SHA.

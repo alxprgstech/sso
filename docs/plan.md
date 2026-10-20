@@ -160,3 +160,7 @@ SEC-ISSUES-20261020 CI follow-up: общий image pin исправлен, не�
 SEC-MERGE-20261020 checkpoint (2026-10-20T20:42:24.7276264+03:00): PR21/22merged; PR23CIjobsSUCCESS; PR24–26 продолжаются. Все6fixes локально совместимы,36combinedtestsPASS; единственный ручной codeconflict resend решён с дополнительным regression. До done остаются обязательныйCI и merge остальных PR.
 
 SEC-MERGE-20261020 (2026-10-20T20:48:49.4847872+03:00): in_progress; PR21–25merged. До PR26merge исправить test teardown synchronization, не освобождать production slots раньше worker. Targeted6PASS; критерий оставшегося шага — CI новогоSHA success,merge26,проверка всех6GitHubstates.
+
+## SEC-MERGE-20261020 — done
+
+Начало: 2026-10-20T20:32:43.1105797+03:00; завершение: 2026-10-20T20:54:27.8702087+03:00; Codex. Критерий выполнен: PR21–26 merged, все6issues закрыты автоматически; каждый updated PR head прошёл обязательный CI. Code/docs конфликты разрешены, совместный regression добавлен, cancellation-test race исправлена без изменения защиты. Точные SHA/CI — [приёмка](acceptance.md). Следующий шаг: применять миграцию0014 при отдельном развёртывании; production/live email/load остаются отдельной приёмкой.
