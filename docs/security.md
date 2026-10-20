@@ -71,3 +71,5 @@ Default flags: `FEATURE_TOTP_ENABLED=false`, `FEATURE_PASSKEY_ENABLED=false`, `F
 Полная требование-за-требованием L2/L3 acceptance не проводилась. Там, где нет достаточного доказательства, статус не объявлен PASS. Top10 применён как классификация риска, а не checklist сертификата.
 
 Полный исходный анализ, отклонённые гипотезы и исходные находки: [Историческая версия](https://github.com/alxprgstech/sso/blob/7d1585e7bdd40104be7a8b933b998cbc843d46a5/SECURITY_AUDIT.md). Полное старое threat/evidence содержание доступно по этому точному SHA; исторический verdict не переносится на исправленный код.
+
+SSO-SEC-0002: logout/self-service revoke дополнительно отзывают все OIDC refresh/code grants пользователя под account-first lock, без изменения revision и без удаления сохраняемых browser sessions. Поэтому свежий SSO-вход из сохранённой сессии возможен. При подозрении на её кражу используйте revoke-others или смену пароля. Offline JWT до300с не отзывается мгновенно. Решение: [ADR0024](adr/0024-self-service-grant-revocation.md).

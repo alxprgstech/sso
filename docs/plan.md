@@ -105,3 +105,8 @@
 - P2; in_progress; начало: 2026-10-20T02:51:20.8409615+03:00; исполнитель: Codex; зависит от DOC-CLEANUP-02.
 - План: итоговый diff/проверки → commit → push → PR в main и фиксация ссылки.
 - Готовность: изменения сохранены и отправлены, PR создан, проверки отражены без объявления remote CI PASS.
+
+## SSO-SEC-0002 / #16
+P1; in_progress; начало 2026-10-20T16:05:11.3295866+03:00; Codex; независимая main7555f47. План: атомарный отзыв всех OIDC refresh/code грантов при успешном self-service revoke/logout, сохранить выбранные browser sessions и security_revision; проверить ownership, logout API/OIDC и refresh/code. Готовность: PG regression/существующие lifecycle, PR+комментарий. Offline JWT остаётся до exp.
+
+SSO-SEC-0002 done (2026-10-20T16:07:24.3035665+03:00): PG6+10PASS, ownership/lock orders/JWT scope подтверждены; PR публикация далее.

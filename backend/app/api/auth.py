@@ -291,7 +291,7 @@ async def logout(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
-    await db.delete(session)
+    await AuthService.revoke_session(db, session.id, user.id)
 
     cookie_name = get_cookie_name(settings, request)
     response.delete_cookie(key=cookie_name, path="/")
