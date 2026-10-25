@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from scripts.rotate_keys import private_directory, write_private
+    from scripts.rotate_keys import private_directory
 except ModuleNotFoundError:
-    from rotate_keys import private_directory, write_private
+    from rotate_keys import private_directory
 
 
 def require_private_directory(path: Path) -> None:
@@ -119,19 +119,25 @@ def postgres_command(args: argparse.Namespace, tool: str, options: list[str]) ->
 
 def create_dump(args: argparse.Namespace, backup_file: Path) -> None:
     cmd = postgres_command(args, "pg_dump", ["--clean", "--if-exists"])
+    # Opening exclusively establishes ownership. Never clean up after a failed open:
+    # an existing file may be a valid backup from another invocation.
     descriptor = os.open(backup_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, "wb") as output:
-        subprocess.run(
-            cmd,
-            env=postgres_environment(),
-            stdout=output,
-            check=True,
-            stderr=subprocess.PIPE,
-        )
-    if not backup_file.exists():
-        raise RuntimeError("Backup file was not created")
-    if backup_file.stat().st_size == 0:
-        raise RuntimeError("Backup file is empty")
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            subprocess.run(
+                cmd,
+                env=postgres_environment(),
+                stdout=output,
+                check=True,
+                stderr=subprocess.PIPE,
+            )
+            output.flush()
+            os.fsync(output.fileno())
+        if backup_file.stat().st_size == 0:
+            raise RuntimeError("Backup file is empty")
+    except BaseException:
+        backup_file.unlink(missing_ok=True)
+        raise
 
 
 def export_snapshot_journal(args: argparse.Namespace, backup_file: Path) -> None:
@@ -140,13 +146,16 @@ def export_snapshot_journal(args: argparse.Namespace, backup_file: Path) -> None
     cmd = postgres_command(args, "psql", ["-X", "-At", "-v", "ON_ERROR_STOP=1", "-c", EXPORT_SQL])
     env = os.environ.copy() if args.docker else postgres_environment()
     journal = subprocess.run(cmd, env=env, check=True, capture_output=True)
-    write_private(backup_file.with_suffix(".journal.json"), journal.stdout)
-
-
-def remove_failed_backup(backup_file: Path) -> None:
-    for path in (backup_file, backup_file.with_suffix(".journal.json")):
-        if path.exists():
-            path.unlink()
+    path = backup_file.with_suffix(".journal.json")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as target:
+            target.write(journal.stdout)
+            target.flush()
+            os.fsync(target.fileno())
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
 
 
 def print_backup_result(backup_file: Path) -> None:
@@ -164,20 +173,25 @@ def main() -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     backup_file = out_dir / f"sso_backup_{args.db}_{timestamp}.sql"
     print(f"[*] Starting backup for database '{args.db}'...")
+    owned: list[Path] = []
     try:
         create_dump(args, backup_file)
+        owned.append(backup_file)
         export_snapshot_journal(args, backup_file)
+        owned.append(backup_file.with_suffix(".journal.json"))
         print_backup_result(backup_file)
     except subprocess.CalledProcessError as error:
         print(
             f"[x] Backup failed (exit {error.returncode}); inspect the server privately",
             file=sys.stderr,
         )
-        remove_failed_backup(backup_file)
+        for path in owned:
+            path.unlink(missing_ok=True)
         sys.exit(1)
     except Exception as error:
         print(f"[x] Backup failed: {type(error).__name__}", file=sys.stderr)
-        remove_failed_backup(backup_file)
+        for path in owned:
+            path.unlink(missing_ok=True)
         sys.exit(1)
 
 

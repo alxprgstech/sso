@@ -249,3 +249,7 @@ Gmail action требует секрет письма и Google bearer; Passkey 
 SDK по умолчанию требует HTTPS и certificate verification. Для demo HTTP loopback явно выберите `SSO_TRANSPORT_PROFILE=local`, для server callback policy — `REDIRECT_TRANSPORT_PROFILE=local`; production HTTP запрещён. TOTP/Passkey/Recovery по-прежнему default-off; подтверждение самостоятельной регистрации обязательно. Детали: [API](docs/api.md), [миграция](docs/migration.md), [SDK](docs/sdk.md), [эксплуатация](docs/operations.md), [релизы](docs/releases.md).
 
 Подтверждение самостоятельной регистрации (SSO-SEC-0005) требует исходный browser: HttpOnly cookie связывает email proof с заявкой. При потере cookie/legacy pending начните заново. Gmail shortcut открывает verification page (ViewAction), затем требуется явное подтверждение в исходном browser. [Миграция0014](docs/migration.md), [ADR0026](docs/adr/0026-registration-browser-binding.md).
+
+## Развёртывание на EC2
+
+[Установка Ubuntu 26.04, nginx/Let’s Encrypt и автоматическое обновление main после CI](docs/ec2-deployment.md). Конфигурация подготовлена для выделенного EC2; публичная приёмка выполняется владельцем. Release publication для обновления не требуется.

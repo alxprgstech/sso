@@ -88,6 +88,14 @@ SMTP по умолчанию; SES использует AWS credential chain; Res
 
 ## Compose, сборка и внешняя среда
 
+Для EC2 предусмотрен отдельный [production-контур](ec2-deployment.md):
+`deploy/ec2/compose.yml`, root-only `/etc/alxprgs-sso/runtime.env` и производный `app.env`.
+В последнем отсутствуют owner/migrator DB credentials. Image ID backend/PostgreSQL берутся из
+проверенного transport manifest через `SSO_BACKEND_IMAGE`/`SSO_POSTGRES_IMAGE`; pull запрещён.
+Этот контур не использует локальный `.env`/gateway3000. Доверенный proxy — Docker gateway
+172.29.40.1; внешний nginx перезаписывает IP/proto/geo headers. Registration mode задаётся
+интерактивным bootstrap администратора (для согласованной установки — open).
+
 POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB, SSO_RUNTIME_PASSWORD и SSO_MIGRATOR_PASSWORD относятся к инфраструктуре Compose. Runtime DSN Compose строит из отдельного пароля; migrate — из миграционного. DATABASE_URL из .env не переопределяет эти построенные DSN. Смена пароля .env не меняет уже инициализированный volume.
 
 ALX_BUILD_SHA — полный проверенный SHA checkout, обязателен для source build. Start scripts требуют Git и задают его сами. Build identity не является гарантией clean дерева. Production custody ключей и source-map upload — отдельные процедуры.

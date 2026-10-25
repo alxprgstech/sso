@@ -1,5 +1,36 @@
 # Приёмка ALXPRGS SSO
 
+## DEPLOY-EC2-01 — локальная проверка 25.10.2026
+
+Ветка `new/ec2-deployment`, рабочее дерево; это не опубликованный release и не remote CI.
+Установку на EC2 владелец выполняет по [инструкции](ec2-deployment.md) с сопровождением Codex.
+Общая AWS-приёмка **не закрыта**.
+
+| Проверка | Фактический результат |
+| --- | --- |
+| `pytest tests/test_ec2_deployment.py tests/test_ci_security_policy.py tests/test_privacy.py --basetemp artifacts/ec2-pytest-final -q` | 43 passed, 1.42s; unit/contract, команды деплоя в unit явно моделируются |
+| `pytest tests/test_ci_email_credentials.py --basetemp artifacts/ec2-ci-email-04 -q` | 9 passed, 4.41s; разрешённый запуск с работающим Git Bash |
+| Ruff check и format пяти новых Python-файлов, lint изменённого scanner | PASS |
+| `docker build -f deploy/ec2/check.Dockerfile -t sso-ec2-check:local .` и `docker run --rm --network none sso-ec2-check:local` | PASS на Ubuntu26.04: настоящий nginx/TLS с доверенным синтетическим сертификатом, ACME path, maintenance503, overwrite spoofed headers, safe logs, Bash syntax, OpenSSL3072/configure/idempotency/permissions/default-off, независимые процессы flock |
+| `build_ec2_bundle.py` из отдельного чистого локального snapshot `06bef2245976d87caa32127b30cfa616e72e2dd1` | Backend/frontend builds, exact source identities, PostgreSQL pinned source → image ID, checksums и transport PASS; это локальный snapshot текущего кандидата, не SHA удалённой ветки |
+| `python -m scripts.check_ec2_runtime --bundle artifacts/ec2-candidate-02.tar.gz --sha 06bef2245976d87caa32127b30cfa616e72e2dd1` | PASS: импорт архива, production Compose с отдельными fixture project/subnet/port, настоящая PostgreSQL и head migration, production readiness/role guard, штатный backup/checksum wrapper, restore в отдельную БД со свежим journal, сохранение synthetic marker после повторной миграции/старта |
+| Cleanup PostgreSQL fixture `sso-ec2-check-df69838021` | Labels проверены перед Compose down; последующая проверка контейнеров и volume этого имени — пусто. Другие проекты не затронуты |
+| `check_secret_scan.py --self-test` | Synthetic control rejected;126 candidates/0new; baseline неизменён |
+| UTF-8 Markdown и локальные ссылки | 71 Markdown/323 targets/0missing с URL decoding; повтор после финальных записей отдельно |
+
+Ошибки проверок сохранены в worklog: исходная `.venv` не содержала sentry_sdk;
+sandbox TEMP не создавал tmpdirs; Git Bash в sandbox получил MSYS0xC0000022. Исправлено
+окружение/выбран отдельный basetemp, assertions и защита не ослаблялись. Первый test-only
+multiprocessing worker был несовместим с Python3.14 forkserver; заменён отдельным subprocess,
+реальный flock сохранён. Первый link checker не декодировал `%20`; документ не был сломан.
+
+Реальные EC2/systemd bootstrap, публичные DNS/TLS, выпуск/renewal Let’s Encrypt, доставка Resend,
+первый admin/open registration, push из GitHub и совместная пользовательская приёмка пока
+**не выполнены**. Не выполнялись публикация, настройка AWS/DNS/SSH/Secrets, remote CI, нагрузка
+или новый полный dependency/image audit. Для локального nginx проверен синтетический backend;
+это не браузерная production-проверка SSO. Код сервера/SDK/frontend и их существующие security
+tests не изменялись; общий приёмочный набор приложения не подменяется этими результатами.
+
 Продукт 0.2.0. Актуальная методика: [03-test-procedure](03-test-procedure.md), [подготовка](testing/README.md), [чек-лист](testing/manual-checklist.md). Результаты ниже исторические: относятся к указанной ревизии и стенду, не подтверждают текущий production. Очистка DOC-CLEANUP-02 не повторяла runtime-проверки.
 
 ## Матрица текущей приёмки
@@ -13,7 +44,7 @@
 | OIDC и сессии | Два RP, PKCE/state/nonce/claims/redirect, code/refresh replay и races, logout, read grant и одноразовые mutation proofs |
 | Email и MFA | Обязательная email-confirmation до самостоятельного создания пользователя; три MFA default-off API, enabled TOTP/UV Passkey/recovery negatives |
 | Авторизация/privacy | RBAC/IDOR/last-admin/CSRF/Origin/security revision, consent/deletion/retention/restore journal, telemetry redaction |
-| CI/release/security | Exact SHA/tag, обязательные gates/scans, hashes/SBOM/provenance, manifest/checksums; CD остаётся выключенным |
+| CI/release/security | Exact SHA/tag, обязательные gates/scans, hashes/SBOM/provenance, manifest/checksums; EC2 CD разрешён 25.10.2026; live-приёмка отдельно |
 | Внешняя production-приёмка | Live providers, sender registration, public TLS/DNS/IAM/secret custody/storage/alerts/load/OIF и owner credential review |
 
 [Прежние акты и команды](https://github.com/alxprgstech/sso/blob/7d1585e7bdd40104be7a8b933b998cbc843d46a5/docs/acceptance.md) сохранены в Git; неуспешные попытки и хронология — [worklog](worklog.md). Локальные результаты последнего remediation приведены ниже.
@@ -139,3 +170,9 @@ PR26CI39468423241:701PASS/1FAIL,14subtests; cancellationtest имел прежд
 Ручной code conflict: resend сохраняет нейтральный202 неизвестной/устаревшей заявки и browser proof существующей заявки до MAX_SENDS. Добавлен совместный regression. Все разделы документов обеих сторон восстановлены; история worklog сохранена. После CI failure исправлена синхронизация cancellation unit-test (join реального pool2), runtime admission не менялся. Финальный обязательный CI указан выше; локальные наборы17/17/20/32 и36 combined, дополнительный cancellation/burst6PASS описаны выше (это пересекающиеся наборы, не сумма уникальных tests).
 
 Live SES job был условно пропущен по существующей политике без AWS credentials; это не проверка доставки. Production/deploy, live Gmail и распределённая нагрузка не выполнялись. Завершающий documentation-only checkpoint проверяется локально на UTF-8/ссылки/diff; SUCCESS PR CI не выдаётся за CI его будущего commit SHA.
+
+DEPLOY-EC2-01 версии стенда: testPython3.12.14, pytest9.1.1, Ruff0.16.8, Docker29.8.0; isolated Ubuntu26.04 packages Python3.14/nginx1.28.3. Результаты finalrootoperator и bundle snapshot читаются совместно, без заявления remoteCI/productionPASS.
+
+DEPLOY-EC2-01 final-audit correction: после2855f77 найден и исправлен backup filename collision cleanup. Четыре содержательных unit regression (без настоящего pg_dump) + прежние43:47PASS2.05s. Проверены сохранность existing dump/journal и очистка только собственного partialfile. Dump/journal и operator state теперь fsync. Для нового backup-кода требуется отдельный повтор actualPG transport; прежний snapshotрезультат выше его не подменяет.
+
+Окончательный код DEPLOY-EC2-01: c358413253189c5880ceea4f5c5ca2f195f9a182. Из чистого checkout этого SHA штатный builder создал artifacts/ec2-final.tar.gz; тот же bundle прошёл scripts.check_ec2_runtime на настоящей PostgreSQL с новым collision-safe/fsync backup, контрольной суммой и restore в отдельную БД. Fixtureproject sso-ec2-check-c0035ecb6f удалён labelcheckedComposeDown. Повтор Ubuntu nginx/TLS/configure/fsync/flockPASS. Эти результаты заменяют необходимость повторной проверки нового backupfix, отмеченную выше; AWS/live delivery/ACME/remoteCI по-прежнему не проверены. Suite47PASS2.05s, CIemailpolicy9PASS4.41s; Ruff/format/secretselftestPASS.

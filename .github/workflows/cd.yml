@@ -1,0 +1,79 @@
+name: Deploy SSO to EC2
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-ec2-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 40
+    steps:
+      - name: Checkout CI-verified revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - name: Skip superseded revision
+        id: freshness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [[ "$latest" == "$DEPLOY_SHA" ]]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+            echo 'Superseded commit; no deployment.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build private transport bundle
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python3 scripts/build_ec2_bundle.py --sha "$DEPLOY_SHA" --output sso-ec2.tar.gz
+      - name: Set up transport check Python
+        if: steps.freshness.outputs.current == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Verify the transport to be installed
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 -m pip install --require-hashes -r requirements-lock-hashed.txt
+          python3 -m scripts.check_ec2_runtime --bundle sso-ec2.tar.gz --sha "$DEPLOY_SHA"
+      - name: Recheck main and install
+        if: steps.freshness.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_SEQUENCE: ${{ github.run_number }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ssodeploy
+          SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [[ "$latest" != "$DEPLOY_SHA" ]]; then
+            echo 'Main advanced during build; no deployment.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          bash deploy/ec2/upload.sh

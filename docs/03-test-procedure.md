@@ -77,3 +77,7 @@
 ## Подготовка и команды
 
 PostgreSQL, safety marker, default-off/enabled, SDK и E2E: [руководство тестирования](testing/README.md). Полная приёмка требует реальных PostgreSQL/браузерных и эксплуатационных проверок.
+
+## DEPLOY-EC2-01
+
+Проверить `tests/test_ec2_deployment.py`, сборку/исполнение `deploy/ec2/check.Dockerfile` (реальный nginx/TLS на синтетическом стенде), затем выполнить с владельцем [AWS-приёмку](ec2-deployment.md#8-приёмка-с-владельцем). Отдельно фиксировать фактические EC2/Resend/ACME результаты.

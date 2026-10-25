@@ -22,9 +22,10 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def check_cd_template() -> list[str]:
     errors = []
+    # Owner authorized EC2 CD on 2026-10-25. The historical example stays inert.
     active_cd = os.path.join(ROOT_DIR, ".github", "workflows", "cd.yml")
-    if os.path.exists(active_cd):
-        errors.append("Active CD workflow .github/workflows/cd.yml must NOT exist!")
+    if not os.path.exists(active_cd):
+        errors.append("Authorized EC2 workflow .github/workflows/cd.yml is missing")
 
     example_cd = os.path.join(ROOT_DIR, "deploy", "github-actions", "cd.yml.example")
     if not os.path.exists(example_cd):

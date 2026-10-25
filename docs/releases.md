@@ -105,26 +105,21 @@ python scripts/bump_version.py set 0.2.0
 
 ---
 
-## 5. Временно отключённый контур CD и правила будущей активации (CD-01..03)
+## 5. EC2 CD после CI (решение 25.10.2026)
 
-В соответствии с требованием безопасности CD-01:
-- Шаблон развёртывания размещен в `deploy/github-actions/cd.yml.example` **вне** каталога `.github/workflows/`.
-- **Все строки файла закомментированы символом `#`**.
-- Никакие коммиты, теги или действия в CI/Release не инициируют автоматическое развёртывание.
-
-### Инструкция будущей активации CD:
-1. Выбрать и подготовить целевую инфраструктуру (серверы, Docker Swarm / Kubernetes / VPS).
-2. Настроить в GitHub Secrets репозитория параметры окружения:
-   - `PROD_HOST`, `PROD_SSH_KEY`, `PROD_DB_URL`, `PROD_JWT_PRIVATE_KEY`, `PROD_TOTP_KEY`.
-3. Настроить в GitHub Environment защиту развёртывания (Required Reviewers).
-4. Скопировать `deploy/github-actions/cd.yml.example` в `.github/workflows/cd.yml`.
-5. Раскомментировать необходимые строки, зафиксировать Commit SHA и закоммитить изменения.
+По прямому поручению владельца прежний CD-01 заменён [ADR-0029](adr/0029-ec2-continuous-deployment.md).
+Активный `.github/workflows/cd.yml` развёртывает точный SHA успешного push-CI из main.
+Он не публикует релиз и не использует release jobs для деплоя. Частный transport включает образы,
+frontend, manifest/checksums; сборка выполняется на runner, установка — по SSH.
+[Полная инструкция EC2](ec2-deployment.md) описывает production Environment, bootstrap,
+постоянные секреты, backup, миграции, проверки и ограниченный rollback.
+Исторический `deploy/github-actions/cd.yml.example` остаётся полностью закомментированным.
 
 ## Sentry release/source maps
 
 `release_bundle.py build --private-maps <PRIVATE_DIR>` создаёт общую VERSION/full-SHA identity, hidden maps/Debug IDs, private JS/maps manifest и deploy archive без maps. Verifier сравнивает identity внутри backend wheel/frontend archive, а также точное совпадение JS с private bundle. Не пересобирайте frontend после upload. Private промежуточный artifact хранится один день и не входит в GitHub Release.
 
-`prepare-sentry-release` зависит от build и блокирует draft при включённом неуспешном upload. Trusted workflow checkout и fixed CLI installation выполняются без token; единственный upload step получает protected `SENTRY_AUTH_TOKEN`. Требуются `SENTRY_ORG`, оба `SENTRY_PROJECT_*`, `SENTRY_URL=https://de.sentry.io/`, opt-in `SENTRY_RELEASE_UPLOAD_ENABLED`. Dry-run/upload-disabled всегда offline, даже если credentials присутствуют. Dirty/untagged local bundles не допускаются к upload. Runtime release override не используется. Build не создаёт deployment record; CD остаётся неактивным. Полный порядок: [observability.md](observability.md).
+`prepare-sentry-release` зависит от build и блокирует draft при включённом неуспешном upload. Trusted workflow checkout и fixed CLI installation выполняются без token; единственный upload step получает protected `SENTRY_AUTH_TOKEN`. Требуются `SENTRY_ORG`, оба `SENTRY_PROJECT_*`, `SENTRY_URL=https://de.sentry.io/`, opt-in `SENTRY_RELEASE_UPLOAD_ENABLED`. Dry-run/upload-disabled всегда offline, даже если credentials присутствуют. Dirty/untagged local bundles не допускаются к upload. Runtime release override не используется. Build не создаёт deployment record; EC2 CD описан отдельно и не создаёт Sentry deploy record. Полный порядок: [observability.md](observability.md).
 
 ## Миграции текущей реализации: 0004_privacy…0010_registration_session
 
@@ -140,7 +135,7 @@ Build identity/release workflow допускают stable X.Y.Z и rc.N. bump_ve
 
 Реальные CI jobs: windows-safety, email-e2e-credentials/email-e2e, telemetry-container-check, verify-cd-template, security-and-deps-scan, version-consistency, backend-lint-and-test, sdk-build-and-test, frontend-build, playwright-e2e. Названия выше в описании направлений не являются идентификаторами jobs. CI использует Python 3.12/Node 24; закреплённые Actions проверяются в workflow.
 
-Будущие infrastructure/secrets в секции CD — предварительные placeholders, не выбранная схема. Активация требует отдельного поручения, анализа целевого контура, проверки артефактов, backup/миграции/health/rollback. Документационная задача release workflow не запускала; результаты прежних SHA — [acceptance](acceptance.md).
+Инфраструктура EC2 и секреты определены в [инструкции](ec2-deployment.md); placeholders исторического шаблона не используются активным CD. Документационная задача release workflow не запускала; результаты прежних SHA — [acceptance](acceptance.md).
 
 ## Unreleased: целостность Python artifacts и build metadata
 

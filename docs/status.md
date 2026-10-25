@@ -11,3 +11,18 @@
 Production-приёмка остаётся открыта: live SES/Gmail/Sentry и sender registration, public TLS/DNS/IAM/secret storage, внешние backup/storage ACL/alerts, OIF/multi-replica load и owner review исторических credentials. Deployment, release publication и активация CD не выполнялись. DOC-VERSION-LOCK-01 и остальные открытые требования — [план](plan.md).
 
 TOTP/Passkey/Recovery выключены по умолчанию; email confirmation самостоятельной регистрации обязательно. Текущая схема и security-модель — [миграция](migration.md), [безопасность](security.md).
+
+## DEPLOY-EC2-01 — in_progress
+2026-10-25T16:16:15.9332703+03:00: согласован активный CD из main после CI того же SHA вместо прежнего запрета. Ветка new/ec2-deployment. AWS-команды выполняет владелец; live-приёмка пока не выполнена.
+
+2026-10-25T16:57:52.0663676+03:00: локальная реализация DEPLOY-EC2-01 готова к review: bootstrap/nginx/Let'sEncrypt timers/Resend alerts/backupchecksums/CD exactSHA и инструкция. Проверки43unit+9CIpolicy, реальный UbuntuTLS/flock/OpenSSL и PostgreSQLbundle/backuprestorePASS. Код приложения не менялся. AWS/remoteCI/liveemail/ACME не проверены; следующий шаг — первоначальный bootstrap владельцем по [инструкции](ec2-deployment.md). Общаяприёмка остаётся открыта.
+
+Локальный codecommit: 2855f77b26ef95ea2189a5b70a81ce150b8b50ed, new/ec2-deployment; push отсутствует. Точка продолжения — раздел2 инструкции EC2 и результаты владельческого запуска.
+
+2026-10-25T17:05:53.5624069+03:00: finalaudit выявил backup filename collision cleanup; исправлен с4regression,47targetedPASS. Выполняется повтор transport/actualPG для этой версии; ранее записанный handoff не закрывает новыйfix.
+
+2026-10-25T17:10:53.1873172+03:00: повтор после backupfix завершён: codecommit c358413253189c5880ceea4f5c5ca2f195f9a182 собран и проверен actualPG/backuprestore/checksum;47targetedPASS, UbuntuTLS/config/fsync/flockPASS, secrets126/0new. Локальная реализация готова; ожидается пользовательский запуск по docs/ec2-deployment.md. Общая AWS-приёмка пока in_progress, remote push отсутствует.
+
+2026-10-25T17:13:06.0638441+03:00: DEPLOY-EC2-01 blocked только на внешнем действии владельца: ожидается результат bootstrap EC2. Код и локальные проверки готовы, дерево до этой записи чистое; AWS/live-приёмка не выполнена. Продолжение после сообщения об успехе либо обезличенной ошибке установщика.
+
+2026-10-25T17:27:42.1509866+03:00: владелец запустил bootstrap EC2; пакеты установлены, конфигурация создана, nginx syntax PASS. Новый наблюдаемый blocker — Certbot HTTP-01 connection timeout на публичном TCP80. Сертификат и bootstrap не завершены; требуются сетевые проверки владельцем и повтор bootstrap. Прежнее ожидание первого запуска снято фактическим выводом.
