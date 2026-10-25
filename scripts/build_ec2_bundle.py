@@ -20,7 +20,9 @@ POSTGRES = (
 # Digest pulls stay unnamed in the classic image store; tag them so the saved
 # archive and the loaded server image carry one stable identity everywhere.
 POSTGRES_TAG = f"alxprgs-sso-postgres:{POSTGRES.rsplit('sha256:', 1)[1][:12]}"
-CONFIG_FILE = re.compile(r"([a-f0-9]{64})\.json$")
+# Classic-store archives reference configs as "<digest>.json" (Docker <=24) or
+# "blobs/sha256/<digest>" (Docker 25+ hybrid docker-archive layout).
+CONFIG_REFERENCE = re.compile(r"^(?:([a-f0-9]{64})\.json|blobs/sha256[:/]([a-f0-9]{64}))$")
 
 
 def run(*args: str) -> str:
@@ -46,14 +48,16 @@ def archive_config_digests(archive: Path, expected: set[str]) -> dict[str, str]:
         raise ValueError("images.tar must contain exactly the expected images")
     result: dict[str, str] = {}
     for entry in entries:
-        match = CONFIG_FILE.search(entry.get("Config", ""))
+        match = CONFIG_REFERENCE.match(entry.get("Config", ""))
         tags = entry.get("RepoTags") or []
         if not match or not all(isinstance(tag, str) for tag in tags):
-            raise ValueError("images.tar entry without config digest or tags")
+            # Entries carry only tags and digests; include them for diagnosis.
+            raise ValueError(f"images.tar entry without config digest or tags: {entry}")
+        digest = match.group(1) or match.group(2)
         for tag in tags:
             if tag in result:
                 raise ValueError(f"Duplicate tag in images.tar: {tag}")
-            result[tag] = f"sha256:{match.group(1)}"
+            result[tag] = f"sha256:{digest}"
     if set(result) != expected:
         raise ValueError(f"images.tar tags {sorted(result)} do not match {sorted(expected)}")
     return result

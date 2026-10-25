@@ -388,13 +388,24 @@ POSTGRES_TAG = "alxprgs-sso-postgres:721873c34ceb"
 EXPECTED_TAGS = {BACKEND_TAG, POSTGRES_TAG}
 
 
-def test_transport_identity_comes_from_saved_archive_not_the_daemon(tmp_path):
+@pytest.mark.parametrize(
+    "backend_config,postgres_config",
+    [
+        # Docker <=24 classic archives use "<digest>.json"; Docker 25+ hybrid
+        # docker-archives reference the same config under blobs/sha256/.
+        ("a" * 64 + ".json", "b" * 64 + ".json"),
+        ("blobs/sha256/" + "a" * 64, "blobs/sha256/" + "b" * 64),
+    ],
+)
+def test_transport_identity_comes_from_saved_archive_not_the_daemon(
+    tmp_path, backend_config, postgres_config
+):
     archive = tmp_path / "images.tar"
     legacy_images_tar(
         archive,
         [
-            {"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]},
-            {"Config": "b" * 64 + ".json", "RepoTags": [POSTGRES_TAG]},
+            {"Config": backend_config, "RepoTags": [BACKEND_TAG]},
+            {"Config": postgres_config, "RepoTags": [POSTGRES_TAG]},
         ],
     )
     identity = bundle_spec().archive_config_digests(archive, EXPECTED_TAGS)
