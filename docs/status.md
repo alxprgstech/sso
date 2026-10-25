@@ -28,3 +28,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 2026-10-25T17:27:42.1509866+03:00: владелец запустил bootstrap EC2; пакеты установлены, конфигурация создана, nginx syntax PASS. Новый наблюдаемый blocker — Certbot HTTP-01 connection timeout на публичном TCP80. Сертификат и bootstrap не завершены; требуются сетевые проверки владельцем и повтор bootstrap. Прежнее ожидание первого запуска снято фактическим выводом.
 
 2026-10-25T18:03:29.4349911+03:00: по прямому запросу владельца подготовлен manualCD без общегоCI через workflow_dispatch только main. Автоматический success gate и обязательный transport test сохранены;47unit/contractPASS. Для появления Runworkflow изменение должно быть в main; фактический запуск не выполнялся.
+
+2026-10-25T18:14:46.1568259+03:00: устранён clean-runner failure Output parent must already exist в transport check. Parent artifacts создаётся автоматически;53tests и actualLinux permissionsPASS. Обновить main и запустить новый ручной CD; повтор старогоrun останется на старомSHA. EC2переустановка для этой ошибки не требуется.
