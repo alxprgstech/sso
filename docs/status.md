@@ -20,3 +20,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 Локальный codecommit: 2855f77b26ef95ea2189a5b70a81ce150b8b50ed, new/ec2-deployment; push отсутствует. Точка продолжения — раздел2 инструкции EC2 и результаты владельческого запуска.
 
 2026-10-25T17:05:53.5624069+03:00: finalaudit выявил backup filename collision cleanup; исправлен с4regression,47targetedPASS. Выполняется повтор transport/actualPG для этой версии; ранее записанный handoff не закрывает новыйfix.
+
+2026-10-25T17:10:53.1873172+03:00: повтор после backupfix завершён: codecommit c358413253189c5880ceea4f5c5ca2f195f9a182 собран и проверен actualPG/backuprestore/checksum;47targetedPASS, UbuntuTLS/config/fsync/flockPASS, secrets126/0new. Локальная реализация готова; ожидается пользовательский запуск по docs/ec2-deployment.md. Общая AWS-приёмка пока in_progress, remote push отсутствует.
