@@ -179,3 +179,7 @@ DEPLOY-EC2-01 2026-10-25T17:27:42.1509866+03:00: AWS bootstrap начат вла
 DEPLOY-EC2-01 manual-CD 2026-10-25T18:01:01.0734739+03:00: in_progress по прямому поручению владельца. План: workflow_dispatch только main без общего CI, сохранить автоматический successful-CI gate, exactSHA/freshness/concurrency/highwater и обязательный transport test; regression матрица событий и документация. Готовность: ручной путь реализован и локально проверен, отсутствие общегоCI не объявляется PASS.
 
 DEPLOY-EC2-01 manual-CD 2026-10-25T18:03:29.4349911+03:00: done в части реализации ручного запуска.47targetedPASS2.41s; инструкция GitHub Actions Runworkflow/main добавлена. Внешняя EC2/CI-приёмка остаётся отдельной и незакрытой.
+
+DEPLOY-EC2-01 runner-workspace 2026-10-25T18:11:24.9532850+03:00: in_progress. По логу job121205110397 доказано: отсутствует artifacts parent на чистом CD runner. План: создавать parent перед private_directory без ослабления ACL/отказа reuse, regression fresh checkout, targeted проверки. Критерий: подготовка workspace проходит при отсутствующем artifacts и сохраняет защиту.
+
+DEPLOY-EC2-01 runner-workspace 2026-10-25T18:14:46.1568259+03:00: done локально.53targetedPASS5.95s и actualLinux mode0700/reuse/symlinkPASS. Исправлена подготовка clean runner; дальнейший новый CD run на обновлённом main ещё не выполнен.

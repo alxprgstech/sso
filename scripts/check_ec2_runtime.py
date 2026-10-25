@@ -22,6 +22,16 @@ from scripts.rotate_keys import generate_session_secret, private_directory
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def prepare_workspace(root: Path, project: str) -> Path:
+    artifacts = root / "artifacts"
+    if artifacts.is_symlink():
+        raise ValueError("Artifacts directory must not be a symlink")
+    artifacts.mkdir(exist_ok=True)
+    workspace = artifacts / project
+    private_directory(workspace)
+    return workspace
+
+
 def run(*args: str, input: bytes | None = None) -> bytes:
     result = subprocess.run(args, input=input, capture_output=True)
     if result.returncode:
@@ -35,8 +45,7 @@ def main() -> None:
     parser.add_argument("--sha", required=True)
     args = parser.parse_args()
     project = "sso-ec2-check-" + secrets.token_hex(5)
-    workspace = ROOT / "artifacts" / project
-    private_directory(workspace)
+    workspace = prepare_workspace(ROOT, project)
     spec = importlib.util.spec_from_file_location("ec2_operator", ROOT / "deploy/ec2/ssoctl.py")
     ctl = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ctl)

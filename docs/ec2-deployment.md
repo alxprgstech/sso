@@ -253,3 +253,11 @@ dry-run сертификата, уведомление и отрицательн
 Источники: [Docker Ubuntu](https://docs.docker.com/engine/install/ubuntu/),
 [Certbot webroot/renew](https://eff-certbot.readthedocs.io/en/stable/using.html),
 [GitHub workflow_run](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run).
+
+## Ошибка подготовки каталога на GitHub runner
+
+Ошибка `ValueError: Output parent must already exist` в `scripts.check_ec2_runtime` означает,
+что чистый runner не имел игнорируемой папки `artifacts`. Исправленная версия создаёт
+родительскую папку сама, затем защищённый одноразовый каталог с проверкой прав.
+На EC2 ничего создавать вручную не требуется. Перенесите исправление в main и запустите
+новый **Run workflow**: **Re-run** старого запуска использует прежний SHA и не подхватит новый код.
