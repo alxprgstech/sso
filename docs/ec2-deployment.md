@@ -107,11 +107,13 @@ SSH host key, блокировка обновлений, backup и полити�
 Образы amd64 собираются на runner; backend и закреплённый PostgreSQL доставляются архивом,
 статический frontend извлекается из его образа. Registry не нужен.
 
-Идентичность образов: runner CD/CI принудительно переключает Docker на классический image store
-(`containerd-snapshotter=false`), тот же store использует сервер; иначе containerd-раннер записал бы
-в manifest digest манифеста вместо config-digest, а `docker save` выгрузил бы OCI-архив — после
-load на EC2 образы получили бы другие ID и деплой упал бы на проверке image ID. PostgreSQL
-помечается тегом `alxprgs-sso-postgres:<префикс digest>`, поэтому переживает load под именем.
+Идентичность образов: раннеры CD/CI принудительно переключают Docker на классический image store
+(`containerd-snapshotter=false`). **Docker 29 в свежих установках по умолчанию включает containerd
+image store** (ID образов = digest манифеста, а не config-digest), поэтому EC2 тоже должен работать
+на классическом store — `bootstrap.sh` закрепляет это в `/etc/docker/daemon.json`; уже установленный
+сервер переводится однократно командой из раздела 5. Иначе после `docker load` образы получают
+другие ID, и деплой упадёт на проверке image ID. PostgreSQL помечается тегом
+`alxprgs-sso-postgres:<префикс digest>`, поэтому переживает load под именем.
 Значения `backend_image`/`postgres_image` в manifest.json вычисляются из самого `images.tar`
 (config-digest каждого образа), а не из `docker image inspect` демона раннера; неожиданный формат
 или набор образов в архиве — жёсткая ошибка сборки бандла на runner.
@@ -132,6 +134,23 @@ sudo ssoctl admin
 TOTP, Passkey, Recovery codes остаются false. Подтверждение email новой регистрации обязательно.
 
 ## 5. Обновление и ошибки
+
+Если `sudo docker info --format '{{.Driver}}'` показывает `overlayfs`, сервер работает на containerd
+image store (умолчание Docker 29) и деплой образов упадёт на проверке image ID. Однократно
+переведите демон на классический store (остальные ключи daemon.json сохраняются):
+
+```bash
+sudo python3 - <<'PY'
+import json
+from pathlib import Path
+path = Path("/etc/docker/daemon.json")
+config = json.loads(path.read_text()) if path.exists() else {}
+config.setdefault("features", {})["containerd-snapshotter"] = False
+path.write_text(json.dumps(config, indent=2))
+PY
+sudo systemctl restart docker
+sudo docker info --format '{{.Driver}}'   # ожидается overlay2
+```
 
 Следующие push в main обновляются автоматически после CI. Во время обновления nginx показывает
 503 с техническим обслуживанием. Порядок: блокировка оператора → проверка bundle/SHA/image ID

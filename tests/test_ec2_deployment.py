@@ -479,7 +479,7 @@ def test_operation_error_names_failing_command_without_child_output(monkeypatch)
     assert "PRIVATE-OUTPUT" not in str(failure.value)
 
 
-def test_workflows_pin_classic_image_store_before_transport():
+def test_transport_pipeline_pins_classic_docker_image_store():
     pinning = "Pin classic Docker image store to match the EC2 server"
     for path, job, anchor in (
         (".github/workflows/cd.yml", "deploy", "Build private transport bundle"),
@@ -492,3 +492,8 @@ def test_workflows_pin_classic_image_store_before_transport():
         steps = yaml.safe_load((ROOT / path).read_text())["jobs"][job]["steps"]
         names = [step["name"] for step in steps]
         assert names.index(pinning) < names.index(anchor)
+    # Docker 29 fresh installs default to the containerd image store; new
+    # servers must land on the classic store the runners are pinned to.
+    bootstrap = (ROOT / "deploy/ec2/bootstrap.sh").read_text()
+    assert '["containerd-snapshotter"] = False' in bootstrap
+    assert bootstrap.index("containerd-snapshotter") < bootstrap.index("enable --now docker")

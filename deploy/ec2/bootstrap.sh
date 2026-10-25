@@ -26,6 +26,18 @@ EOF
   apt-get update
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
+# Docker 29 defaults fresh installs to the containerd image store, whose image
+# IDs are manifest digests; transport identity needs the classic store on both
+# sides, exactly like the CD/CI runners pin it.
+python3 - <<'PY'
+import json
+from pathlib import Path
+path = Path("/etc/docker/daemon.json")
+config = json.loads(path.read_text()) if path.exists() else {}
+config.setdefault("features", {})["containerd-snapshotter"] = False
+path.write_text(json.dumps(config, indent=2))
+PY
+systemctl restart docker
 docker compose version
 systemctl enable --now docker nginx
 id ssodeploy >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ssodeploy
