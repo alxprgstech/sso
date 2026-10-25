@@ -173,3 +173,5 @@ DEPLOY-EC2-01 checkpoint 2026-10-25T16:57:52.0663676+03:00: локальная �
 DEPLOY-EC2-01 2026-10-25T17:11:30.2215594+03:00: окончательный code c358413 включает collision-safe backup с4regression и fsync.47targeted+9CIpolicyPASS; exactSHA bundle/actualPG backuprestore и UbuntuTLS/config/flockPASS. Локальные критерии реализации выполнены, общий статус in_progress до пользовательской AWS-проверки; команды и ограничения вacceptance/ec2-deployment.
 
 DEPLOY-EC2-01 2026-10-25T17:13:06.0638441+03:00: blocked на внешней AWS-приёмке. Локальная реализация и проверки завершены; три последовательных goal-turn упираются в отсутствие результата владельческого bootstrap. Условие разблокировки: владелец выполняет раздел2 docs/ec2-deployment.md и сообщает успех/обезличенную ошибку. Повторные локальные тесты без изменений не требуются.
+
+DEPLOY-EC2-01 2026-10-25T17:27:42.1509866+03:00: AWS bootstrap начат владельцем, прежнее ожидание запуска заменено наблюдаемым blocked — Certbot HTTP-01 TCP80 connect timeout. Условие продолжения: доступность HTTP challenge снаружи и повторный bootstrap; SG/host firewall пока не проверены, серверная конфигурация сохраняется.
