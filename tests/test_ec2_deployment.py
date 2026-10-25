@@ -275,10 +275,11 @@ def test_migration_failure_rollback_is_conservative(operator, monkeypatch, chang
     assert not (state / "deployed.json").exists()
 
 
-def test_cd_accepts_only_successful_same_repository_main_push():
+def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
     workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
     assert workflow["on"] == {
-        "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]}
+        "workflow_dispatch": {},
+        "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]},
     }
     gate = workflow["jobs"]["deploy"]["if"]
     for condition in (
@@ -290,11 +291,55 @@ def test_cd_accepts_only_successful_same_repository_main_push():
         assert condition in gate
     assert workflow["concurrency"]["cancel-in-progress"] == "false"
     steps = workflow["jobs"]["deploy"]["steps"]
-    assert steps[0]["with"]["ref"] == "${{ github.event.workflow_run.head_sha }}"
+    assert steps[0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
+    assert workflow["jobs"]["deploy"]["env"]["DEPLOY_SHA"] == (
+        "${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}"
+    )
+    transport = next(
+        step for step in steps if step["name"] == "Verify the transport to be installed"
+    )
+    assert "scripts.check_ec2_runtime" in transport["run"]
+    assert transport["if"] == "steps.freshness.outputs.current == 'true'"
+    assert all("continue-on-error" not in step for step in steps)
     for step in steps:
         if "uses" in step:
             assert __import__("re").search(r"@[a-f0-9]{40}$", step["uses"])
     assert "latest" in steps[-1]["run"] and "deploy/ec2/upload.sh" in steps[-1]["run"]
+
+
+@pytest.mark.parametrize(
+    "event,ref,conclusion,origin,branch,same_repo,allowed",
+    [
+        ("workflow_dispatch", "refs/heads/main", "failure", "push", "main", True, True),
+        ("workflow_dispatch", "refs/heads/new/test", "success", "push", "main", True, False),
+        ("workflow_run", "refs/heads/main", "success", "push", "main", True, True),
+        ("workflow_run", "refs/heads/main", "failure", "push", "main", True, False),
+        ("workflow_run", "refs/heads/main", "cancelled", "push", "main", True, False),
+        ("workflow_run", "refs/heads/main", "success", "pull_request", "main", True, False),
+        ("workflow_run", "refs/heads/main", "success", "push", "other", True, False),
+        ("workflow_run", "refs/heads/main", "success", "push", "main", False, False),
+        ("push", "refs/heads/main", "success", "push", "main", True, False),
+    ],
+)
+def test_cd_event_gate_matrix(event, ref, conclusion, origin, branch, same_repo, allowed):
+    from types import SimpleNamespace as NS
+
+    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
+    expression = workflow["jobs"]["deploy"]["if"].replace("&&", "and").replace("||", "or")
+    github = NS(
+        event_name=event,
+        ref=ref,
+        repository="owner/sso",
+        event=NS(
+            workflow_run=NS(
+                conclusion=conclusion,
+                event=origin,
+                head_branch=branch,
+                head_repository=NS(full_name="owner/sso" if same_repo else "fork/sso"),
+            )
+        ),
+    )
+    assert bool(eval(expression, {"__builtins__": {}}, {"github": github})) == allowed
 
 
 def test_production_compose_boundary_and_defaults():
