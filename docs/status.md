@@ -22,3 +22,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 2026-10-25T17:05:53.5624069+03:00: finalaudit выявил backup filename collision cleanup; исправлен с4regression,47targetedPASS. Выполняется повтор transport/actualPG для этой версии; ранее записанный handoff не закрывает новыйfix.
 
 2026-10-25T17:10:53.1873172+03:00: повтор после backupfix завершён: codecommit c358413253189c5880ceea4f5c5ca2f195f9a182 собран и проверен actualPG/backuprestore/checksum;47targetedPASS, UbuntuTLS/config/fsync/flockPASS, secrets126/0new. Локальная реализация готова; ожидается пользовательский запуск по docs/ec2-deployment.md. Общая AWS-приёмка пока in_progress, remote push отсутствует.
+
+2026-10-25T17:13:06.0638441+03:00: DEPLOY-EC2-01 blocked только на внешнем действии владельца: ожидается результат bootstrap EC2. Код и локальные проверки готовы, дерево до этой записи чистое; AWS/live-приёмка не выполнена. Продолжение после сообщения об успехе либо обезличенной ошибке установщика.
