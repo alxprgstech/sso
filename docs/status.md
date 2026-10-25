@@ -18,3 +18,5 @@ TOTP/Passkey/Recovery выключены по умолчанию; email confirma
 2026-10-25T16:57:52.0663676+03:00: локальная реализация DEPLOY-EC2-01 готова к review: bootstrap/nginx/Let'sEncrypt timers/Resend alerts/backupchecksums/CD exactSHA и инструкция. Проверки43unit+9CIpolicy, реальный UbuntuTLS/flock/OpenSSL и PostgreSQLbundle/backuprestorePASS. Код приложения не менялся. AWS/remoteCI/liveemail/ACME не проверены; следующий шаг — первоначальный bootstrap владельцем по [инструкции](ec2-deployment.md). Общаяприёмка остаётся открыта.
 
 Локальный codecommit: 2855f77b26ef95ea2189a5b70a81ce150b8b50ed, new/ec2-deployment; push отсутствует. Точка продолжения — раздел2 инструкции EC2 и результаты владельческого запуска.
+
+2026-10-25T17:05:53.5624069+03:00: finalaudit выявил backup filename collision cleanup; исправлен с4regression,47targetedPASS. Выполняется повтор transport/actualPG для этой версии; ранее записанный handoff не закрывает новыйfix.

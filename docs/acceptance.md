@@ -172,3 +172,5 @@ PR26CI39468423241:701PASS/1FAIL,14subtests; cancellationtest имел прежд
 Live SES job был условно пропущен по существующей политике без AWS credentials; это не проверка доставки. Production/deploy, live Gmail и распределённая нагрузка не выполнялись. Завершающий documentation-only checkpoint проверяется локально на UTF-8/ссылки/diff; SUCCESS PR CI не выдаётся за CI его будущего commit SHA.
 
 DEPLOY-EC2-01 версии стенда: testPython3.12.14, pytest9.1.1, Ruff0.16.8, Docker29.8.0; isolated Ubuntu26.04 packages Python3.14/nginx1.28.3. Результаты finalrootoperator и bundle snapshot читаются совместно, без заявления remoteCI/productionPASS.
+
+DEPLOY-EC2-01 final-audit correction: после2855f77 найден и исправлен backup filename collision cleanup. Четыре содержательных unit regression (без настоящего pg_dump) + прежние43:47PASS2.05s. Проверены сохранность existing dump/journal и очистка только собственного partialfile. Dump/journal и operator state теперь fsync. Для нового backup-кода требуется отдельный повтор actualPG transport; прежний snapshotрезультат выше его не подменяет.

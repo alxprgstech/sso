@@ -51,8 +51,16 @@ def private_write(path: Path, content: str) -> None:
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as target:
         temp = Path(target.name)
         target.write(content.encode())
+        target.flush()
+        os.fsync(target.fileno())
     os.chmod(temp, 0o600)
     temp.replace(path)
+    if os.name != "nt":
+        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
 
 @contextlib.contextmanager
