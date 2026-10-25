@@ -1,0 +1,78 @@
+name: alxprgs-sso
+services:
+  db:
+    # Built from the digest pinned in scripts/build_ec2_bundle.py; exact ID travels in manifest.
+    image: ${SSO_POSTGRES_IMAGE:?}
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 1
+    environment:
+      POSTGRES_USER: sso_owner
+      POSTGRES_DB: sso_db
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      SSO_RUNTIME_PASSWORD: ${SSO_RUNTIME_PASSWORD:?}
+      SSO_MIGRATOR_PASSWORD: ${SSO_MIGRATOR_PASSWORD:?}
+    volumes:
+      - data:/var/lib/postgresql/data
+      - ./postgres/010-init-roles.sh:/docker-entrypoint-initdb.d/010-init-roles.sh:ro
+      - ./postgres/init-roles.sql:/opt/sso-init-roles.sql:ro
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U sso_owner -d sso_db]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging: &logging
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  backend:
+    image: ${SSO_BACKEND_IMAGE:?}
+    pull_policy: never
+    env_file: /etc/alxprgs-sso/app.env
+    environment: &runtime
+      DATABASE_URL: postgresql+psycopg://sso_runtime:${SSO_RUNTIME_PASSWORD:?}@db:5432/sso_db
+      DATABASE_URL_SYNC: postgresql+psycopg://sso_runtime:${SSO_RUNTIME_PASSWORD:?}@db:5432/sso_db
+      TRUSTED_PROXIES: '["172.29.40.1"]'
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 2
+    ports: ['127.0.0.1:8000:8000']
+    networks:
+      database: {}
+      edge: {ipv4_address: 172.29.40.20}
+    logging: *logging
+  migrate:
+    image: ${SSO_BACKEND_IMAGE:?}
+    pull_policy: never
+    env_file: /etc/alxprgs-sso/app.env
+    environment:
+      <<: *runtime
+      DATABASE_URL: postgresql+psycopg://sso_migrator:${SSO_MIGRATOR_PASSWORD:?}@db:5432/sso_db
+      DATABASE_URL_SYNC: postgresql+psycopg://sso_migrator:${SSO_MIGRATOR_PASSWORD:?}@db:5432/sso_db
+    command: [alembic, upgrade, head]
+    restart: 'no'
+    read_only: true
+    tmpfs: ['/tmp:size=32m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    pids_limit: 64
+    cpus: 1
+    networks: [database]
+    logging: *logging
+volumes:
+  data:
+    name: alxprgs-sso-data
+networks:
+  database: {internal: true}
+  edge:
+    ipam:
+      config: [{subnet: 172.29.40.0/24, gateway: 172.29.40.1}]

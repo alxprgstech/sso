@@ -83,3 +83,7 @@ rollback, startup validation и verified SMTP описан в [operations.md](op
 ## Подготовка и сопровождение
 
 Ресурсы выше — исходный ориентир, не проверенная нижняя граница текущей сборки. Нужен Git для identity. Раздельные роли PostgreSQL обязательны; DDL из backend runtime запрещён. Подробные процедуры: [operations](operations.md). Все Settings и отличия Compose: [configuration](configuration.md).
+
+## Развёртывание EC2
+
+Для выделенного Ubuntu26.04 amd64 используйте [пошаговую инструкцию](ec2-deployment.md). Она дополняет это руководство production bootstrap, HTTPS, push-main CD, локальными backup и ограниченным rollback.

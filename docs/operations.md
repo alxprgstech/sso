@@ -316,3 +316,7 @@ Backup destination должен иметь права только владел�
 Anonymous action_denied после SSO-SEC-0004: считайте details.count, а не число строк. details.aggregated=true; window_seconds=60 — штатный период, outage может объединить несколько окон. Route anonymous_overflow означает превышение256комбинаций/worker, count/status сохранены. До259строк/мин/worker плюс shutdown, память bounded; лимит не растёт с уникальными IP/URL. Graceful shutdown flush, kill/crash может потерять последний интервал. Authenticated/security mutation audit индивидуален. Retention90дней прежний. Это не результат нагрузочной приёмки и не глобальный cap для произвольного числа workers.
 
 SSO-SEC-0006: Argon2 исполняется2workers с прежней памятью64MiB/job; admission16queued+running,2/source,429 RetryAfter1. Source определяется trusted proxy chain, число replicas влияет на process CPU budget, PostgreSQL login quotas общие. Нужна edge/bot защита для распределённого flood; source/account quotas5/60с защищают aliases от одного источника, source30/60с действует для всех identities. Общий NAT может получить429. Это не load benchmark; backend memory/worker count не увеличивайте без измерений.
+
+## EC2 production-контур
+
+[Первичная установка, GitHub CD, Let’s Encrypt, Resend alerts и восстановление](ec2-deployment.md). Решение 25.10.2026 разрешает активный CD; локальный Compose по-прежнему использует loopback3000. В EC2-контуре nginx на хосте обслуживает frontend и проксирует loopback8000, backend доверяет только выделенному Docker gateway.

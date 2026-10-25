@@ -238,9 +238,9 @@ jobs:
           /tmp/sso-trivy/trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --timeout 10m sso-frontend-check
 
   verify-cd-template:
-    name: Verify Inactive CD Template
+    name: Verify CD Policy and EC2 Deployment Regressions
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -249,8 +249,8 @@ jobs:
 
       - name: Check CD template is commented out and outside workflows
         run: |
-          if [ -f ".github/workflows/cd.yml" ]; then
-            echo "ERROR: Active CD workflow .github/workflows/cd.yml must NOT exist!"
+          if [ ! -f ".github/workflows/cd.yml" ]; then
+            echo "ERROR: Authorized EC2 CD workflow is missing"
             exit 1
           fi
           if [ ! -f "deploy/github-actions/cd.yml.example" ]; then
@@ -265,6 +265,26 @@ jobs:
             exit 1
           fi
           echo "CD template is properly commented and isolated."
+      - name: Set up deployment check Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Verify EC2 scripts and policy
+        run: |
+          bash -n deploy/ec2/bootstrap.sh
+          bash -n deploy/ec2/upload.sh
+          python3 -m pip install --require-hashes -r requirements-lock-hashed.txt
+          python3 -m pytest tests/test_ec2_deployment.py -v
+      - name: Verify Ubuntu nginx TLS and process locking
+        run: |
+          docker build -f deploy/ec2/check.Dockerfile -t sso-ec2-check:ci .
+          docker run --rm --network none sso-ec2-check:ci
+      - name: Verify transport and production database lifecycle
+        env:
+          TARGET_SHA: ${{ inputs.target_sha || github.sha }}
+        run: |
+          python3 scripts/build_ec2_bundle.py --sha "$TARGET_SHA" --output artifacts/ec2-check.tar.gz
+          python3 -m scripts.check_ec2_runtime --bundle artifacts/ec2-check.tar.gz --sha "$TARGET_SHA"
 
   security-and-deps-scan:
     name: Security & Dependencies Scan

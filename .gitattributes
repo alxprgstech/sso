@@ -1,2 +1,8 @@
 # Artwork provenance uses exact response bytes on Windows and Linux.
 frontend/public/brand/*.svg -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# Linux entry points must remain executable by Bash/Compose after Windows checkout.
+*.sh text eol=lf
+deploy/ec2/*.py text eol=lf
+deploy/ec2/*.yml text eol=lf
+deploy/ec2/*.conf text eol=lf

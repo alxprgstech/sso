@@ -164,3 +164,8 @@ SEC-MERGE-20261020 (2026-10-20T20:48:49.4847872+03:00): in_progress; PR21–25me
 ## SEC-MERGE-20261020 — done
 
 Начало: 2026-10-20T20:32:43.1105797+03:00; завершение: 2026-10-20T20:54:27.8702087+03:00; Codex. Критерий выполнен: PR21–26 merged, все6issues закрыты автоматически; каждый updated PR head прошёл обязательный CI. Code/docs конфликты разрешены, совместный regression добавлен, cancellation-test race исправлена без изменения защиты. Точные SHA/CI — [приёмка](acceptance.md). Следующий шаг: применять миграцию0014 при отдельном развёртывании; production/live email/load остаются отдельной приёмкой.
+
+## DEPLOY-EC2-01
+P1; in_progress; начало: 2026-10-25T16:16:15.9332703+03:00; Codex. Зависимости: Compose/CI/Resend. План: production topology/bootstrap → bundle/CD exact SHA → backup/renew/alerts → regression и инструкция AWS. Готовность: Spec Freeze v1 реализован, локальные и AWS-проверки записаны раздельно. Внешние действия выполняет владелец; сеть не меняем.
+
+DEPLOY-EC2-01 checkpoint 2026-10-25T16:57:52.0663676+03:00: локальная реализация и проверки готовы; overall in_progress. Критерии локально:43unit+9CIpolicyPASS, actualUbuntuTLS/flock/OpenSSL и actualPGbundle/backuprestorePASS; evidence вacceptance. Точка продолжения: владелец выполняет docs/ec2-deployment.md начиная с bootstrap, затем передаёт обезличенный результат для сопровождения. Production/readiness/email/ACME/GitHublive пока не засчитаны.

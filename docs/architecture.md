@@ -167,3 +167,6 @@ sequenceDiagram
 Authlib используется для scope/PKCE helpers; API/OIDCService реализуют HTTP-профиль и транзакционные grants; JWT — PyJWT/cryptography. Наличие Authlib не означает готовый AuthorizationServer или сертификацию. Compose — локальный HTTP на loopback, HTTPS-схема выше описывает целевую топологию. [API](api.md), [status](status.md).
 
 Claims email/email_verified выдаются только при email scope, preferred_username/roles — при profile. ID Token включает token_use/id-профиль и auth_time; полный контракт описан в API. Бесшовный вход возможен только при допустимой OP session и отсутствии требования fresh login/согласий/смены пароля/удаления; prompt=login/none и max_age соблюдаются.
+
+## Выделенный EC2 (DEPLOY-EC2-01)
+По решению владельца 25.10.2026 подготовлен отдельный production-контур: [ADR-0029](adr/0029-ec2-continuous-deployment.md), [эксплуатация](ec2-deployment.md). Host nginx — единственный TLS gateway; static React из проверенного frontend image, API на loopback8000, private PostgreSQL. Локальная topology выше сохраняется для разработки. Live-развёртывание требует действий владельца.
