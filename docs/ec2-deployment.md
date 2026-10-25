@@ -107,6 +107,15 @@ SSH host key, блокировка обновлений, backup и полити�
 Образы amd64 собираются на runner; backend и закреплённый PostgreSQL доставляются архивом,
 статический frontend извлекается из его образа. Registry не нужен.
 
+Идентичность образов: runner CD/CI принудительно переключает Docker на классический image store
+(`containerd-snapshotter=false`), тот же store использует сервер; иначе containerd-раннер записал бы
+в manifest digest манифеста вместо config-digest, а `docker save` выгрузил бы OCI-архив — после
+load на EC2 образы получили бы другие ID и деплой упал бы на проверке image ID. PostgreSQL
+помечается тегом `alxprgs-sso-postgres:<префикс digest>`, поэтому переживает load под именем.
+Значения `backend_image`/`postgres_image` в manifest.json вычисляются из самого `images.tar`
+(config-digest каждого образа), а не из `docker image inspect` демона раннера; неожиданный формат
+или набор образов в архиве — жёсткая ошибка сборки бандла на runner.
+
 На EC2:
 
 ```bash
@@ -148,7 +157,9 @@ sudo docker ps --format 'table {{.Names}}\t{{.Status}}'
 sudo systemctl list-timers 'alxprgs-sso-*'
 ```
 
-Вывод ошибок намеренно краткий, без stderr дочерних команд. При ошибке миграции имя сохранённого
+Вывод ошибок намеренно краткий: сообщение называет имя и argv неуспешной команды (например,
+`docker failed (docker image inspect sha256:…)`), но stderr дочерних команд не выводится.
+При ошибке миграции имя сохранённого
 контейнера выводится оператором; смотрите его `docker logs` приватно. Успешный migration-контейнер
 удаляется. Не присылайте необработанные `docker inspect`,
 `docker compose config`, environment или журналы с персональными данными.

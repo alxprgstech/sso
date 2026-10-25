@@ -279,6 +279,20 @@ jobs:
         run: |
           docker build -f deploy/ec2/check.Dockerfile -t sso-ec2-check:ci .
           docker run --rm --network none sso-ec2-check:ci
+      - name: Pin classic Docker image store to match the EC2 server
+        run: |
+          # Must run after the nginx check step: the restart switches stores and
+          # hides images built under the containerd store default of hosted runners.
+          sudo python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("/etc/docker/daemon.json")
+          config = json.loads(path.read_text()) if path.exists() else {}
+          config.setdefault("features", {})["containerd-snapshotter"] = False
+          path.write_text(json.dumps(config, indent=2))
+          PY
+          sudo systemctl restart docker
+          sudo systemctl is-active docker
       - name: Verify transport and production database lifecycle
         env:
           TARGET_SHA: ${{ inputs.target_sha || github.sha }}

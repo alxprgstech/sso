@@ -49,6 +49,21 @@ jobs:
             echo 'current=false' >> "$GITHUB_OUTPUT"
             echo 'Superseded commit; no deployment.' >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Pin classic Docker image store to match the EC2 server
+        if: steps.freshness.outputs.current == 'true'
+        run: |
+          # Hosted runners default to the containerd image store, whose image IDs
+          # and docker-save format differ from the EC2 server's classic store.
+          sudo python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("/etc/docker/daemon.json")
+          config = json.loads(path.read_text()) if path.exists() else {}
+          config.setdefault("features", {})["containerd-snapshotter"] = False
+          path.write_text(json.dumps(config, indent=2))
+          PY
+          sudo systemctl restart docker
+          sudo systemctl is-active docker
       - name: Build private transport bundle
         if: steps.freshness.outputs.current == 'true'
         run: python3 scripts/build_ec2_bundle.py --sha "$DEPLOY_SHA" --output sso-ec2.tar.gz

@@ -17,10 +17,46 @@ ROOT = Path(__file__).resolve().parents[1]
 POSTGRES = (
     "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
 )
+# Digest pulls stay unnamed in the classic image store; tag them so the saved
+# archive and the loaded server image carry one stable identity everywhere.
+POSTGRES_TAG = f"alxprgs-sso-postgres:{POSTGRES.rsplit('sha256:', 1)[1][:12]}"
+CONFIG_FILE = re.compile(r"([a-f0-9]{64})\.json$")
 
 
 def run(*args: str) -> str:
     return subprocess.check_output(args, cwd=ROOT, text=True).strip()
+
+
+def archive_config_digests(archive: Path, expected: set[str]) -> dict[str, str]:
+    """Map every expected tag to the config digest stored inside a saved archive.
+
+    The EC2 server runs the classic image store, where a loaded image takes the
+    config digest as its ID. The daemon that built the archive may instead report
+    manifest digests (containerd image store), so transport identity is derived
+    from the archive bytes themselves, never from `docker image inspect`.
+    """
+    with tarfile.open(archive) as tar:
+        if "manifest.json" not in tar.getnames():
+            raise ValueError(
+                "images.tar is not a classic docker archive; the runner image store "
+                "must keep containerd-snapshotter=false so identity matches the server"
+            )
+        entries = json.loads(tar.extractfile("manifest.json").read())
+    if len(entries) != len(expected):
+        raise ValueError("images.tar must contain exactly the expected images")
+    result: dict[str, str] = {}
+    for entry in entries:
+        match = CONFIG_FILE.search(entry.get("Config", ""))
+        tags = entry.get("RepoTags") or []
+        if not match or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError("images.tar entry without config digest or tags")
+        for tag in tags:
+            if tag in result:
+                raise ValueError(f"Duplicate tag in images.tar: {tag}")
+            result[tag] = f"sha256:{match.group(1)}"
+    if set(result) != expected:
+        raise ValueError(f"images.tar tags {sorted(result)} do not match {sorted(expected)}")
+    return result
 
 
 def main() -> None:
@@ -52,6 +88,7 @@ def main() -> None:
             check=True,
         )
     subprocess.run(["docker", "pull", "--platform", "linux/amd64", POSTGRES], check=True)
+    subprocess.run(["docker", "tag", POSTGRES, POSTGRES_TAG], check=True)
     with tempfile.TemporaryDirectory() as temporary:
         stage = Path(temporary)
         for name in ("compose.yml", "nginx.conf"):
@@ -82,20 +119,19 @@ def main() -> None:
         identity = json.loads((stage / "public/build-info.json").read_text())
         if identity["commit_sha"] != args.sha:
             raise ValueError("Frontend source identity mismatch")
-        backend = run(
-            "docker", "image", "inspect", "--format", "{{.Id}}", f"alxprgs-sso-backend:{args.sha}"
-        )
+        backend_tag = f"alxprgs-sso-backend:{args.sha}"
         subprocess.run(
             [
                 "docker",
                 "save",
                 "-o",
                 str(stage / "images.tar"),
-                f"alxprgs-sso-backend:{args.sha}",
-                POSTGRES,
+                backend_tag,
+                POSTGRES_TAG,
             ],
             check=True,
         )
+        images = archive_config_digests(stage / "images.tar", {backend_tag, POSTGRES_TAG})
         migrations = hashlib.sha256()
         for path in sorted((ROOT / "backend/alembic").rglob("*.py")):
             migrations.update(path.relative_to(ROOT).as_posix().encode())
@@ -108,8 +144,8 @@ def main() -> None:
             raise ValueError("Schema guard not found")
         manifest = {
             "sha": args.sha,
-            "backend_image": backend,
-            "postgres_image": run("docker", "image", "inspect", "--format", "{{.Id}}", POSTGRES),
+            "backend_image": images[backend_tag],
+            "postgres_image": images[POSTGRES_TAG],
             "schema_revision": revision[1],
             "migrations": migrations.hexdigest(),
             "image_bytes": (stage / "images.tar").stat().st_size,

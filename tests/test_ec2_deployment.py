@@ -364,3 +364,120 @@ def test_nginx_overwrites_client_forwarding_and_excludes_sensitive_logs():
     for field in ("$request_uri", "$args", "$remote_addr", "$http_authorization"):
         assert field not in log
     assert "ssl_reject_handshake on;" in source
+
+
+def bundle_spec():
+    spec = importlib.util.spec_from_file_location(
+        "sso_bundle", ROOT / "scripts/build_ec2_bundle.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def legacy_images_tar(path, entries):
+    payload = json.dumps(entries).encode()
+    with tarfile.open(path, "w") as archive:
+        member = tarfile.TarInfo("manifest.json")
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+
+
+BACKEND_TAG = "alxprgs-sso-backend:" + COMMIT
+POSTGRES_TAG = "alxprgs-sso-postgres:721873c34ceb"
+EXPECTED_TAGS = {BACKEND_TAG, POSTGRES_TAG}
+
+
+def test_transport_identity_comes_from_saved_archive_not_the_daemon(tmp_path):
+    archive = tmp_path / "images.tar"
+    legacy_images_tar(
+        archive,
+        [
+            {"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]},
+            {"Config": "b" * 64 + ".json", "RepoTags": [POSTGRES_TAG]},
+        ],
+    )
+    identity = bundle_spec().archive_config_digests(archive, EXPECTED_TAGS)
+    assert identity == {
+        BACKEND_TAG: "sha256:" + "a" * 64,
+        POSTGRES_TAG: "sha256:" + "b" * 64,
+    }
+
+
+@pytest.mark.parametrize(
+    "entries,member,match",
+    [
+        # OCI archives from the containerd image store carry different IDs on load.
+        (
+            [{"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]}],
+            "index.json",
+            "containerd-snapshotter",
+        ),
+        (
+            [{"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]}],
+            "manifest.json",
+            "exactly the expected images",
+        ),
+        (
+            [
+                {"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]},
+                {"Config": "b" * 64 + ".json", "RepoTags": [POSTGRES_TAG]},
+                {"Config": "c" * 64 + ".json", "RepoTags": ["unexpected:latest"]},
+            ],
+            "manifest.json",
+            "exactly the expected images",
+        ),
+        (
+            [
+                {"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]},
+                {"Config": "b" * 64 + ".json", "RepoTags": [None]},
+            ],
+            "manifest.json",
+            "config digest or tags",
+        ),
+        (
+            [
+                {"Config": "a" * 64 + ".json", "RepoTags": [BACKEND_TAG]},
+                {"Config": "notahex.json", "RepoTags": [POSTGRES_TAG]},
+            ],
+            "manifest.json",
+            "config digest or tags",
+        ),
+    ],
+)
+def test_transport_identity_rejects_ambiguous_archives(tmp_path, entries, member, match):
+    archive = tmp_path / "images.tar"
+    payload = json.dumps(entries).encode()
+    with tarfile.open(archive, "w") as target:
+        info = tarfile.TarInfo(member)
+        info.size = len(payload)
+        target.addfile(info, io.BytesIO(payload))
+    with pytest.raises(ValueError, match=match):
+        bundle_spec().archive_config_digests(archive, EXPECTED_TAGS)
+
+
+def test_operation_error_names_failing_command_without_child_output(monkeypatch):
+    def fail(*args, **kwargs):
+        raise ctl.subprocess.CalledProcessError(1, args[0], stderr=b"PRIVATE-OUTPUT")
+
+    monkeypatch.setattr(ctl.subprocess, "run", fail)
+    image = "sha256:" + "c" * 64
+    with pytest.raises(ctl.OperationError) as failure:
+        ctl.run("docker", "image", "inspect", image)
+    assert f"docker failed (docker image inspect {image})" in str(failure.value)
+    assert "PRIVATE-OUTPUT" not in str(failure.value)
+
+
+def test_workflows_pin_classic_image_store_before_transport():
+    pinning = "Pin classic Docker image store to match the EC2 server"
+    for path, job, anchor in (
+        (".github/workflows/cd.yml", "deploy", "Build private transport bundle"),
+        (
+            ".github/workflows/ci.yml",
+            "verify-cd-template",
+            "Verify transport and production database lifecycle",
+        ),
+    ):
+        steps = yaml.safe_load((ROOT / path).read_text())["jobs"][job]["steps"]
+        names = [step["name"] for step in steps]
+        assert names.index(pinning) < names.index(anchor)

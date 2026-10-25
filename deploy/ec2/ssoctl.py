@@ -42,8 +42,10 @@ def run(*args: str, input: bytes | None = None, timeout: int = 600) -> bytes:
             args, input=input, capture_output=True, check=True, timeout=timeout
         ).stdout
     except (subprocess.SubprocessError, OSError):
+        # Command lines carry no secrets (configuration travels via env files),
+        # but child stderr stays private and is never echoed here.
         raise OperationError(
-            f"{Path(args[0]).name} failed; inspect privately on the server"
+            f"{Path(args[0]).name} failed ({' '.join(args)}); inspect privately on the server"
         ) from None
 
 

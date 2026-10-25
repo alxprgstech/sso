@@ -52,6 +52,11 @@ def main() -> None:
     release = workspace / "release"
     manifest = ctl.unpack(args.bundle.resolve(), release, args.sha)
     run("docker", "load", "-i", str(release / "images.tar"))
+    # Rehearse the server-side identity check: the config digests recorded in the
+    # manifest must resolve as image IDs after loading, exactly as ssoctl deploy does.
+    for field in ("backend_image", "postgres_image"):
+        image = json.loads(run("docker", "image", "inspect", manifest[field]))[0]
+        assert image["Architecture"] == "amd64"
     config = workspace / "runtime.env"
     pem = (
         rsa.generate_private_key(public_exponent=65537, key_size=3072)
