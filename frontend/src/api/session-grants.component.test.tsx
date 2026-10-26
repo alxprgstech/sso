@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { api, SESSIONS_READ_GRANT_KEY } from "./client";
+import { api, ApiError, SESSIONS_READ_GRANT_KEY } from "./client";
 import { webcrypto } from "node:crypto";
 
 vi.mock("../telemetry/sentry", () => ({ captureContractFailure: vi.fn() }));
@@ -7,6 +7,7 @@ vi.mock("../telemetry/sentry", () => ({ captureContractFailure: vi.fn() }));
 afterEach(() => {
   api.setCsrfToken(null);
   api.setReauthenticationHandler(null);
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
 });
@@ -139,4 +140,160 @@ it("coalesces identical pending reads but never shares a mutation proof", async 
   api.setReauthenticationHandler(mutation);
   await Promise.all([api.revokeOtherSessions(), api.revokeOtherSessions()]);
   expect(mutation).toHaveBeenCalledTimes(2);
+});
+
+function stubGrantFlow(sent: (string | null)[], grant = "synthetic-fresh") {
+  const handler = vi.fn(async () => proof(grant));
+  api.setReauthenticationHandler(handler);
+  vi.stubGlobal("crypto", webcrypto);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, options: RequestInit) => {
+      const header = new Headers(options.headers).get("X-Reauthentication");
+      sent.push(header);
+      if (!header) {
+        return new Response(JSON.stringify({ error: "reauthentication_required" }), {
+          status: 401,
+        });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    }),
+  );
+  return handler;
+}
+
+it("asks for confirmation when no grant is stored", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  const sent: (string | null)[] = [];
+  const handler = stubGrantFlow(sent, "synthetic-missing-grant");
+  await api.getSessions();
+  expect(handler).toHaveBeenCalledTimes(1);
+  expect(sent).toEqual([null, "synthetic-missing-grant"]);
+});
+
+it("discards corrupted stored JSON instead of reusing it", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  window.sessionStorage.setItem(SESSIONS_READ_GRANT_KEY, "{not-json");
+  const sent: (string | null)[] = [];
+  const handler = stubGrantFlow(sent, "synthetic-after-corruption");
+  await api.getSessions();
+  expect(handler).toHaveBeenCalledTimes(1);
+  expect(sent).toEqual([null, "synthetic-after-corruption"]);
+  const stored = JSON.parse(window.sessionStorage.getItem(SESSIONS_READ_GRANT_KEY)!);
+  expect(stored.authorization).toBe("synthetic-after-corruption");
+});
+
+it.each([
+  ["missing authorization", JSON.stringify({ expiresAt: Date.now() + 60_000 })],
+  [
+    "non-string authorization",
+    JSON.stringify({ authorization: 7, expiresAt: Date.now() + 60_000 }),
+  ],
+  ["non-number expiry", JSON.stringify({ authorization: "x", expiresAt: "soon" })],
+  ["non-finite expiry", '{"authorization":"x","expiresAt":1e400}'],
+  ["null payload", "null"],
+  ["array payload", "[]"],
+])("discards a stored grant with %s", async (_label, raw) => {
+  api.setCsrfToken("synthetic-csrf");
+  window.sessionStorage.setItem(SESSIONS_READ_GRANT_KEY, raw);
+  const sent: (string | null)[] = [];
+  const handler = stubGrantFlow(sent, "synthetic-valid-after-invalid");
+  await api.getSessions();
+  expect(handler).toHaveBeenCalledTimes(1);
+  expect(sent[0]).toBeNull();
+});
+
+it("does not fail when sessionStorage access throws", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  const getter = vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
+    throw new Error("storage denied");
+  });
+  try {
+    const sent: (string | null)[] = [];
+    const handler = stubGrantFlow(sent, "synthetic-without-storage");
+    await api.getSessions();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual([null, "synthetic-without-storage"]);
+  } finally {
+    getter.mockRestore();
+  }
+});
+
+it("never sends the read grant to a different endpoint", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  window.sessionStorage.setItem(
+    SESSIONS_READ_GRANT_KEY,
+    JSON.stringify({ authorization: "synthetic-read-only", expiresAt: Date.now() + 60_000 }),
+  );
+  const sent: (string | null)[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, options: RequestInit) => {
+      sent.push(new Headers(options.headers).get("X-Reauthentication"));
+      return new Response(JSON.stringify({ id: "synthetic" }), { status: 200 });
+    }),
+  );
+  await api.getMe();
+  expect(sent).toEqual([null]);
+});
+
+it("builds a typed ApiError with body Retry-After metadata", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: "totp_code_reused",
+            detail: "used",
+            retry_after: 12,
+          }),
+          { status: 401, headers: { "Retry-After": "12" } },
+        ),
+    ),
+  );
+  const error = await api.getSessions().catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error).toBeInstanceOf(Error);
+  const apiError = error as ApiError;
+  expect(apiError.name).toBe("ApiError");
+  expect(apiError.message).toBe("used");
+  expect(apiError.status).toBe(401);
+  expect(apiError.code).toBe("totp_code_reused");
+  expect(apiError.route).toBe("/api/v1/auth/sessions");
+  expect(apiError.retryAfter).toBe(12);
+});
+
+it("uses the Retry-After header when the body has no retry_after", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "rate_limit_exceeded", detail: "slow" }), {
+          status: 429,
+          headers: { "Retry-After": "30" },
+        }),
+    ),
+  );
+  const error = (await api.getSessions().catch((caught: unknown) => caught)) as ApiError;
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error.code).toBe("rate_limit_exceeded");
+  expect(error.retryAfter).toBe(30);
+});
+
+it("keeps retryAfter undefined without retry metadata", async () => {
+  api.setCsrfToken("synthetic-csrf");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "forbidden", detail: "no" }), { status: 403 }),
+    ),
+  );
+  const error = (await api.getSessions().catch((caught: unknown) => caught)) as ApiError;
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error.status).toBe(403);
+  expect(error.retryAfter).toBeUndefined();
 });

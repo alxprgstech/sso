@@ -29,16 +29,27 @@ export interface SecurityAuthorization {
   expires_at?: string;
 }
 
+export interface ApiErrorInit {
+  message: string;
+  status: number;
+  code: string;
+  route: string;
+  retryAfter?: number;
+}
+
 export class ApiError extends Error {
   readonly name = "ApiError";
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: string,
-    readonly route: string,
-    readonly retryAfter?: number,
-  ) {
-    super(message);
+  readonly status: number;
+  readonly code: string;
+  readonly route: string;
+  readonly retryAfter?: number;
+
+  constructor(init: ApiErrorInit) {
+    super(init.message);
+    this.status = init.status;
+    this.code = init.code;
+    this.route = init.route;
+    this.retryAfter = init.retryAfter;
   }
 }
 
@@ -47,6 +58,48 @@ export class ApiError extends Error {
 // documented five-minute window across a page reload instead of re-prompting
 // for the password and MFA on every refresh. Never used for mutations.
 export const SESSIONS_READ_GRANT_KEY = "alxprgs.sso.sessions-read-grant.v1";
+
+interface StoredSessionGrant {
+  authorization: string;
+  expiresAt: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null) return false;
+  return typeof value === "object";
+}
+
+function isFutureTimestamp(value: unknown): value is number {
+  if (typeof value !== "number") return false;
+  if (!Number.isFinite(value)) return false;
+  return value > Date.now();
+}
+
+function validateStoredGrant(value: unknown): StoredSessionGrant | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.authorization !== "string") return null;
+  if (!isFutureTimestamp(value.expiresAt)) return null;
+  return { authorization: value.authorization, expiresAt: value.expiresAt };
+}
+
+function parseStoredGrant(raw: string): StoredSessionGrant | null {
+  try {
+    return validateStoredGrant(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function readStoredGrant(): StoredSessionGrant | null {
+  try {
+    const storage = globalThis.sessionStorage;
+    if (!storage) return null;
+    return parseStoredGrant(storage.getItem(SESSIONS_READ_GRANT_KEY) ?? "");
+  } catch {
+    // Storage can be disabled by the browser; the request proceeds without it.
+    return null;
+  }
+}
 
 class ApiClient {
   private csrfToken: string | null = null;
@@ -91,24 +144,13 @@ class ApiClient {
 
   private storedSessionReadGrant(): string | null {
     if (this.sessionReadGrant) return this.sessionReadGrant;
-    try {
-      const raw = globalThis.sessionStorage?.getItem(SESSIONS_READ_GRANT_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as { authorization?: unknown; expiresAt?: unknown };
-      if (
-        typeof parsed.authorization !== "string" ||
-        typeof parsed.expiresAt !== "number" ||
-        parsed.expiresAt <= Date.now()
-      ) {
-        this.clearSessionReadGrant();
-        return null;
-      }
-      this.sessionReadGrant = parsed.authorization;
-      return this.sessionReadGrant;
-    } catch {
+    const stored = readStoredGrant();
+    if (!stored) {
       this.clearSessionReadGrant();
       return null;
     }
+    this.sessionReadGrant = stored.authorization;
+    return this.sessionReadGrant;
   }
 
   async startReauthentication(action: string, payload_hash: string, current_password: string): Promise<SecurityAuthorization> {
@@ -254,8 +296,13 @@ class ApiClient {
         headers.set("X-Reauthentication", proof.authorization);
         return this.request<T>(endpoint, { ...options, headers }, false);
       }
-      throw new ApiError(typeof errorMessage === "string" ? errorMessage : `Ошибка HTTP ${response.status}`,
-        response.status, errorCode, canonicalRoute(endpoint), retryAfter);
+      throw new ApiError({
+        message: errorMessage,
+        status: response.status,
+        code: errorCode,
+        route: canonicalRoute(endpoint),
+        retryAfter,
+      });
     }
 
     // Если 204 No Content
@@ -269,7 +316,12 @@ class ApiClient {
       return payload as T;
     } catch {
       captureContractFailure();
-      throw new ApiError("Некорректный ответ сервера", response.status, "invalid_response", canonicalRoute(endpoint));
+      throw new ApiError({
+        message: "Некорректный ответ сервера",
+        status: response.status,
+        code: "invalid_response",
+        route: canonicalRoute(endpoint),
+      });
     }
   }
 

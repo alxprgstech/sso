@@ -53,7 +53,16 @@ describe("telemetry bootstrap and real SDK ErrorBoundary", () => {
   });
   it("classifies API responses, native WebAuthn cancellation and offline failures", () => {
     for (const status of [400, 401, 403, 404, 409, 429, 500, 503]) {
-      expect(isExpectedClientFailure(new ApiError("Ошибка", status, "request_rejected", "/api/v1/auth/login"))).toBe(true);
+      expect(
+        isExpectedClientFailure(
+          new ApiError({
+            message: "Ошибка",
+            status,
+            code: "request_rejected",
+            route: "/api/v1/auth/login",
+          }),
+        ),
+      ).toBe(true);
     }
     expect(isExpectedClientFailure(new DOMException("User cancelled", "NotAllowedError"))).toBe(true);
     expect(isExpectedClientFailure(new TypeError("Failed to fetch"))).toBe(true);
