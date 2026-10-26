@@ -90,7 +90,6 @@ export function useAdminController(section: string | undefined) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [systemLoading, setSystemLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<"closed" | "open">("closed");
-  const [adminPassword, setAdminPassword] = useState("");
   const [modeUpdateMsg, setModeUpdateMsg] = useState<{
     type: "success" | "error";
     text: string;
@@ -195,7 +194,6 @@ export function useAdminController(section: string | undefined) {
   useEffect(() => {
     setSecretModal(null);
     setNewPassword("");
-    setAdminPassword("");
     setShowCreateUserModal(false);
     setShowCreateClientModal(false);
     setSelectedAudit(null);
@@ -352,28 +350,18 @@ export function useAdminController(section: string | undefined) {
     }
   };
 
-  // Обработчик переключения режима регистрации (REG-02)
+  // Обработчик переключения режима регистрации (REG-02). Freshness is proven
+  // once through the action-bound password+MFA dialog after the 401; the form
+  // does not ask for the same password a second time.
   const handleUpdateRegistrationMode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminPassword) {
-      setModeUpdateMsg({
-        type: "error",
-        text: "Для смены режима регистрации введите пароль администратора (требование безопасности REG-02).",
-      });
-      return;
-    }
-
     setModeUpdating(true);
     setModeUpdateMsg(null);
 
     try {
-      const updated = await api.updateRegistrationMode(
-        selectedMode,
-        adminPassword,
-      );
+      const updated = await api.updateRegistrationMode(selectedMode);
       setSystemStatus(updated);
       await refreshCapabilities();
-      setAdminPassword("");
       setModeUpdateMsg({
         type: "success",
         text: `Режим регистрации успешно изменён на "${updated.registration_mode}". Изменение действует для всех процессов без перезапуска.`,
@@ -470,8 +458,6 @@ export function useAdminController(section: string | undefined) {
     systemLoading,
     selectedMode,
     setSelectedMode,
-    adminPassword,
-    setAdminPassword,
     modeUpdateMsg,
     modeUpdating,
     loadUsers,

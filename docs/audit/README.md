@@ -1,5 +1,19 @@
 # Воспроизведение исходного и повторного аудита
 
+## Аудит 26.10.2026 (актуальный комплект)
+
+- [Сводка](2026-10-26-full-audit-summary.md)
+- [Threat model](2026-10-26-threat-model.md)
+- [Security findings](2026-10-26-security-findings.md)
+- [API coverage](2026-10-26-api-coverage.md)
+- [Frontend QA](2026-10-26-frontend-qa.md)
+- [Reauth/TOTP анализ](2026-10-26-reauth-totp-analysis.md)
+- [CI remediation](2026-10-26-ci-remediation.md)
+- [Финальная проверка](2026-10-26-final-verification.md)
+- Решение: [ADR-0034](../adr/0034-reauthentication-ux-and-session-read-grant.md)
+
+Ниже сохранены исторические материалы предыдущих аудитов; их результаты не переносятся на текущую ревизию.
+
 Историческое локальное evidence в [отчёте](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/PRODUCTION_READINESS_AUDIT.md) относится к code SHA `ae700d7a9803b9757980ef1862af31f6f360a97d`, версия0.2.0, ветка `new/production-readiness-remediation`: Первоначальный snapshot CONDITIONALLY READY,22 CLOSED/4 PARTIALLY VERIFIED/1 BLOCKED EXTERNAL. Последующее реальное CI подтверждение E01/F18 даёт23CLOSED/4PARTIALLY VERIFIED; текущие PR/quality gates описаны в начале отчёта. [Summary](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/REMEDIATION_SUMMARY.md), [новые безопасные evidence](remediation-evidence.json).
 
 ## Сохранённый baseline

@@ -32,6 +32,24 @@ def certificates(path: Path, hostname: str) -> tuple[Path, Path, Path]:
         .not_valid_before(now - timedelta(days=1))
         .not_valid_after(now + timedelta(days=1))
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        # OpenSSL 3.x refuses a trusted chain without key identifiers.
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False
+        )
         .sign(ca_key, hashes.SHA256())
     )
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -45,6 +63,14 @@ def certificates(path: Path, hostname: str) -> tuple[Path, Path, Path]:
         .not_valid_after(now + timedelta(days=1))
         .add_extension(x509.SubjectAlternativeName([x509.DNSName(hostname)]), critical=False)
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
         .sign(ca_key, hashes.SHA256())
     )
     ca_path, cert_path, key_path = [path / name for name in ("ca.pem", "server.pem", "server.key")]

@@ -151,12 +151,18 @@ class AdminAuditEventResponse(BaseModel):
 
 
 class RegistrationModeUpdateRequest(BaseModel):
-    """Смена режима регистрации с подтверждением пароля администратора (REG-02)."""
+    """Смена режима регистрации (REG-02).
+
+    Freshness is normally proven by the action-bound ``X-Reauthentication``
+    proof (password + configured MFA, one use, bound to this exact body).
+    ``current_admin_password`` remains accepted for older clients and is still
+    verified when supplied, but new clients must not ask for the password twice.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     mode: str = Field(..., pattern=r"^(closed|open)$")
-    current_admin_password: str = Field(..., min_length=1, max_length=128)
+    current_admin_password: str | None = Field(default=None, min_length=1, max_length=128)
 
     @model_validator(mode="before")
     @classmethod

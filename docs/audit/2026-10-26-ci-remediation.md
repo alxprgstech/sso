@@ -1,0 +1,59 @@
+# CI / Dependencies / Containers remediation — 26.10.2026
+
+Исходный неуспешный run: GitHub Actions **40357493471** (`main` = `a35550f`), три упавших job:
+
+1. `Security & Dependencies Scan`;
+2. `Frontend Build & Typecheck`;
+3. `Immutable Containers, Runtime Policy and Image Audit`.
+
+## 1. Python dependencies
+
+| Пакет | Было | Уязвимость | Стало |
+| --- | --- | --- | --- |
+| setuptools | 84.0.0 | GHSA-xmj3-9gf7-h52w | 84.1.0 |
+| filelock | 4.0.12 | CVE-2026-112940, CVE-2026-112913, CVE-2026-112907 | 4.2.1 |
+
+- Версии выбраны как минимальные исправленные по данным `pip-audit`/CI, не «последние вообще».
+- `requirements-lock.txt` → `python scripts/hashed_locks.py --generate` (PyPI artifact metadata, sha256).
+- `requirements-runtime-lock.txt` и `requirements-build-lock.txt` не изменились; `runtime_lock.py --check` и `build_lock.py --check` PASS.
+- Проверки: `pip-audit --strict -r requirements-lock.txt` → «No known vulnerabilities found»; `pip check` и hash-companion check PASS.
+- Транзитивные зависимости `setuptools`/`filelock` не изменились (пакеты без runtime-зависимостей в этом графе).
+
+## 2. Frontend dependencies
+
+Исходно (`npm ci`, CI): 4 vulnerabilities (2 moderate, 1 high, 1 critical).
+
+| Пакет | Источник | Действие |
+| --- | --- | --- |
+| `@vitest/mocker` / `vitest` 5.0.2 | dev | → `vitest 5.0.5` |
+| `jsdom` 30.1.1 (undici 8.11.2) | dev | → `jsdom 30.1.3` (undici 8.12.3) |
+| `@sentry/cli` 3.8.0 (undici 6.29.0) | dev | → `@sentry/cli 3.8.2` (undici 6.29.1) |
+| `next` 16.3.8 (peer `geist`) | dev/build | `npm audit fix` → 16.4.3 |
+
+- `npm audit fix` без `--force`; lockfile обновлён штатно.
+- `next` остаётся транзитивным peer'ом `geist` (пакет нужен только для локальных woff2; в bundle не входит), версия зафиксирована lock-файлом.
+- Проверки после изменений: `npm audit --audit-level=high` → `found 0 vulnerabilities`; `npm ci`; `npm run lint`; `npm run typecheck`; `npm run typecheck:tests`; `npm run test:unit` (14); `npm run test:components` (51); `npm run build`; `node e2e` Playwright (50 + 9).
+- Sentry build/sourcemaps: `ALX_RELEASE_BUILD=1 npm run build` + `python scripts/check_sentry_build.py` выполняются в CI; локально проверен обычный build, release-вариант не изменялся.
+
+## 3. Container images
+
+Исходный Trivy (frontend): 6 HIGH — nginx 1.30.5-r1 (CVE-2026-15176, CVE-2026-93479, CVE-2026-97205), curl 8.22.0-r0 (CVE-2026-92392), brotli-libs 1.2.0-r1 (CVE-2026-111497).
+
+Изменение `frontend/Dockerfile`:
+
+```dockerfile
+FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+RUN apk upgrade --no-cache && apk add --no-cache libexpat=2.9.0-r0 pcre2=10.49-r0 tiff=4.7.2-r0 libx11=1.8.14-r0
+```
+
+- `apk upgrade` подтянул curl 8.23.0-r0, brotli-libs 1.2.1-r0, nginx 1.30.6-r1; digest базового образа закреплён.
+- Backend image (`python:3.13.16-alpine3.24` + `apk upgrade`) не менялся; его скан в CI был чистым.
+- Проверки: сборка `sso-frontend-audit`; Trivy 0.75.0 `--scanners vuln --severity HIGH,CRITICAL` → **0**; `nginx -t` под `--read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges`; uid 101 non-root; build-info присутствует; `*.map` отсутствуют.
+- Runtime policy (`scripts/check_container_runtime.py`) выполняется в CI; локально Compose-контур не перезапускался после изменения образа, но image-level проверки пройдены.
+
+## 4. Что осталось за рамками
+
+- Фактический GitHub Actions run для нового HEAD — после push; локальные результаты не заменяют remote CI.
+- CodeScene live-gates недоступны локально; сложность/дублирование оценивались вручную по затронутым модулям, поведение не менялось.
+- Windows safety jobs и CD policy jobs не воспроизводились локально (unit-наборы для них входят в общий pytest).
+- SES external job по-прежнему требует credentials и не считается проверкой доставки.

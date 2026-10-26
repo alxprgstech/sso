@@ -14,10 +14,14 @@
 - OIDC access/ID tokens получают `amr`/`acr`; admin-роль не выдаётся grant без assurance; старые refresh grants остаются non-assured.
 - Новая миграция `0016_session_assurance`; EC2 `ssoctl mfa-status`/`enable-mfa` для non-destructive проверки и targeted изменения конфигурации.
 - Frontend: защищённый `/admin` onboarding с Passkey/TOTP и elevation; состояние MFA в `/account/security`.
+- Аудит 26.10.2026: пятиминутный grant просмотра сессий сохраняется в tab-scoped `sessionStorage` (с серверным TTL) и переживает reload; mutations его не используют. Повторный TOTP-шаг возвращает `401 totp_code_reused` + `Retry-After`, не считается неверной попыткой; UI показывает countdown и пояснение одноразовости. Reauth-диалог ставит конкурентные операции в очередь. Смена режима регистрации подтверждается один раз: action-bound proof (пароль + MFA), legacy-поле `current_admin_password` необязательно. RBAC admin API проверяется до reauth-челленджа.
+- Зависимости: setuptools 84.1.0, filelock 4.2.1, vitest 5.0.5, jsdom 30.1.3, @sentry/cli 3.8.2, транзитивные next/undici обновлены; frontend image на nginx 1.30.6-alpine с apk upgrade (0 HIGH/CRITICAL по Trivy).
 
 ### Добавлено
 - Тесты: admin MFA onboarding/legacy session/role grant/last-factor, OIDC assurance/refresh/UserInfo, Passkey-only recovery, default-on/explicit-disabled матрица, EC2 config commands.
 - ADR-0032 (default-on MFA, admin policy, recovery и session assurance); ADR-0004 сохраняет историю и ссылается на superseding decision.
+- Аудит-регрессии: TOTP replay через login/reauth и конкурентные подтверждения, registration-mode proof без второго пароля, порядок RBAC/reauth для admin API, read-grant через reload, очередь reauth-диалога, viewport 375 в appearance.
+- Отчёты аудита `docs/audit/2026-10-26-*` и ADR-0034.
 
 ## [0.3.0] - 2026-10-26
 

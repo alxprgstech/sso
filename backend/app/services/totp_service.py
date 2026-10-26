@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 
+import math
 import uuid
 
 
@@ -20,6 +21,7 @@ from app.config import get_settings
 
 from app.core.exceptions import (
     AuthenticationException,
+    TOTPReplayException,
 )
 
 from app.core.security import (
@@ -48,6 +50,19 @@ def totp_step_usable(matched: int | None, previous: int | None) -> bool:
     if previous is None:
         return True
     return matched > previous
+
+
+def replay_retry_after(previous: int, interval: int, now: datetime) -> int:
+    """Seconds until a code that is strictly newer than ``previous`` can exist.
+
+    When the redeemed code came from an older window the authenticator already
+    shows a newer one, so the wait is zero. When the current window itself was
+    spent, the user has to wait for the next 30-second step.
+    """
+    now_ts = now.timestamp()
+    now_step = int(now_ts) // interval
+    next_usable_step = max(now_step, previous + 1)
+    return max(0, math.ceil(next_usable_step * interval - now_ts))
 
 
 def pending_enrollment_bound(
@@ -148,9 +163,21 @@ class TOTPService:
         return True
 
     @staticmethod
-    async def verify_totp(db: AsyncSession, user: User, code: str, *, commit: bool = True) -> bool:
+    async def verify_totp(
+        db: AsyncSession,
+        user: User,
+        code: str,
+        *,
+        commit: bool = True,
+        replay_error: bool = False,
+    ) -> bool:
         """
         Проверка TOTP кода при входе.
+
+        ``replay_error`` is used by authenticated elevation/reauthentication
+        flows: a code from an already redeemed step raises ``TOTPReplayException``
+        (a distinct, retryable client error) instead of looking like a typo.
+        The step is never accepted twice either way.
         """
         await lock_user(db, user.id)
         stmt = select(TOTPCredential).where(
@@ -163,7 +190,8 @@ class TOTPService:
 
         raw_secret = decrypt_totp_secret(cred.encrypted_secret)
         totp = pyotp.TOTP(raw_secret)
-        current_step = int(datetime.now(timezone.utc).timestamp()) // totp.interval
+        now = datetime.now(timezone.utc)
+        current_step = int(now.timestamp()) // totp.interval
         matched = next(
             (
                 step
@@ -174,7 +202,12 @@ class TOTPService:
             ),
             None,
         )
-        if not totp_step_usable(matched, cred.last_verified_step):
+        if matched is None:
+            return False
+        previous = cred.last_verified_step
+        if not totp_step_usable(matched, previous):
+            if replay_error and previous is not None:
+                raise TOTPReplayException(replay_retry_after(previous, totp.interval, now))
             return False
         cred.last_verified_step = matched
         await db.flush()
