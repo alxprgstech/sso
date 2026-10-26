@@ -60,6 +60,13 @@ def check_env_files() -> list[str]:
     if not os.path.exists(env_example):
         errors.append(".env.example does not exist!")
     else:
+        required_true = {
+            "FEATURE_TOTP_ENABLED",
+            "FEATURE_PASSKEY_ENABLED",
+            "FEATURE_RECOVERY_CODES_ENABLED",
+            "REQUIRE_ADMIN_MFA",
+        }
+        seen = set()
         with open(env_example, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -69,19 +76,16 @@ def check_env_files() -> list[str]:
                     k, v = line.split("=", 1)
                     k = k.strip()
                     v = v.strip().lower()
-                    if (
-                        k
-                        in (
-                            "FEATURE_TOTP_ENABLED",
-                            "FEATURE_PASSKEY_ENABLED",
-                            "FEATURE_RECOVERY_CODES_ENABLED",
-                            "REQUIRE_VERIFIED_EMAIL",
-                        )
-                        and v == "true"
-                    ):
+                    if k in required_true:
+                        seen.add(k)
+                        if v != "true":
+                            errors.append(f"{k} must be true in .env.example (found: {line})")
+                    if k == "REQUIRE_VERIFIED_EMAIL" and v == "true":
                         errors.append(f"{k} must be false in .env.example (found: {line})")
                     if k == "FEATURE_EMAIL_VERIFICATION_ENABLED" and v == "false":
                         errors.append(f"{k} cannot be false in .env.example (found: {line})")
+        for key in sorted(required_true - seen):
+            errors.append(f"{key} is missing in .env.example")
     return errors
 
 
@@ -94,9 +98,10 @@ def check_default_flags_in_config() -> list[str]:
         with open(config_py, "r", encoding="utf-8") as f:
             content = f.read()
             for flag in [
-                "FEATURE_TOTP_ENABLED: bool = False",
-                "FEATURE_PASSKEY_ENABLED: bool = False",
-                "FEATURE_RECOVERY_CODES_ENABLED: bool = False",
+                "FEATURE_TOTP_ENABLED: bool = True",
+                "FEATURE_PASSKEY_ENABLED: bool = True",
+                "FEATURE_RECOVERY_CODES_ENABLED: bool = True",
+                "REQUIRE_ADMIN_MFA: bool = True",
                 "FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True",
                 "REQUIRE_VERIFIED_EMAIL: bool = False",
             ]:
@@ -201,7 +206,9 @@ def main() -> int:
         for err in flags_errs:
             print(f"  [FAIL] {err}")
     else:
-        print("  [OK] Все 3 отложенных флага отключены, email verification включен в config.py.")
+        print(
+            "  [OK] MFA default-on, admin MFA включена, email verification обязательна в config.py."
+        )
 
     print("[4/5] Сканирование кодовой базы на утечки секретов и ключей...")
     sec_errs = check_secrets_in_code()

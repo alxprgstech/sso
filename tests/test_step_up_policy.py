@@ -51,6 +51,7 @@ def settings(**overrides) -> Settings:
         "FEATURE_EXTERNAL_STEP_UP_ENABLED": True,
         "FEATURE_TOTP_ENABLED": True,
         "FEATURE_PASSKEY_ENABLED": True,
+        "REQUIRE_ADMIN_MFA": False,
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -96,7 +97,11 @@ def test_strict_requires_password_and_passkey() -> None:
 
 def test_disabled_features_do_not_count_as_available_factors() -> None:
     user = user_with_factors(password=True, totp=True, passkey=True)
-    cfg = settings(FEATURE_TOTP_ENABLED=False, FEATURE_PASSKEY_ENABLED=False)
+    cfg = settings(
+        FEATURE_TOTP_ENABLED=False,
+        FEATURE_PASSKEY_ENABLED=False,
+        FEATURE_RECOVERY_CODES_ENABLED=False,
+    )
     factors = available_factors(user, cfg)
     assert factors.password is True
     assert factors.totp is False

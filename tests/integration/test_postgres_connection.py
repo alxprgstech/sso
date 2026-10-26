@@ -38,5 +38,7 @@ async def test_postgres_api_client_capabilities(pg_client: httpx.AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["registration_mode"] == "closed"
-    assert data["totp_enabled"] is False
-    assert data["passkey_enabled"] is False
+    assert data["totp_enabled"] is True
+    assert data["passkey_enabled"] is True
+    assert data["recovery_codes_enabled"] is True
+    assert data["admin_mfa_required"] is True

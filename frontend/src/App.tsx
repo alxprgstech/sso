@@ -32,6 +32,11 @@ const DashboardPage = lazy(() =>
 const AdminPage = lazy(() =>
   import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })),
 );
+const AdminMfaPage = lazy(() =>
+  import("./pages/AdminMfaPage").then((module) => ({
+    default: module.AdminMfaPage,
+  })),
+);
 const CommandPalette = lazy(() =>
   import("./components/CommandPalette").then((module) => ({
     default: module.CommandPalette,
@@ -172,6 +177,16 @@ function SessionRoutes() {
   const admin = Boolean(
     user && (user.is_superuser || user.roles.includes("admin")),
   );
+  const adminElement = !admin ? (
+    <section className="legal-page">
+      <h1>Доступ ограничен</h1>
+      <p>Этот раздел доступен администратору.</p>
+    </section>
+  ) : user?.admin_mfa_required ? (
+    <AdminMfaPage />
+  ) : (
+    <AdminPage />
+  );
   return (
     <>
       <Navbar />
@@ -195,32 +210,8 @@ function SessionRoutes() {
             path="/change-password"
             element={<Navigate to="/" replace />}
           />
-          <Route
-            path="/admin"
-            element={
-              admin ? (
-                <AdminPage />
-              ) : (
-                <section className="legal-page">
-                  <h1>Доступ ограничен</h1>
-                  <p>Этот раздел доступен администратору.</p>
-                </section>
-              )
-            }
-          />
-          <Route
-            path="/admin/:section"
-            element={
-              admin ? (
-                <AdminPage />
-              ) : (
-                <section className="legal-page">
-                  <h1>Доступ ограничен</h1>
-                  <p>Этот раздел доступен администратору.</p>
-                </section>
-              )
-            }
-          />
+          <Route path="/admin" element={adminElement} />
+          <Route path="/admin/:section" element={adminElement} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

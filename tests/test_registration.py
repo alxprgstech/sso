@@ -400,11 +400,20 @@ def test_regular_user_cannot_access_system_status():
     regular_user.roles = [Role(name=ROLE_USER, description="User")]
 
     app.dependency_overrides[get_current_user] = lambda: regular_user
+    from unittest.mock import MagicMock
+
+    from app.api.deps import get_current_session
+    from app.models.session import Session
+
+    app.dependency_overrides[get_current_session] = lambda: MagicMock(
+        spec=Session, mfa_verified=False, mfa_method=None, purpose="full"
+    )
     try:
         res = client.get("/api/v1/admin/system/status")
         assert res.status_code == 403
     finally:
         app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_current_session, None)
 
 
 @pytest.mark.postgres

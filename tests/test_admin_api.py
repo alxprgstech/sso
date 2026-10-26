@@ -9,12 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.abspath("backend"))
 
 from app.api.deps import (
+    get_current_session,
     get_current_user,
 )
 from app.core.exceptions import AuthorizationException
 from app.core.rbac import ROLE_ADMIN, ROLE_USER, ensure_not_last_admin
 from app.main import app
 from app.models.oidc import OIDCClient, OIDCRedirectUri
+from app.models.session import Session
 from app.models.user import Role, User
 from app.services.admin_service import AdminService
 from fastapi.testclient import TestClient
@@ -41,6 +43,13 @@ def test_non_admin_user_rejected_rbac():
     normal_user.roles = [role_user]
 
     app.dependency_overrides[get_current_user] = lambda: normal_user
+    session = MagicMock(
+        spec=Session,
+        mfa_verified=False,
+        mfa_method=None,
+        purpose="full",
+    )
+    app.dependency_overrides[get_current_session] = lambda: session
 
     try:
         r = client.get("/api/v1/admin/users")

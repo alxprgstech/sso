@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import webauthn
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn.helpers.structs import (
@@ -29,6 +29,7 @@ from app.core.security import (
 )
 from app.models.mfa import (
     EmailVerificationToken,
+    RecoveryCode,
     WebAuthnChallenge,
     WebAuthnCredential,
 )
@@ -400,6 +401,15 @@ class WebAuthnService:
 
         deleted_id = target.credential_id
         await db.delete(target)
+        await db.flush()
+        # Recovery codes must not remain dormant and become valid again after a
+        # later factor enrolment once the account has no active factor.
+        remaining = await db.scalar(
+            select(func.count(WebAuthnCredential.id)).where(WebAuthnCredential.user_id == user.id)
+        )
+        has_totp = bool(user.totp_credential and user.totp_credential.is_confirmed)
+        if (remaining or 0) == 0 and not has_totp:
+            await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
         await invalidate_security_state(db, user, preserve_session_id=session_id)
         await AuditService.log_event(
             db,

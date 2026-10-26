@@ -74,6 +74,10 @@ erDiagram
         uuid id PK
         integer security_revision
         timestamp_tz auth_time
+        boolean mfa_verified
+        varchar mfa_method
+        timestamp_tz mfa_verified_at
+        varchar amr
         uuid user_id FK
         varchar session_token_hash UK
         varchar ip_address
@@ -134,6 +138,8 @@ erDiagram
         uuid id PK
         integer security_revision
         timestamp_tz auth_time
+        boolean mfa_verified
+        varchar amr
         varchar code_hash UK
         uuid client_id FK
         uuid user_id FK
@@ -151,6 +157,8 @@ erDiagram
         uuid id PK
         integer security_revision
         timestamp_tz auth_time
+        boolean mfa_verified
+        varchar amr
         uuid family_id
         varchar token_hash UK
         uuid client_id FK
@@ -245,7 +253,7 @@ erDiagram
 
 ## Privacy — миграция 0004_privacy
 
-`users` содержит nullable UTC deletion_requested_at/deletion_scheduled_for (парная DB CHECK) и deletion_request_allowed_at; `is_active` сохраняет независимую admin-блокировку. `sessions.purpose` CHECK full/deletion_management/password_change (с0009). `pending_registrations.legal_versions` JSONB и legal_accepted_at переносятся в `legal_acceptances` после email; UNIQUE(user_id,document_id,version).
+`users` содержит nullable UTC deletion_requested_at/deletion_scheduled_for (парная DB CHECK) и deletion_request_allowed_at; `is_active` сохраняет независимую admin-блокировку. `sessions.purpose` CHECK full/deletion_management/password_change/admin_mfa_enrollment (с0016); `mfa_verified`/`mfa_method`/`amr` CHECK ограничивают серверные значения метода. `pending_registrations.legal_versions` JSONB и legal_accepted_at переносятся в `legal_acceptances` после email; UNIQUE(user_id,document_id,version).
 
 `deletion_authorizations` связаны FK CASCADE с user/session: hash unique, action request/cancel, stage factor/authorized, expires_at, failed_attempts 0..5, bound WebAuthn challenge. `totp_credentials.last_verified_step` защищает от повтора OTP через FOR UPDATE. `privacy_rate_windows` хранит HMAC ключ bucket/IP либо user UUID и краткое окно, без raw identity; counters атомарны и не зависят от аудита. `deleted_subjects` без user FK хранит только subject UUID и deleted_at (служебные id/created_at), retention 30 дней.
 
@@ -264,7 +272,7 @@ erDiagram
 | `external_step_up_requests` | Хеш request/proof, client/user/session, revision, точные action/payload/redirect/PKCE/nonce, assurance/plan, фактические факторы, TTL, статус/consume. Одноразовое transaction proof для внешнего confidential client; request связывается с первой SSO-сессией |
 | `totp_credentials.pending_*` | Pending encrypted secret/expiry/session отдельно от активного encrypted_secret; подтверждение атомарно заменяет factor. `last_verified_step` предотвращает повтор текущего OTP |
 | `webauthn_challenges.session_id` | Registration challenge связан с текущей SSO-сессией; origin/RP/challenge/signature/UV проверяются реальной библиотекой |
-| `sessions.auth_time` и `purpose` | Время фактического login, API его не обновляет. Purpose full/deletion_management/password_change; ограниченная смена временного пароля10min, без обычных grants |
+| `sessions.auth_time`, `mfa_verified`, `purpose` | `auth_time` — время login и не обновляется. `mfa_verified`/`mfa_method`/`mfa_verified_at`/`amr` пишет только сервер после реальной проверки; assurance не наследуется другой сессией. Purpose full/deletion_management/password_change/admin_mfa_enrollment; onboarding ограничен, временный пароль10min без обычных grants |
 | `password_credentials.requires_change/temporary_*` | Admin recovery credential15min, restricted one-use, после смены обычного пароля нужен новый login |
 | `oidc_clients.allowed_scopes` | Сохранённый набор отдельно от ролей; default `openid profile email`, issuer проверяет подмножество и подавляет лишние claims |
 | `privacy_rate_windows` | Общая PostgreSQL инфраструктура quotas с отдельными namespaces/HMAC identifiers; DB timestamp и атомарный counter, независимый quota commit до expensive Argon2 |

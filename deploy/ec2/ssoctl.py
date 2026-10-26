@@ -19,6 +19,7 @@ import tarfile
 import tempfile
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path("/opt/alxprgs-sso")
@@ -50,9 +51,13 @@ def run(*args: str, input: bytes | None = None, timeout: int = 600) -> bytes:
 
 
 def private_write(path: Path, content: str) -> None:
+    private_write_bytes(path, content.encode())
+
+
+def private_write_bytes(path: Path, content: bytes) -> None:
     with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as target:
         temp = Path(target.name)
-        target.write(content.encode())
+        target.write(content)
         target.flush()
         os.fsync(target.fileno())
     os.chmod(temp, 0o600)
@@ -84,6 +89,83 @@ def settings() -> dict[str, str]:
     return result
 
 
+MFA_KEYS = (
+    "FEATURE_TOTP_ENABLED",
+    "FEATURE_PASSKEY_ENABLED",
+    "FEATURE_RECOVERY_CODES_ENABLED",
+    "REQUIRE_ADMIN_MFA",
+)
+# Keys absent from an older runtime.env fall back to the application default.
+# These defaults are true by product decision; the status command states it.
+MFA_CODE_DEFAULTS = {key: True for key in MFA_KEYS}
+
+
+def _mfa_value(value: str) -> bool:
+    return value.strip().strip('"').strip("'").lower() in {"1", "true", "yes", "on"}
+
+
+def mfa_status() -> None:
+    """Read-only: show explicit overrides and the effective code default."""
+    if not CONFIG.exists():
+        raise OperationError("Configuration is not initialized")
+    values = settings()
+    print("MFA configuration (runtime.env):")
+    for key in MFA_KEYS:
+        if key in values:
+            state = "explicit"
+            effective = _mfa_value(values[key])
+        else:
+            state = "absent (code default)"
+            effective = MFA_CODE_DEFAULTS[key]
+        print(f"  {key}={str(effective).lower()} [{state}]")
+    if not all(key in values for key in MFA_KEYS):
+        print(
+            "Absent keys use the current application default; a new release may change "
+            "their effective value without editing runtime.env."
+        )
+    print("No secret values were printed.")
+
+
+def enable_mfa() -> None:
+    """Non-destructive targeted update: only the four MFA keys change.
+
+    All other lines, comments, ordering and secret values are preserved. A
+    timestamped private backup is written first; services are not restarted.
+    """
+    if not CONFIG.exists():
+        raise OperationError("Configuration is not initialized")
+    original_bytes = CONFIG.read_bytes()
+    lines = original_bytes.decode().splitlines()
+    updated = []
+    seen = set()
+    for line in lines:
+        if line and not line.startswith("#") and "=" in line:
+            key = line.split("=", 1)[0]
+            if key in MFA_CODE_DEFAULTS:
+                updated.append(f"{key}={json.dumps('true')}")
+                seen.add(key)
+                continue
+        updated.append(line)
+    for key in MFA_KEYS:
+        if key not in seen:
+            updated.append(f"{key}={json.dumps('true')}")
+    candidate = "\n".join(updated) + "\n"
+    # Validate the complete result before replacing the live file.
+    parsed = {}
+    for line in candidate.splitlines():
+        if line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            parsed[key] = json.loads(value)
+    if any(not _mfa_value(parsed.get(key, "")) for key in MFA_KEYS):
+        raise OperationError("Generated configuration failed MFA validation")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = CONFIG.with_name(f"{CONFIG.name}.bak-{stamp}")
+    private_write_bytes(backup, original_bytes)
+    private_write(CONFIG, candidate)
+    print(f"MFA enabled in {CONFIG}; backup written beside it.")
+    print("Restart/deploy the backend yourself; this command did not alter services or secrets.")
+
+
 def configure() -> None:
     if CONFIG.exists():
         settings()  # Fail without overwriting an unreadable/invalid configuration.
@@ -113,9 +195,10 @@ def configure() -> None:
         "OIDC_ISSUER": f"https://{DOMAIN}",
         "WEBAUTHN_ORIGIN": f"https://{DOMAIN}",
         "WEBAUTHN_RP_ID": DOMAIN,
-        "FEATURE_TOTP_ENABLED": "false",
-        "FEATURE_PASSKEY_ENABLED": "false",
-        "FEATURE_RECOVERY_CODES_ENABLED": "false",
+        "FEATURE_TOTP_ENABLED": "true",
+        "FEATURE_PASSKEY_ENABLED": "true",
+        "FEATURE_RECOVERY_CODES_ENABLED": "true",
+        "REQUIRE_ADMIN_MFA": "true",
         "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
         "REQUIRE_VERIFIED_EMAIL": "false",
         "EMAIL_PROVIDER": "resend",
@@ -510,6 +593,10 @@ def main() -> int:
         "status",
         "maintenance",
         "resume",
+        "mfa-status",
+        "enable-mfa",
+        "recover-admin",
+        "admin-status",
     ):
         sub.add_parser(name)
     deploy_parser = sub.add_parser("deploy")
@@ -518,6 +605,18 @@ def main() -> int:
     deploy_parser.add_argument("sha")
     verify_parser = sub.add_parser("verify-backup")
     verify_parser.add_argument("name")
+    recover_parser = sub.add_parser("recover-admin")
+    recover_parser.add_argument("--username", required=True)
+    recover_parser.add_argument(
+        "--reason",
+        required=True,
+        choices=("lost_factor", "compromised", "owner_request"),
+    )
+    recover_parser.add_argument(
+        "--confirm",
+        required=True,
+        help="Repeat the exact administrator username",
+    )
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("Run with sudo")
@@ -556,6 +655,46 @@ def main() -> int:
                 )
                 if result.returncode:
                     raise OperationError("Administrator bootstrap failed")
+            elif args.command == "mfa-status":
+                mfa_status()
+            elif args.command == "enable-mfa":
+                enable_mfa()
+            elif args.command == "recover-admin":
+                # Inherit the terminal: the operator types the exact username
+                # and reason. No password or factor is created or printed.
+                result = subprocess.run(
+                    compose(
+                        current(),
+                        "exec",
+                        "backend",
+                        "python",
+                        "-m",
+                        "app.cli.admin_recovery",
+                        "reset-factors",
+                        "--username",
+                        args.username,
+                        "--reason",
+                        args.reason,
+                        "--confirm",
+                        args.confirm,
+                    )
+                )
+                if result.returncode:
+                    raise OperationError("Administrator MFA recovery failed")
+            elif args.command == "admin-status":
+                result = subprocess.run(
+                    compose(
+                        current(),
+                        "exec",
+                        "backend",
+                        "python",
+                        "-m",
+                        "app.cli.admin_recovery",
+                        "status",
+                    )
+                )
+                if result.returncode:
+                    raise OperationError("Administrator status check failed")
             elif args.command == "status":
                 print(
                     (STATE / "deployed.json").read_text()

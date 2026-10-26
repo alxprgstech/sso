@@ -85,7 +85,9 @@ async def issue_grant(db, context: RaceScenario):
             db=db,
             request=SessionRequest(context.user_id, None, None),
             settings=context.settings,
-            authorization=SessionAuthorization(expected_revision=0, mfa_token=context.grant),
+            authorization=SessionAuthorization(
+                expected_revision=0, mfa_token=context.grant, mfa_method="totp"
+            ),
         )
     elif context.scenario == "change_code":
         value = await OIDCService.exchange_code(

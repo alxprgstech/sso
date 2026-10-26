@@ -16,6 +16,7 @@ export interface Capabilities {
   email_verification_enabled: boolean;
   require_verified_email: boolean;
   external_step_up_enabled: boolean;
+  admin_mfa_required: boolean;
   registration_mode: "closed" | "open" | string;
 }
 
@@ -97,7 +98,14 @@ export interface UserProfile {
   legal_acceptance_required?: boolean;
   deletion_pending?: boolean;
   deletion_scheduled_for?: string | null;
-  session_purpose?: "full" | "deletion_management" | "password_change";
+  session_purpose?:
+    | "full"
+    | "deletion_management"
+    | "password_change"
+    | "admin_mfa_enrollment";
+  mfa_verified?: boolean;
+  mfa_method?: "totp" | "passkey" | "recovery_code" | null;
+  admin_mfa_required?: boolean;
 }
 
 export interface LegalDocument {

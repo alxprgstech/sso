@@ -10,6 +10,7 @@ import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { DeletionAuthorization, DeletionStatus } from "../types/api";
 import { errorMessage } from "../utils/error";
+import { preferredFactor } from "../utils/security";
 import {
   prepareRequestOptions,
   serializeRequestResponse,
@@ -57,7 +58,7 @@ export function AccountDeletionPage() {
     try {
       const value = await api.reauthenticateDeletion(action, password);
       setProof(value);
-      setMethod(value.methods?.[0] ?? "totp");
+      setMethod(preferredFactor(value.methods));
     } catch (failure) {
       setError(errorMessage(failure, "Подтверждение не удалось."));
     } finally {

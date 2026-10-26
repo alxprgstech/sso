@@ -35,6 +35,8 @@ from app.services.audit_service import AuditService
 
 from app.services.security_state import invalidate_security_state, lock_user
 
+from app.config import Settings, get_settings
+
 
 class RecoveryCodesService:
     @staticmethod
@@ -42,18 +44,33 @@ class RecoveryCodesService:
         return code.replace("-", "").replace(" ", "").upper().strip()
 
     @staticmethod
+    def _has_active_factor(user: User, settings: Settings) -> bool:
+        totp = bool(
+            settings.FEATURE_TOTP_ENABLED
+            and user.totp_credential
+            and user.totp_credential.is_confirmed
+        )
+        passkey = bool(settings.FEATURE_PASSKEY_ENABLED and user.webauthn_credentials)
+        return totp or passkey
+
+    @staticmethod
     async def generate_codes(
-        db: AsyncSession, user: User, session_id: uuid.UUID | None = None
+        db: AsyncSession,
+        user: User,
+        session_id: uuid.UUID | None = None,
+        settings: Settings | None = None,
     ) -> list[str]:
         """
         Выпуск нового набора из 10 резервных кодов.
-        Разрешен ТОЛЬКО при активном подтвержденном факторе TOTP (SEC-FLAG-03).
+        Разрешен при любом активном подтвержденном MFA-факторе: TOTP или Passkey.
         Показываются пользователю ТОЛЬКО ОДИН РАЗ.
         """
+        active_settings = settings or get_settings()
         user = await lock_user(db, user.id)
-        if not (user.totp_credential and user.totp_credential.is_confirmed):
+        if not RecoveryCodesService._has_active_factor(user, active_settings):
             raise AuthorizationException(
-                "Резервные коды могут быть выпущены только при активном факторе TOTP"
+                "Резервные коды могут быть выпущены только при активном подтверждённом "
+                "факторе MFA (TOTP или Passkey)"
             )
 
         # Удаляем предыдущие коды пользователя
@@ -76,7 +93,11 @@ class RecoveryCodesService:
             )
             db.add(rec)
 
-        await invalidate_security_state(db, user, preserve_session_id=session_id)
+        # The caller already proved a fresh factor for this exact operation, so
+        # this session keeps its assurance while other grants are revoked.
+        await invalidate_security_state(
+            db, user, preserve_session_id=session_id, preserve_assurance=True
+        )
         await AuditService.log_event(db, event_type="recovery_codes_generated", user_id=user.id)
         return plain_codes
 

@@ -136,12 +136,13 @@ sequenceDiagram
 
 ---
 
-## 5. Архитектура отложенных возможностей (Feature Flags)
+## 5. MFA default-on, session assurance и feature flags
 
-Три MFA-флага управляют доступностью функций; email-параметр сохранён для совместимости:
-- `FEATURE_TOTP_ENABLED` (по умолчанию `false`)
-- `FEATURE_PASSKEY_ENABLED` (по умолчанию `false`)
-- `FEATURE_RECOVERY_CODES_ENABLED` (по умолчанию `false`)
+TOTP, Passkey и Recovery codes доступны по умолчанию; email-параметр сохранён для совместимости. Отсутствие переменных включает функции, явный `false` — аварийное отключение:
+- `FEATURE_TOTP_ENABLED` (по умолчанию `true`)
+- `FEATURE_PASSKEY_ENABLED` (по умолчанию `true`)
+- `FEATURE_RECOVERY_CODES_ENABLED` (по умолчанию `true`)
+- `REQUIRE_ADMIN_MFA` (по умолчанию `true`)
 - `FEATURE_EMAIL_VERIFICATION_ENABLED` (совместимый параметр; всегда `true`, значение `false` отвергается)
 
 ### Архитектурные инварианты:
@@ -149,8 +150,14 @@ sequenceDiagram
 2. **Fail-Closed**: При выключенном флаге:
    - Роуты TOTP, Passkey и Recovery codes возвращают `404 Not Found` с кодом `feature_disabled`; подтверждение email доступно и необходимо для самостоятельной регистрации.
    - Закрытый режим самостоятельной регистрации не создаёт заявку и не отправляет письмо.
-3. **Безопасная витрина возможностей (Capabilities)**: Эндпоинт `/api/v1/auth/capabilities` возвращает фронтенду булевы флаги доступности интерфейсов. Фронтенд скрывает элементы UI, но не принимает решений безопасности.
-4. **Защита от bypass**: Если пользователь ранее привязал второй фактор в тестовом профиле, а затем флаг был отключён, вход не должен автоматически пропускать проверку без административного вмешательства.
+3. **Безопасная витрина возможностей (Capabilities)**: `/api/v1/auth/capabilities` возвращает доступность MFA, `admin_mfa_required` и режим регистрации. Фронтенд использует эти данные, но не принимает решений безопасности.
+4. **Защита от bypass**: если у пользователя уже есть подтверждённый фактор, а runtime-флаг отключён, вход не пропускается по одному паролю. Администратор без подтверждённого фактора получает только onboarding-сессию; порождённые до изменения сессии не получают assurance автоматически.
+
+### Session assurance и административный доступ
+
+`Session` хранит `mfa_verified`, `mfa_method`, `mfa_verified_at` и `amr`. Значения пишет только сервер после реальной проверки TOTP/Passkey/Recovery; клиент не может передать их в login/API. Парольный вход создаёт `mfa_verified=false`. Администратор без активного фактора получает `purpose=admin_mfa_enrollment`: разрешены только `me/logout/legal`, настройка TOTP/Passkey, управление собственными passkey, reauthentication и `POST /api/v1/auth/session/elevate`. После настройки фактор подтверждается fresh proof в этой же сессии; при успехе `purpose=full`, `mfa_verified=true`. Подтверждение одной сессии не наследуется другой, `auth_time` сам по себе не является доказательством, а изменение/удаление фактора очищает assurance сохранённой сессии и отзывает остальные.
+
+Административные API проверяют одновременно живую сессию, RBAC и assurance. `require_admin_user` не пропускает `is_superuser`/`role=admin` при `mfa_verified=false`. OIDC authorization code/refresh token хранят assurance snapshot (`mfa_verified`, `amr`); access/ID tokens получают `amr`/`acr`, а роль `admin` не выдаётся grant, созданному без обязательного assurance. Старые grants после миграции имеют `false` и не могут получить admin-роль при refresh; UserInfo также фильтрует admin по assurance токена. Подробности — [ADR-0032](adr/0032-default-on-mfa-and-admin-policy.md), [security](security.md).
 
 Для самостоятельной регистрации `RegistrationService.start` создаёт `pending_registrations`, не `users`. `confirm` под блокировкой строки проверяет шестизначный HMAC-код либо хеш одноразовой ссылки и атомарно создаёт подтверждённого пользователя. `EmailVerificationService` сохраняет прежний путь для уже существующих пользователей. Общий MIME-шаблон `services/verification_email.py` содержит text/AMP/HTML и отправляется через SMTP либо SES API v2 Raw (`services/ses_email.py`) согласно `EMAIL_PROVIDER`. Сырой код и токен попадают в in-memory sink только при `ENVIRONMENT=testing`. Ссылка `/verify-email` погашается действием пользователя. Подробнее: [ADR-0007](adr/0007-ses-email-provider.md), [ADR-0008](adr/0008-registration-after-email-verification.md).
 
@@ -166,7 +173,7 @@ sequenceDiagram
 
 Authlib используется для scope/PKCE helpers; API/OIDCService реализуют HTTP-профиль и транзакционные grants; JWT — PyJWT/cryptography. Наличие Authlib не означает готовый AuthorizationServer или сертификацию. Compose — локальный HTTP на loopback, HTTPS-схема выше описывает целевую топологию. [API](api.md), [status](status.md).
 
-Claims email/email_verified выдаются только при email scope, preferred_username/roles — при profile. ID Token включает token_use/id-профиль и auth_time; полный контракт описан в API. Бесшовный вход возможен только при допустимой OP session и отсутствии требования fresh login/согласий/смены пароля/удаления; prompt=login/none и max_age соблюдаются.
+Claims email/email_verified выдаются только при email scope, preferred_username/roles — при profile. Access/ID Token включают `amr` (`pwd`, `otp`, `hwk`, `mfa`) и `acr` (`urn:alxprgs:acr:pwd`/`urn:alxprgs:acr:mfa`); admin-роль фильтруется по assurance snapshot. ID Token включает token_use/id-профиль и auth_time; полный контракт описан в API. Бесшовный вход возможен только при допустимой OP session и отсутствии требования fresh login/согласий/смены пароля/удаления; prompt=login/none и max_age соблюдаются.
 
 ## Cross-application transaction step-up
 

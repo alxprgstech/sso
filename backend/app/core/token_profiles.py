@@ -6,8 +6,9 @@ from typing import Any
 from app.core.token_audience import _validate_audience
 from app.core.token_dates import _nonnegative_integer, _validate_dates
 from app.core.token_claims import (
-    _validate_strings,
+    _validate_assurance_claims,
     _validate_optional_claims,
+    _validate_strings,
 )
 
 
@@ -91,6 +92,8 @@ def validate_claims(
     _validate_dates(payload)
     _validate_audience(payload, audience)
     _validate_optional_claims(payload)
+    if payload.get("token_use") in {"access_token", "id_token"}:
+        _validate_assurance_claims(payload)
     if payload.get("token_use") == "access_token":
         _validate_access_profile(payload)
     if payload.get("token_use") == "mfa_step":

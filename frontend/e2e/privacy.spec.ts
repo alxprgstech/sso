@@ -5,6 +5,19 @@ import { fileURLToPath } from "node:url";
 import { createHash, randomBytes } from "node:crypto";
 
 const username = "privacy_e2e_" + randomBytes(6).toString("hex");
+const COMPOSE_ADMIN_TOTP_SECRET = "JBSWY3DPEHPK3PXP"; // pragma: allowlist secret
+
+function composeAdminOtp(): string {
+  const python = process.env.PYTHON_BIN;
+  if (!python) throw new Error("Installed test Python is required");
+  const result = execFileSync(
+    python,
+    ["-c", "import sys,pyotp; print(pyotp.TOTP(sys.stdin.read().strip()).now())"],
+    { input: COMPOSE_ADMIN_TOTP_SECRET, encoding: "utf8" },
+  ).trim();
+  if (!/^\d{6}$/.test(result)) throw new Error("Synthetic admin OTP failed");
+  return result;
+}
 
 async function keyboardFocus(page: Page, target: Locator) {
   for (let step = 0; step < 90; step++) {
@@ -325,6 +338,18 @@ test("administrator dialog supports keyboard focus, Shift+Tab and Escape", async
     page,
     page.getByRole("button", { name: "Войти", exact: true }),
   );
+  if (process.env.PRIVACY_ENABLED_PROFILE === "1") {
+    // Default-on profile: the administrator must complete real TOTP MFA.
+    await type(
+      page,
+      page.getByLabel("Одноразовый код или код восстановления"),
+      composeAdminOtp(),
+    );
+    await activate(
+      page,
+      page.getByRole("button", { name: "Подтвердить", exact: true }),
+    );
+  }
   await expect(
     page
       .getByRole("heading", { name: "Подтвердите документы" })

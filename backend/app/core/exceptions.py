@@ -32,10 +32,14 @@ class AuthenticationException(HTTPException):
 
 
 class AuthorizationException(HTTPException):
-    def __init__(self, detail: str = "Недостаточно прав для выполнения действия") -> None:
+    def __init__(
+        self,
+        detail: str = "Недостаточно прав для выполнения действия",
+        error: str = "forbidden",
+    ) -> None:
         super().__init__(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "forbidden", "detail": detail},
+            detail={"error": error, "detail": detail},
         )
 
 

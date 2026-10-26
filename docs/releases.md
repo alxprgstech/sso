@@ -78,7 +78,7 @@ python scripts/bump_version.py set 0.2.0
 - **Состав проверок**:
   1. `lint-and-typecheck`: Ruff (линтер и форматтер Python), Mypy, ESLint, TypeScript typecheck (`tsc --noEmit`).
   2. `backend-unit-and-integration`: запуск pytest с реальным сервисом PostgreSQL 16 в контейнере, применение миграций Alembic, тестирование гонок и атомарности.
-  3. `mfa-feature-profiles`: тесты в профиле default-off (три MFA-флага `false`, проверка 404 на API; email обязателен) и тесты в профиле enabled (`TEST_PROFILE=enabled`).
+  3. `mfa-feature-profiles`: default-on профиль (все три MFA и `REQUIRE_ADMIN_MFA=true`, admin onboarding/assurance), explicit-disabled профиль (явные `false`, проверка 404 и refuse-downgrade) и recovery-профиль (TOTP/Passkey). Email обязателен во всех профилях.
   4. `sdk-package`: сборка `sdist` и `wheel` пакета `alxprgs-sso`, установка в чистую виртуальную среду, тестирование примеров.
   5. `frontend-build`: сборка production-бандла Vite (`npm run build`).
 

@@ -47,12 +47,39 @@ python scripts/rotate_keys.py --kind rsa --output-dir <новый-защищён
 - `JWT_PRIVATE_KEY_PEM`: путь внутри runtime к постоянному RSA secret mount либо PEM из secret store; `JWT_KEY_ID` явный уникальный ASCII kid;
 - `BASE_URL`: внешний базовый URL (например, `https://auth.alxprgs.tech`);
 - `OIDC_ISSUER`: идентификатор поставщика удостоверений (`https://auth.alxprgs.tech`); production требует тот же точный HTTPS origin в `BASE_URL`, `FRONTEND_URL`, `WEBAUTHN_ORIGIN` и matching host в `WEBAUTHN_RP_ID`;
-- Убедитесь, что все флаги отложенных возможностей установлены в `false`:
-  - `FEATURE_TOTP_ENABLED=false`
-  - `FEATURE_PASSKEY_ENABLED=false`
-  - `FEATURE_RECOVERY_CODES_ENABLED=false`
+- MFA поставляется включённой; отсутствие переменных не отключает её:
+  - `FEATURE_TOTP_ENABLED=true`
+  - `FEATURE_PASSKEY_ENABLED=true`
+  - `FEATURE_RECOVERY_CODES_ENABLED=true`
+  - `REQUIRE_ADMIN_MFA=true`
   - `FEATURE_EMAIL_VERIFICATION_ENABLED=true` (обязательное подтверждение самостоятельной регистрации)
   - `REQUIRE_VERIFIED_EMAIL=false`
+- Явный `false` допустим только как аварийное отключение. Если выключены оба фактора, задайте `REQUIRE_ADMIN_MFA=false` явно; аккаунт с уже настроенным фактором не понижается до пароля.
+
+### 2.1.1. Контролируемое включение MFA на существующем сервере
+
+Не перезаписывайте `runtime.env` целиком и не перегенерируйте секреты. Порядок:
+
+1. Проверьте фактические значения: `sudo ssoctl mfa-status`; отдельно проверьте `/etc/alxprgs-sso/runtime.env`. Если ключи отсутствуют, новый код применит default `true` — это планируемое изменение, а не «сохранение старого режима».
+2. Перед rollout проверьте администраторов и настроенные факторы (`totp_credentials.is_confirmed`, `webauthn_credentials`); парольный вход без MFA после обновления даст только onboarding. Убедитесь, что владелец может пройти настройку TOTP/Passkey и что email/HTTPS/WebAuthn origin корректны.
+3. Сделайте backup БД и `runtime.env` по [инструкции](ec2-deployment.md); запишите текущий SHA/sequence.
+4. Для существующих явных `false` используйте `sudo ssoctl enable-mfa`: меняются только четыре ключа, создаётся private backup, остальные значения/секреты сохраняются. Для новой установки `ssoctl configure` уже создаёт `true`.
+5. Разверните тот же проверенный SHA и примените миграцию `0016_session_assurance`. Все старые сессии/grants становятся non-assured; администраторы должны пройти onboarding и подтвердить фактор. Это ожидаемо и не является сбоем.
+6. Проверьте `/api/v1/auth/capabilities`: `totp_enabled`, `passkey_enabled`, `recovery_codes_enabled`, `admin_mfa_required` = true. Проверьте вход обычного пользователя, admin onboarding, fresh elevation и admin API.
+7. Rollback: верните предыдущий release и `runtime.env` из backup. Не откатывайте только backend без совместимой схемы; `0016` downgrade удаляет assurance-колонки, все browser sessions и authorization codes и отзывает refresh tokens, чтобы старый код не получил non-assured grants как admin. После rollback пользователи выполнят новый вход. Если нужен временный explicit-disabled профиль, задайте `FEATURE_*=false` и `REQUIRE_ADMIN_MFA=false` отдельным решением владельца и задокументируйте причину; это не должно затрагивать production users/секреты.
+
+`mfa-status` и `enable-mfa` не перезапускают сервисы и не выполняют CD. Production-изменения выполняет владелец после отдельного разрешения.
+
+### 2.1.2. Потеря последнего MFA-фактора администратора
+
+Если администратор утратил все TOTP/Passkey и не имеет действующих recovery codes, используйте контролируемую offline-процедуру с серверным доступом:
+
+```bash
+sudo ssoctl admin-status
+sudo ssoctl recover-admin --username ADMIN --reason lost_factor --confirm ADMIN
+```
+
+`admin-status` показывает администраторов и наличие факторов без секретов. `recover-admin` требует точного подтверждения username, удаляет TOTP/Passkey/Recovery codes, увеличивает `security_revision`, отзывает все sessions/codes/refresh/step-up grants и пишет audit `admin_mfa_recovery_reset` с allowlisted reason. Он **не** создаёт новый фактор, не выдаёт assurance и не позволяет password-only admin доступ; после сброса администратор входит по паролю, настраивает новый фактор и подтверждает его в onboarding. Процедура не заменяет password reset и не использует email как доказательство. На EC2 команда выполняется владельцем после backup и отдельного разрешения.
 
 ### 2.2. Запуск через Docker Compose
 

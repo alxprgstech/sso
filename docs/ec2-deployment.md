@@ -41,6 +41,22 @@ sudo bash ~/bootstrap.sh
 Существующий `/etc/alxprgs-sso/runtime.env` сохраняется, ключи и volume не заменяются.
 На время первой установки HTTP отвечает 503, кроме ACME challenge. HTTPS включается при первом деплое.
 
+### 2.1. MFA в новой и существующей конфигурации
+
+Новая установка `ssoctl configure` получает `FEATURE_TOTP_ENABLED=true`, `FEATURE_PASSKEY_ENABLED=true`, `FEATURE_RECOVERY_CODES_ENABLED=true`, `REQUIRE_ADMIN_MFA=true`. Существующий `runtime.env` не перезаписывается. Проверьте фактические значения:
+
+```bash
+sudo ssoctl mfa-status
+```
+
+Статус `absent (code default)` означает, что после обновления backend применится `true`. Явные `false` сохранятся. Для безопасного targeted изменения (только четыре ключа, private backup рядом, без перезапуска и без изменения секретов):
+
+```bash
+sudo ssoctl enable-mfa
+```
+
+Не перезаписывайте `runtime.env` целиком и не перегенерируйте ключи. Перед деплоем проверьте существующих администраторов и их факторы (`sudo ssoctl admin-status`); после миграции `0016_session_assurance` все старые сессии non-assured, поэтому каждый администратор пройдёт onboarding в `/admin`: настройка TOTP/Passkey → fresh подтверждение → admin. Обычные пользователи без фактора продолжают парольный вход. Проверьте `/api/v1/auth/capabilities`: все три MFA-флага и `admin_mfa_required` должны быть `true`. Если администратор утратил все факторы и recovery codes, используйте `sudo ssoctl recover-admin --username ADMIN --reason lost_factor --confirm ADMIN`: команда удаляет факторы, отзывает sessions/grants и пишет audit, но не создаёт assurance. Полный порядок, backup/rollback — [operations](operations.md#211-контролируемое-включение-mfa-на-существующем-сервере) и [ADR-0032](adr/0032-default-on-mfa-and-admin-policy.md). Production изменяет только владелец после отдельного разрешения.
+
 ```bash
 sudo ssoctl test-alert
 ```

@@ -30,6 +30,12 @@ from app.models.user import User
 from app.schemas.oidc import TokenResponse, UserInfoResponse
 from app.services.audit_service import AuditService
 from app.services.security_state import require_account_access, revision
+from app.services.session_assurance import (
+    assurance_acr,
+    roles_for_token,
+    split_amr,
+    userinfo_roles,
+)
 
 settings = get_settings()
 
@@ -115,13 +121,15 @@ class OIDCService:
             raise OAuthErrorException("invalid_grant", "Аккаунт недоступен", 400)
         await require_access(db, current)
         require_account_access(current, settings)
+        mfa_verified = False
+        amr = "pwd"
         if session_id is not None:
             session = await db.scalar(
                 select(Session).where(
                     Session.id == session_id,
                     Session.user_id == current.id,
                     Session.security_revision == revision(current),
-                    Session.purpose == "full",
+                    Session.purpose.in_(("full", "admin_mfa_enrollment")),
                     Session.expires_at > datetime.now(timezone.utc),
                 )
             )
@@ -130,6 +138,10 @@ class OIDCService:
                     "login_required", "Сессия больше не допускает авторизацию", 400
                 )
             auth_time = session.auth_time
+            # Snapshot assurance now.  A later refresh never gains privileges
+            # that this authorization code did not hold.
+            mfa_verified = bool(session.mfa_verified)
+            amr = session.amr or "pwd"
 
         raw_code = generate_random_token(32)
         code_hash = hash_token(raw_code)
@@ -149,6 +161,8 @@ class OIDCService:
             expires_at=expires_at,
             security_revision=revision(current),
             auth_time=auth_time or now,
+            mfa_verified=mfa_verified,
+            amr=amr,
         )
         db.add(auth_code_record)
         await db.commit()
@@ -253,6 +267,8 @@ class OIDCService:
             user_agent=user_agent,
             expected_revision=auth_code_obj.security_revision or 0,
             auth_time=auth_code_obj.auth_time,
+            mfa_verified=auth_code_obj.mfa_verified,
+            amr=auth_code_obj.amr,
         )
 
     @staticmethod
@@ -377,6 +393,8 @@ class OIDCService:
             user_agent=user_agent,
             expected_revision=rt_obj.security_revision or 0,
             auth_time=rt_obj.auth_time,
+            mfa_verified=rt_obj.mfa_verified,
+            amr=rt_obj.amr,
         )
 
     @staticmethod
@@ -391,6 +409,8 @@ class OIDCService:
         user_agent: str | None = None,
         expected_revision: int | None = None,
         auth_time: datetime | None = None,
+        mfa_verified: bool = False,
+        amr: str = "pwd",
     ) -> TokenResponse:
         granted_scopes = set(scope_to_list(scope))
         if not granted_scopes <= set((client.allowed_scopes or "openid profile email").split()):
@@ -421,7 +441,8 @@ class OIDCService:
         if expected_revision is not None and revision(current) != expected_revision:
             raise OAuthErrorException("invalid_grant", "Безопасность аккаунта изменилась", 400)
         user = current
-        roles = [r.name for r in user.roles]
+        roles = roles_for_token(current, settings, mfa_verified=mfa_verified)
+        amr_claims = split_amr(amr)
         now = datetime.now(timezone.utc)
         authenticated_at = auth_time or now
 
@@ -433,6 +454,8 @@ class OIDCService:
             "token_use": "access_token",
             "jti": str(uuid.uuid4()),
             "security_revision": revision(current),
+            "amr": amr_claims,
+            "acr": assurance_acr(mfa_verified),
         }
         if "profile" in granted_scopes:
             access_payload["preferred_username"] = user.username
@@ -453,6 +476,8 @@ class OIDCService:
                 "aud": client.client_id,
                 "token_use": "id_token",
                 "auth_time": int(authenticated_at.timestamp()),
+                "amr": amr_claims,
+                "acr": assurance_acr(mfa_verified),
             }
             if nonce:
                 id_payload["nonce"] = nonce
@@ -497,6 +522,8 @@ class OIDCService:
             expires_at=rt_expires,
             security_revision=revision(current),
             auth_time=authenticated_at,
+            mfa_verified=mfa_verified,
+            amr=amr,
         )
         db.add(new_rt)
         await db.commit()
@@ -567,12 +594,20 @@ class OIDCService:
         if payload.get("security_revision", 0) != revision(user):
             raise OAuthErrorException("invalid_token", "Безопасность аккаунта изменилась", 401)
 
+        raw_amr = payload.get("amr")
+        token_amr = (
+            [item for item in raw_amr if isinstance(item, str)] if isinstance(raw_amr, list) else []
+        )
         return UserInfoResponse(
             sub=str(user.id),
             preferred_username=user.username if "profile" in token_scopes else None,
             email=user.email if "email" in token_scopes else None,
             email_verified=user.email_verified if "email" in token_scopes else None,
-            roles=[r.name for r in user.roles] if "profile" in token_scopes else [],
+            roles=(
+                userinfo_roles(user, settings, token_amr=token_amr)
+                if "profile" in token_scopes
+                else []
+            ),
         )
 
     @staticmethod

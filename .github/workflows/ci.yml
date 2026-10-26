@@ -121,9 +121,10 @@ jobs:
       SSO_TRANSPORT_PROFILE: local
       REQUIRE_VERIFIED_EMAIL: 'true'
       FEATURE_EMAIL_VERIFICATION_ENABLED: 'true'
-      FEATURE_TOTP_ENABLED: 'false'
-      FEATURE_PASSKEY_ENABLED: 'false'
-      FEATURE_RECOVERY_CODES_ENABLED: 'false'
+      FEATURE_TOTP_ENABLED: 'true'
+      FEATURE_PASSKEY_ENABLED: 'true'
+      FEATURE_RECOVERY_CODES_ENABLED: 'true'
+      REQUIRE_ADMIN_MFA: 'true'
       BASE_URL: http://localhost:8000
       FRONTEND_URL: http://localhost:5173
       TESTMAIL_NAMESPACE: ${{ vars.TESTMAIL_NAMESPACE }}
@@ -429,7 +430,24 @@ jobs:
           psql --version
           python -m scripts.init_fresh_ci_test_marker
 
-      - name: Run Backend Tests on PostgreSQL (Default-off profile)
+      - name: Run Backend Tests on PostgreSQL (Default-on profile)
+        env:
+          EMAIL_PROVIDER: "smtp"
+          TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          SESSION_SECRET_KEY: "default-dev-session-secret-key-at-least-64-characters-long-safe-for-dev-only"
+          FEATURE_TOTP_ENABLED: "true"
+          FEATURE_PASSKEY_ENABLED: "true"
+          FEATURE_RECOVERY_CODES_ENABLED: "true"
+          REQUIRE_ADMIN_MFA: "true"
+          REQUIRE_VERIFIED_EMAIL: "false"
+          TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
+          JWT_PRIVATE_KEY_PEM: ""
+        run: |
+          pytest -v tests/
+
+      - name: Run Explicitly-disabled profile fail-closed checks
         env:
           EMAIL_PROVIDER: "smtp"
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
@@ -439,11 +457,15 @@ jobs:
           FEATURE_TOTP_ENABLED: "false"
           FEATURE_PASSKEY_ENABLED: "false"
           FEATURE_RECOVERY_CODES_ENABLED: "false"
+          REQUIRE_ADMIN_MFA: "false"
           REQUIRE_VERIFIED_EMAIL: "false"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
         run: |
-          pytest -v tests/
+          pytest -v tests/test_mfa_features.py::test_explicitly_disabled_features_are_blocked_in_api \
+            tests/integration/test_features_pg.py::test_explicitly_disabled_profile_capabilities_and_404_pg \
+            tests/integration/test_features_pg.py::test_disabled_factor_does_not_allow_password_only_bypass_pg \
+            tests/test_security_and_negative_scenarios.py::test_deferred_features_return_404_when_disabled
 
       - name: Run MFA & Feature Flags Tests (Enabled profile)
         env:
@@ -455,6 +477,7 @@ jobs:
           FEATURE_TOTP_ENABLED: "true"
           FEATURE_PASSKEY_ENABLED: "true"
           FEATURE_RECOVERY_CODES_ENABLED: "true"
+          REQUIRE_ADMIN_MFA: "true"
           REQUIRE_VERIFIED_EMAIL: "true"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
         run: |
@@ -610,6 +633,7 @@ jobs:
       - name: Seed Synthetic E2E Test Accounts (Default-off Profile)
         env:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          REQUIRE_ADMIN_MFA: "false"
         run: |
           python scripts/prepare_e2e_data.py
 
@@ -630,7 +654,7 @@ jobs:
               raise SystemExit("local SMTP capture did not start")
           PY
 
-      - name: Start Backend Server (Default-off Profile)
+      - name: Start Backend Server (Explicitly-disabled Profile)
         env:
           DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           DATABASE_URL_SYNC: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
@@ -638,6 +662,7 @@ jobs:
           FEATURE_TOTP_ENABLED: "false"
           FEATURE_PASSKEY_ENABLED: "false"
           FEATURE_RECOVERY_CODES_ENABLED: "false"
+          REQUIRE_ADMIN_MFA: "false"
           REQUIRE_VERIFIED_EMAIL: "false"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
@@ -658,6 +683,7 @@ jobs:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           PYTHON_BIN: python
           PRIVACY_ENABLED_PROFILE: "0"
+          REQUIRE_ADMIN_MFA: "false"
           E2E_CLIENT1_SECRET: analytics_client_secret_123
           E2E_CLIENT2_SECRET: docs_client_secret_123
           E2E_USERNAME: e2e_sso_user
@@ -673,6 +699,7 @@ jobs:
       - name: Seed Synthetic E2E Test Accounts (Enabled Profile)
         env:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          REQUIRE_ADMIN_MFA: "true"
         run: |
           python scripts/prepare_e2e_data.py
 
@@ -684,6 +711,7 @@ jobs:
           FEATURE_TOTP_ENABLED: "true"
           FEATURE_PASSKEY_ENABLED: "true"
           FEATURE_RECOVERY_CODES_ENABLED: "true"
+          REQUIRE_ADMIN_MFA: "true"
           REQUIRE_VERIFIED_EMAIL: "false"
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
@@ -702,6 +730,7 @@ jobs:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
           PYTHON_BIN: python
           PRIVACY_ENABLED_PROFILE: "1"
+          REQUIRE_ADMIN_MFA: "true"
         run: |
           npx playwright test e2e/passkey.spec.ts e2e/totp.spec.ts e2e/telemetry.spec.ts e2e/privacy.spec.ts
 

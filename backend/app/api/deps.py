@@ -14,7 +14,6 @@ from app.core.exceptions import (
     AuthorizationException,
     FeatureDisabledException,
 )
-from app.core.rbac import ROLE_ADMIN
 from app.core.security import hash_token
 from app.core.urls import origin
 from app.database import get_db
@@ -204,6 +203,33 @@ async def get_current_user(
                 "Необходимо сменить временный пароль", error="password_change_required"
             )
         return user
+    if session.purpose == "admin_mfa_enrollment":
+        allowed_paths = {
+            "/api/v1/auth/me",
+            "/api/v1/auth/logout",
+            "/api/v1/auth/legal-acceptance",
+            "/api/v1/auth/change-password",
+            "/api/v1/auth/reauthentication",
+            "/api/v1/auth/reauthentication/factor",
+            "/api/v1/auth/session/elevate",
+            "/api/v1/auth/session/elevate/passkey/options",
+            "/api/v1/mfa/totp/setup",
+            "/api/v1/mfa/totp/confirm",
+            "/api/v1/mfa/passkey/register/options",
+            "/api/v1/mfa/passkey/register/verify",
+            "/api/v1/mfa/email/request",
+            "/api/v1/mfa/email/confirm",
+            "/api/v1/mfa/email/confirm-code",
+        }
+        credential_management = path == "/api/v1/mfa/passkey/credentials" or path.startswith(
+            "/api/v1/mfa/passkey/credentials/"
+        )
+        if path not in allowed_paths and not credential_management:
+            raise AuthenticationException(
+                "Для доступа к панели администратора необходимо настроить двухфакторную "
+                "аутентификацию",
+                error="admin_mfa_enrollment_required",
+            )
     privacy_management = path in {
         "/api/v1/auth/me",
         "/api/v1/auth/logout",
@@ -236,11 +262,20 @@ async def get_optional_current_user(
 
 async def require_admin_user(
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
 ) -> User:
-    """Серверный RBAC: доступ разрешён только администраторам."""
-    is_admin = current_user.is_superuser or any(r.name == ROLE_ADMIN for r in current_user.roles)
-    if not is_admin:
+    """Server-side RBAC plus the administrator MFA assurance policy."""
+    from app.services.session_assurance import admin_access_allowed, is_admin_user
+
+    if not is_admin_user(current_user):
         raise AuthorizationException("Требуются права администратора")
+    if not admin_access_allowed(current_user, session, settings):
+        raise AuthorizationException(
+            "Для доступа к панели администратора необходимо настроить и подтвердить "
+            "двухфакторную аутентификацию",
+            error="admin_mfa_required",
+        )
     return current_user
 
 

@@ -89,6 +89,13 @@ class AuthorizationCode(Base):
     security_revision: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
     )
+    # Assurance snapshot from the browser session that authorized this grant.
+    mfa_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    amr: Mapped[str] = mapped_column(
+        String(64), default="pwd", server_default="pwd", nullable=False
+    )
 
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     client_id: Mapped[uuid.UUID] = mapped_column(
@@ -124,6 +131,13 @@ class RefreshToken(Base):
     )
     security_revision: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", nullable=False
+    )
+    # Assurance snapshot propagated from the authorization code.
+    mfa_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    amr: Mapped[str] = mapped_column(
+        String(64), default="pwd", server_default="pwd", nullable=False
     )
 
     family_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), index=True, nullable=False)

@@ -26,3 +26,21 @@ def _validate_optional_claims(payload: dict[str, Any]) -> None:
         raise ValueError("Invalid verification flag")
     if "roles" in payload:
         _validate_roles(payload["roles"])
+
+
+def _validate_assurance_claims(payload: dict[str, Any]) -> None:
+    """Bound the standard assurance claims emitted by this issuer."""
+    if "amr" in payload:
+        methods = payload["amr"]
+        if (
+            not isinstance(methods, list)
+            or not 1 <= len(methods) <= 4
+            or any(method not in {"pwd", "otp", "hwk", "mfa"} for method in methods)
+            or len(set(methods)) != len(methods)
+        ):
+            raise ValueError("Invalid amr")
+    if "acr" in payload and payload["acr"] not in {
+        "urn:alxprgs:acr:pwd",
+        "urn:alxprgs:acr:mfa",
+    }:
+        raise ValueError("Invalid acr")

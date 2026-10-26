@@ -14,6 +14,8 @@ python -m pip install --no-deps --no-build-isolation dist/sdk/alxprgs_sso-0.3.0-
 
 `SSOClient` загружает `/.well-known/jwks.json`, кэширует публичные RSA ключи и проверяет RS256, issuer, audience, обязательные claims, их типы и времена. Некорректный или чрезмерный `kid` отвергается до загрузки JWKS. `verify_access_token` принимает только Access Token; `verify_id_token` проверяет отдельный ID-профиль и ожидаемый nonce. ID Token не используется как Bearer для API.
 
+С ревизии MFA-DEFAULT-ADMIN-01 OP добавляет в Access/ID Token подписанные `amr` (`pwd`, `otp`, `hwk`, `mfa`) и `acr` (`urn:alxprgs:acr:pwd`/`urn:alxprgs:acr:mfa`). SDK не отвергает эти дополнительные claims и не трактует наличие роли как доказательство MFA. Административная роль `admin` не выдаётся OP для authorization code/refresh без требуемого session assurance, поэтому RP, использующий SDK-роли, не получает admin-право из password-only grant. Публичный API SDK в этой задаче не менялся; для собственной assurance-политики RP может дополнительно проверять подписанные `amr`/`acr` стандартными средствами либо запросить отдельный hosted step-up. SDK не повышает assurance самостоятельно и не обходит `assurance_unavailable`/`StepUpPolicyError`.
+
 Рекомендуемый веб-поток:
 
 ```python

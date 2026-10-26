@@ -445,6 +445,7 @@ def run_boot_stage(
                     "FEATURE_TOTP_ENABLED": "false",
                     "FEATURE_PASSKEY_ENABLED": "false",
                     "FEATURE_RECOVERY_CODES_ENABLED": "false",
+                    "REQUIRE_ADMIN_MFA": "false",
                     "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
                     "REQUIRE_VERIFIED_EMAIL": "false",
                 }
@@ -536,6 +537,7 @@ def run_boot_stage(
                     "FEATURE_TOTP_ENABLED": "true",
                     "FEATURE_PASSKEY_ENABLED": "true",
                     "FEATURE_RECOVERY_CODES_ENABLED": "true",
+                    "REQUIRE_ADMIN_MFA": "true",
                     "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
                     "REQUIRE_VERIFIED_EMAIL": "false",
                 }
@@ -691,6 +693,7 @@ def run_soak_stage(
             "FEATURE_TOTP_ENABLED": "false",
             "FEATURE_PASSKEY_ENABLED": "false",
             "FEATURE_RECOVERY_CODES_ENABLED": "false",
+            "REQUIRE_ADMIN_MFA": "false",
             "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
             "REQUIRE_VERIFIED_EMAIL": "false",
         }
@@ -1352,6 +1355,7 @@ def run_recover_stage(
             "FEATURE_TOTP_ENABLED": "false",
             "FEATURE_PASSKEY_ENABLED": "false",
             "FEATURE_RECOVERY_CODES_ENABLED": "false",
+            "REQUIRE_ADMIN_MFA": "false",
             "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
             "REQUIRE_VERIFIED_EMAIL": "false",
         }

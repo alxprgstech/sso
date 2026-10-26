@@ -206,6 +206,24 @@ class ApiClient {
     return this.request<UserProfile>("/api/v1/auth/me");
   }
 
+  async getSessionElevationPasskeyOptions(): Promise<
+    EncodedRequestOptions | { publicKey: EncodedRequestOptions }
+  > {
+    return this.request("/api/v1/auth/session/elevate/passkey/options", {
+      method: "POST",
+    });
+  }
+
+  async elevateSession(
+    method: "totp" | "passkey" | "recovery_code",
+    values: { code?: string; credential?: object },
+  ): Promise<UserProfile> {
+    return this.request<UserProfile>("/api/v1/auth/session/elevate", {
+      method: "POST",
+      body: JSON.stringify({ method, ...values }),
+    });
+  }
+
   async changePassword(currentPassword: string, newPassword: string): Promise<{ status: string; message: string; requires_login: boolean }> {
     return this.request("/api/v1/auth/change-password", {
       method: "POST",

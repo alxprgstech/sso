@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+### Изменено
+- MFA default-on: TOTP, Passkey и Recovery codes доступны без ручных env-переменных; explicit-disabled профиль сохранён для диагностики/fail-closed. `REQUIRE_ADMIN_MFA=true` по умолчанию.
+- Административный доступ требует server-side session assurance (`Session.mfa_verified`/`mfa_method`/`amr`) и fresh подтверждения фактора; password-only/legacy сессии не получают admin API. Первый администратор проходит защищённый onboarding.
+- Recovery codes выпускаются при TOTP **или** Passkey после fresh reauthentication, остаются одноразовыми и не дают phishing-resistant assurance.
+- OIDC access/ID tokens получают `amr`/`acr`; admin-роль не выдаётся grant без assurance; старые refresh grants остаются non-assured.
+- Новая миграция `0016_session_assurance`; EC2 `ssoctl mfa-status`/`enable-mfa` для non-destructive проверки и targeted изменения конфигурации.
+- Frontend: защищённый `/admin` onboarding с Passkey/TOTP и elevation; состояние MFA в `/account/security`.
+
+### Добавлено
+- Тесты: admin MFA onboarding/legacy session/role grant/last-factor, OIDC assurance/refresh/UserInfo, Passkey-only recovery, default-on/explicit-disabled матрица, EC2 config commands.
+- ADR-0032 (default-on MFA, admin policy, recovery и session assurance); ADR-0004 сохраняет историю и ссылается на superseding decision.
+
 ## [0.3.0] - 2026-10-26
 
 ### Добавлено

@@ -42,14 +42,15 @@
 | --- | --- | --- | --- |
 | `DATABASE_URL` | Строка подключения к PostgreSQL | `postgresql+psycopg://...` | Да |
 | `SESSION_SECRET_KEY` | Ключ CSRF/email derivation | Dev placeholder | Случайный, минимум 64 символа |
-| `TOTP_ENCRYPTION_KEY` | Fernet-ключ для шифрования TOTP секретов | Dev placeholder | Отдельный случайный ключ даже при TOTP=false |
+| `TOTP_ENCRYPTION_KEY` | Fernet-ключ для шифрования TOTP секретов | Dev placeholder | Отдельный случайный ключ; смена только после транзакционной миграции ciphertext |
 | `JWT_PRIVATE_KEY_PEM`, `JWT_KEY_ID` | Постоянный RSA key/file и явный kid | Временный ключ только dev/test | Да |
 | `JWT_PREVIOUS_PUBLIC_KEY_PEM`, `JWT_PREVIOUS_KEY_ID`, `JWT_PREVIOUS_KEY_VALID_UNTIL` | Public key перекрытия, kid и timezone-aware deadline | Пусто | Все вместе при rotation |
 | `BASE_URL` | Базовый внешний URL сервера | `http://localhost:8000` | Да (`https://auth.alxprgs.tech`) |
 | `OIDC_ISSUER` | Идентификатор эмитента OIDC | `https://auth.alxprgs.tech` | Да |
-| `FEATURE_TOTP_ENABLED` | Флаг поддержки TOTP | `false` | Default `false`; enabled только явно |
-| `FEATURE_PASSKEY_ENABLED` | Флаг поддержки Passkey | `false` | Default `false`; enabled только явно |
-| `FEATURE_RECOVERY_CODES_ENABLED` | Флаг резервных кодов | `false` | Default `false`; enabled только явно |
+| `FEATURE_TOTP_ENABLED` | Доступность TOTP | `true` | Default `true`; explicit `false` только аварийно |
+| `FEATURE_PASSKEY_ENABLED` | Доступность Passkey | `true` | Default `true`; explicit `false` только аварийно |
+| `FEATURE_RECOVERY_CODES_ENABLED` | Доступность резервных кодов при TOTP/Passkey | `true` | Default `true`; требует хотя бы один фактор |
+| `REQUIRE_ADMIN_MFA` | Обязательная MFA администратора | `true` | Default `true`; `false` только явным решением владельца |
 | `FEATURE_EMAIL_VERIFICATION_ENABLED` | Обязательная проверка email до самостоятельной регистрации | `true` | `false` отвергается |
 | `REQUIRE_VERIFIED_EMAIL` | Политика входа существующих/admin users | `false` | Явный выбор владельца |
 

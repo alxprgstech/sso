@@ -202,3 +202,21 @@ Self-audit findings: (1) Passkey UI nested busy guard prevented submission — f
 Final artifact checkpoint 2026-10-26T14:20:00+03:00: rebuilt from committed tree in `dist/sdk-stepup-final`: wheel `alxprgs_sso-0.3.0-py3-none-any.whl` SHA-256 `1482FC6AFE7CFF36E80BFB0B1EC23037679EB520035CE3B1C47E9EFAD7B7AE44`; sdist `alxprgs_sso-0.3.0.tar.gz` SHA-256 `388F654D7EB5D6E57F80D58B7501367DD06A54F4D5B173C07DA809B83020ABFA`. Reinstalled wheel in `.venv-stepup-sdk-test`; 6 SDK tests passed, version0.3.0, no backend app import. Artifacts are ignored local build output, not published.
 
 SDK/backend integration checkpoint 2026-10-26T14:22:35+03:00: добавлен и выполнен `test_installed_sdk_creates_and_redeems_real_step_up` — публичный `SSOClient` через ASGI transport к реальному FastAPI/PostgreSQL создаёт challenge, браузер подтверждает password, SDK погашает code и проверяет `StepUpProof` по реальному JWKS; повторное погашение даёт `StepUpReplayError`. Итог нового набора: policy10 + PG11 = 21 PASS.
+
+## MFA-DEFAULT-ADMIN-01 — локальная приёмка 26.10.2026
+
+Ветка `new/default-on-mfa-admin-policy` от baseline `b5bb8b4` (EXT-STEPUP-01 merge). Production, DNS, CD, существующий `runtime.env` и секреты не изменялись.
+
+| Проверка | Результат |
+| --- | --- |
+| `pytest tests/ ... --basetemp artifacts/pytest-mfa-final` (PostgreSQL16, TEST_DATABASE_URL/DATABASE_URL/SYNC=127.0.0.1:5433) | `790 passed, 5 failed, 5 deselected, 18 subtests`; 5 failed — environment-only baseline: отсутствуют `psql` (migration roles), `hatchling` metadata (build lock x2), `pg_dump`/`psql` (backup/restore), локальный OpenSSL CA trust (SMTP STARTTLS). Feature/protocol assertions не падали. |
+| Новые PostgreSQL тесты | `test_admin_mfa_pg.py` 6 PASS; `test_mfa_assurance_pg.py` 2 PASS; `test_admin_recovery_pg.py` 1 PASS; `test_features_pg.py` 6 PASS. |
+| Migration | `alembic upgrade head` 0015→0016 PASS; drift/metadata tests PASS; downgrade удаляет sessions/codes и отзывает refresh. |
+| Frontend | `npm run typecheck` PASS; `typecheck:tests` PASS; `npm run lint` PASS; `npm run test:unit` 14 PASS; `npm run test:components` 45 PASS (новый AdminMfaPage 3); `npm run build` PASS. |
+| E2E | `scripts/run_e2e_suite.py --suite passkey` (default-on/admin MFA): 9 PASS, включая реальный TOTP enrollment/login, Passkey, privacy и admin TOTP login. `--suite sso` (explicitly-disabled): 48 PASS, `.last-run.json` status passed; локально использованы SMTP capture и явные synthetic E2E credentials. |
+| SDK | source tests 19 PASS; wheel/sdist built; установка wheel в `.venv-stepup-sdk-test` (no backend import), installed SDK tests 18 PASS; новый assurance-compat test PASS. Public API не менялся; wheel не опубликован. |
+| Static/security | Ruff PASS для backend/deploy/scripts/tests; migration metadata PASS; API snapshot обновлён; секреты не выводились. |
+
+Self-audit (не независимый аудит): проверены admin API без MFA/со старой сессией, role grant во время password-only сессии, фактор-фейк в теле, pending TOTP/Passkey, удаление последнего фактора, повтор recovery code, cross-user proof, OIDC amr/acr/refresh/UserInfo, session binding, default-on без env, explicit-disabled, конфликт `REQUIRE_ADMIN_MFA`/факторов, non-destructive EC2 update. Найденные в ходе работы проблемы исправлены (rate-limit fixture, migration downgrade fail-closed, admin recovery). Остаточные риски: legacy access JWT до exp, live production rollout/backup, внешний OIDC/SDK review, multi-replica/OIF, отсутствие независимого аудита.
+
+Артефакты: wheel/sdist в `artifacts/sdk-mfa` (ignored build output, не опубликованы). Точные команды/логи — worklog и CI после push (push не выполнялся).

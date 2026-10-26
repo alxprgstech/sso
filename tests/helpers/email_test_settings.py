@@ -64,6 +64,7 @@ class EmailTestSettings(Settings):
             FEATURE_TOTP_ENABLED=False,
             FEATURE_PASSKEY_ENABLED=False,
             FEATURE_RECOVERY_CODES_ENABLED=False,
+            REQUIRE_ADMIN_MFA=False,
             BASE_URL="http://localhost:8000",
             FRONTEND_URL="http://localhost:5173",
         )

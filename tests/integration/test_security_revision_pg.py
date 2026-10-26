@@ -70,7 +70,11 @@ async def test_mfa_step_is_consumed_once_and_reset_invalidates_it(pg_session):
         encrypted_secret=encrypt_totp_secret(secret), is_confirmed=True
     )
     await pg_session.commit()
-    cfg = Settings(_env_file=None, FEATURE_TOTP_ENABLED=True)
+    cfg = Settings(
+        _env_file=None,
+        FEATURE_TOTP_ENABLED=True,
+        FEATURE_RECOVERY_CODES_ENABLED=False,
+    )
     _, required, token, methods = await AuthService.authenticate_user(
         pg_session, "revision_user", PASSWORD, settings=cfg
     )
@@ -85,7 +89,7 @@ async def test_mfa_step_is_consumed_once_and_reset_invalidates_it(pg_session):
         db=pg_session,
         request=SessionRequest(user.id, None, None),
         settings=cfg,
-        authorization=SessionAuthorization(expected_revision=0, mfa_token=token),
+        authorization=SessionAuthorization(expected_revision=0, mfa_token=token, mfa_method="totp"),
     )
     assert await pg_session.scalar(
         select(AuthenticationStep.consumed_at).where(

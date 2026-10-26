@@ -46,7 +46,10 @@
 | ПР-06 | Защита от Replay кодов | Попытка повторного использования Authorization Code | Первый обмен успешен; повторный обмен отклоняется с фиксацией в аудите |
 | ПР-07 | Ротация Refresh Token | Обмен токена обновления с проверкой Replay | Выдача новой пары; повторное использование старого токена аннулирует всю семью |
 | ПР-08 | UserInfo инвариант | Запрос к `/oauth/userinfo` с ID Token вместо Access Token | Строгое отклонение с кодом 401 invalid_token |
-| ПР-09 | Отложенные возможности | Проверка TOTP, Passkey, Recovery и обязательного email при default-конфигурации | Три MFA API отдают HTTP 404; email доступен, пользователь не создаётся до подтверждения |
+| ПР-09 | MFA default-on и admin assurance | Fresh install без MFA env; администратор без фактора; explicit-disabled профиль | Все три capability `true`; admin API/onboarding ограничены до fresh подтверждения; explicit `false` даёт 404 и не обходит уже настроенный фактор |
+| ПР-18 | Session assurance | Password-only, MFA-login, legacy session, factor change, role grant | `mfa_verified` пишет только сервер; старая/чужая сессия не получает admin; изменение/удаление фактора очищает assurance и отзывает grants |
+| ПР-19 | OIDC assurance | Admin grant с MFA и password-only; refresh; UserInfo | `amr`/`acr` подписаны; admin-роль отсутствует без assurance; refresh не повышает assurance |
+| ПР-20 | Recovery при Passkey | Passkey-only пользователь выпускает и погашает recovery code | Выпуск разрешён после fresh passkey proof; код одноразовый; повторный выпуск инвалидирует набор; strict/step-up не принимает его |
 | ПР-10 | RBAC и последний админ | Попытка деактивации единственного администратора | Блокировка операции с возвратом ошибки 403 forbidden с сообщением о защите последнего администратора |
 | ПР-11 | Разовый показ секрета | Генерация клиента и ротация секрета | Открытый секрет передается ровно один раз в ответе; в БД хранится только хеш |
 | ПР-12 | Python SDK | Сборка wheel/sdist, валидация токенов по JWKS, хелпер PKCE | 100% прохождение тестов SDK без импорта внутренних модулей сервера |
@@ -67,7 +70,7 @@
 
 ## 5. Конфиденциальность и удаление (PRIV-01..09)
 
-Обязательны PostgreSQL privacy tests и backup/restore; frontend unit/component и privacy браузерные сценарии отдельно в default-off/enabled. Enabled проверяет настоящий виртуальный WebAuthn с UV, точным localhost origin/RP и криптографической верификацией. Запускайте privacy.spec.ts с явными TEST_DATABASE_URL/PYTHON_BIN/PLAYWRIGHT_BASE_URL; для enabled дополнительно PRIVACY_ENABLED_PROFILE=1 и соответствующий сервер. Обычные E2E явно подтверждают документы через UI; прямой API не обходит согласие. Фактические команды, результаты и непроверенные внешние условия — [acceptance.md](acceptance.md); детали политики — [privacy.md](privacy.md).
+Обязательны PostgreSQL privacy tests и backup/restore; frontend unit/component и privacy браузерные сценарии отдельно в explicitly-disabled и default-on. Default-on проверяет настоящий виртуальный WebAuthn с UV, точным localhost origin/RP и криптографической верификацией, а также admin onboarding/assurance. Запускайте privacy.spec.ts с явными TEST_DATABASE_URL/PYTHON_BIN/PLAYWRIGHT_BASE_URL; для default-on дополнительно PRIVACY_ENABLED_PROFILE=1 и соответствующий сервер. Обычные E2E явно подтверждают документы через UI; прямой API не обходит согласие. Фактические команды, результаты и непроверенные внешние условия — [acceptance.md](acceptance.md); детали политики — [privacy.md](privacy.md).
 
 
 ## Web-тема и регрессии раскладки
@@ -76,7 +79,7 @@
 
 ## Подготовка и команды
 
-PostgreSQL, safety marker, default-off/enabled, SDK и E2E: [руководство тестирования](testing/README.md). Полная приёмка требует реальных PostgreSQL/браузерных и эксплуатационных проверок.
+PostgreSQL, safety marker, explicit-disabled/default-on, SDK и E2E: [руководство тестирования](testing/README.md). Полная приёмка требует реальных PostgreSQL/браузерных и эксплуатационных проверок.
 
 ## DEPLOY-EC2-01
 

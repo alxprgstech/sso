@@ -98,8 +98,9 @@ class StartBashTests(unittest.TestCase):
             "FEATURE_TOTP_ENABLED",
             "FEATURE_PASSKEY_ENABLED",
             "FEATURE_RECOVERY_CODES_ENABLED",
+            "REQUIRE_ADMIN_MFA",
         ):
-            self.assertEqual(values[name], "false")
+            self.assertEqual(values[name], "true")
 
     def assert_invalid_revision_preserves_env(self, bash, campaign, generated):
         tmp_path, git, environment = campaign

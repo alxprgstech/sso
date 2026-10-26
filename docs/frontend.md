@@ -43,7 +43,13 @@ Geist/Geist Mono WOFF2 идут из pinned npm пакета в Vite assets, OFL
 
 ## Вход, секреты и motion
 
-При серверном passkey_enabled заметная кнопка «Войти с ключом доступа» доступна до пароля. Без username используется discoverable ceremony; с username — credential allow-list сервера. Сериализация и точный RP/origin/UV verifier не менялись. Conditional mediation исследовано, решение о сохранении explicit ceremony и lifecycle требования записаны в ADR0021. Default-off APIs/UI остаются закрыты.
+При серверном `passkey_enabled` заметная кнопка «Войти с ключом доступа» доступна до пароля. Без username используется discoverable ceremony; с username — credential allow-list сервера. Сериализация и точный RP/origin/UV verifier не менялись. Conditional mediation исследовано, решение о сохранении explicit ceremony и lifecycle требования записаны в ADR0021. Disabled capability не запускает соответствующую ceremony; explicit-disabled профиль остаётся закрыт.
+
+## MFA и защищённый admin onboarding
+
+`/account/security` показывает реальное состояние: подключён ли TOTP/Passkey, подтверждена ли текущая сессия вторым фактором, рекомендует Passkey обычному пользователю, но не вводит обязательную MFA. Recovery codes отображаются один раз; UI объясняет, что они доступны после TOTP **или** Passkey.
+
+Если администратор без MFA открывает `/admin`, вместо панели рендерится `AdminMfaPage`: сообщение «Для доступа к панели администратора необходимо настроить двухфакторную аутентификацию», выбор Passkey/TOTP, серверный QR/секрет, подтверждение кода и отдельный шаг fresh verification. После успешного `POST /api/v1/auth/session/elevate` вызывается `refreshUser`, и панель открывается только при `admin_mfa_required=false`. Enrollment без серверного подтверждения не считается завершённым; одинаковая сессия не наследует assurance другой сессии. Скрытие `/admin` во frontend не является security control: сервер проверяет RBAC и assurance на каждом admin-запросе.
 
 OTP — один доступный логический input numeric/autocomplete/paste, шесть цифр для TOTP/email; recovery ввод остаётся буквенно-цифровым. Setup QR + ручной secret + copy, recovery one-time visibility/copy и client secret one-time modal очищаются при завершении/закрытии/смене раздела. Bearer/refresh/proof/password/secrets не сохраняются в браузерное storage, telemetry или logs.
 
@@ -78,7 +84,7 @@ npm run test:components
 npm run build
 ```
 
-Обязательные реальные E2E запускаются существующим `python scripts/run_e2e_suite.py` из подготовленной Python среды с guarded PostgreSQL/mandatory fresh marker; профили default-off/enabled имеют preflight на backend и frontend proxy. Точные environment prerequisites — [подготовка тестирования](testing/README.md). Appearance fixtures проверяют геометрию/theme/history/palette/Axe и явно отделены от настоящего PG/browser/WebAuthn. `appearance.spec.ts` содержит Axe WCAG2A/AA/2.1AA/best-practice без disableRules. `csp.spec.ts` запускается за Nginx enforcing CSP; vite-preview не подтверждает CSP. Негативные OIDC/UV/RP/CSRF/replay/proof tests обязательны. Не считайте build/Axe заменой ручной visual inspection или real authentication.
+Обязательные реальные E2E запускаются существующим `python scripts/run_e2e_suite.py` из подготовленной Python среды с guarded PostgreSQL/mandatory fresh marker; профили explicitly-disabled (`default-off`) и default-on (`enabled`, admin MFA) имеют preflight на backend и frontend proxy. Точные environment prerequisites — [подготовка тестирования](testing/README.md). Appearance fixtures проверяют геометрию/theme/history/palette/Axe и явно отделены от настоящего PG/browser/WebAuthn. `appearance.spec.ts` содержит Axe WCAG2A/AA/2.1AA/best-practice без disableRules. `csp.spec.ts` запускается за Nginx enforcing CSP; vite-preview не подтверждает CSP. Негативные OIDC/UV/RP/CSRF/replay/proof tests обязательны. Не считайте build/Axe заменой ручной visual inspection или real authentication.
 
 WEB-PERF-01: CSS tokens включены в entry CSS, основной Geist получает preload; синхронный внешний theme bootstrap сохранён для темы до первого кадра без inline CSP. Capabilities и сессия читаются параллельно, gate ждёт обе операции. Feedback/reauth используют DeferredDialog, handler повторной аутентификации остаётся синхронным; обычный AccessibleDialog сохраняет Radix contract. Sentry runtime загружается после enabled-конфигурации и согласия, проверяемых повторно после import. [Решение](adr/0022-frontend-critical-loading.md), [измерения и ограничения](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-web-perf.md).
 

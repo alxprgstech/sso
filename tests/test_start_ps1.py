@@ -149,9 +149,10 @@ function docker-compose {{
                 "FEATURE_TOTP_ENABLED",
                 "FEATURE_PASSKEY_ENABLED",
                 "FEATURE_RECOVERY_CODES_ENABLED",
-                "REQUIRE_VERIFIED_EMAIL",
+                "REQUIRE_ADMIN_MFA",
             ):
-                self.assertEqual(values[name], "false")
+                self.assertEqual(values[name], "true")
+            self.assertEqual(values["REQUIRE_VERIFIED_EMAIL"], "false")
             self.assertTrue(all(value not in result.stdout + result.stderr for value in passwords))
 
     def test_invalid_build_revision_refuses_compose_up(self) -> None:
