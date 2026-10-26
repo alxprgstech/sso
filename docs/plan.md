@@ -11,7 +11,7 @@
 | AUDIT-FIX-05 | P1 | Локальное ops remediation, утверждённая инфраструктура | blocked | Подтвердить public TLS/DNS/IAM/secret storage, внешние backup/storage ACL и alerts. Локальные Linux images/Trivy/Compose проверены 18.10; внешний production-контур остаётся условием разблокировки. |
 | FR-08 | P2 | FRONTEND-REDESIGN-01 | planned | Необязательное продолжение frontend; исходные критерии и границы — [план redesign](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/frontend-redesign-plan.md). Не закрыто очисткой. |
 | DOC-CLEANUP-02 | P2 | DOC-VALUE-01 | done | Сократить историю, перенести полезные сведения и удалить заменённые отчёты; сохранить открытые требования и тестовые зависимости; links/UTF-8/diff/secret scan. |
-| EXT-STEPUP-01 | P0 | OIDC/MFA/SDK, PostgreSQL, frontend | in_progress | Реализовать opt-in cross-application hosted step-up с password/TOTP/Passkey/комбинированными политиками, transaction binding, one-use server redemption, SDK/UI/тестами и self-audit. Критерий: матрица сценариев, миграция 0015, SDK 0.3.0, локальные коммиты; production activation не входит. |
+| EXT-STEPUP-01 | P0 | OIDC/MFA/SDK, PostgreSQL, frontend | done | Реализован opt-in cross-application hosted step-up с password/TOTP/Passkey/комбинированными политиками, transaction binding, one-use server redemption, SDK/UI/тестами и self-audit. Матрица, миграция0015, SDK0.3.0 и локальные коммиты зафиксированы; production activation не входит. |
 
 Внешние SES/Gmail/Sentry, sender registration, multi-replica load и приватный owner review исторических credentials остаются условиями общей приёмки; [матрица и ограничения](acceptance.md), [безопасность](security.md). Их исторические ID/статусы/времена доступны по исходному плану и журналу, нового PASS нет. Остальные прежние незакрытые локальные/CI checkpoints требуют сверки с более поздним evidence перед возобновлением, а не автоматического выполнения старого плана.
 
@@ -105,6 +105,8 @@
 План: (1) изучить существующие reauth/WebAuthn/OIDC/SDK и зафиксировать переиспользование; (2) ADR вариантов A/B/C и assurance policy; (3) PostgreSQL state/endpoints/client policy/migration; (4) hosted UI; (5) SDK 0.3.0 и reference RP; (6) unit/PG/component/SDK/static проверки; (7) adversarial self-audit и regression; (8) docs/version/changelog/локальные коммиты. Production-флаги/БД/DNS/push/merge/release/publication не входят.
 
 Критерий готовности: существующий OIDC login и внутренний reauth не сломаны; step-up принимает только разрешённые assurance/факторы и отклоняет wrong subject/client/action/payload/expiry/replay/session/revision; proof одноразовый и короткоживущий; SDK wheel проверен в изоляции; тестовая матрица и self-audit зафиксированы.
+
+Завершение: 2026-10-26T14:21:34.5739392+03:00. Локальные коммиты d25d8ca, e9a832d, 0a36c1d, 8c38d78, a41f5f5 и финальный fix/документация; фактический HEAD — в [статусе](status.md). Проверки и ограничения — [приёмка](acceptance.md). Production flags/DB/deploy/release не менялись.
 
 ## DOC-CLEANUP-02: выполнение
 

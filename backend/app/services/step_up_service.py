@@ -588,6 +588,12 @@ async def verify(
         }
 
     now = datetime.now(timezone.utc)
+    if row.expires_at <= now:
+        raise StepUpError(
+            "step_up_expired",
+            "Срок действия запроса истёк. Запросите подтверждение заново.",
+            410,
+        )
     raw_code = generate_random_token(32)
     row.status = "approved"
     row.approved_at = now
