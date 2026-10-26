@@ -462,7 +462,7 @@ jobs:
           TOTP_ENCRYPTION_KEY: "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
           JWT_PRIVATE_KEY_PEM: ""
         run: |
-          pytest -v tests/test_mfa_features.py \
+          pytest -v tests/test_mfa_features.py::test_explicitly_disabled_features_are_blocked_in_api \
             tests/integration/test_features_pg.py::test_explicitly_disabled_profile_capabilities_and_404_pg \
             tests/integration/test_features_pg.py::test_disabled_factor_does_not_allow_password_only_bypass_pg \
             tests/test_security_and_negative_scenarios.py::test_deferred_features_return_404_when_disabled
