@@ -9,15 +9,18 @@ Settings читает .env относительно рабочего катал�
 | Профиль | BASE_URL / FRONTEND_URL | БД | WebAuthn |
 | --- | --- | --- | --- |
 | Literal Settings development | http://localhost:8000 / http://localhost:5173 | example DSN на localhost | auth.alxprgs.tech / HTTPS origin |
-| Штатный Compose | http://localhost:3000 / http://localhost:3000 | db:5432, sso_runtime | зависит от .env |
-| Новый .env от start scripts | локальный gateway 3000 | отдельные owner/runtime/migrator passwords | localhost / http://localhost:3000 |
+| Штатный Compose | http://localhost:3000 / http://localhost:3000 | db:5432, sso_runtime | MFA default-on; WEBAUTHN_* из .env |
+| Explicitly-disabled (диагностика) | как выбрано | как выбрано | `FEATURE_*=false` и `REQUIRE_ADMIN_MFA=false` явно |
+| Новый .env от start scripts | локальный gateway 3000 | отдельные owner/runtime/migrator passwords | localhost / http://localhost:3000, MFA=true |
 | Production | один точный HTTPS origin issuer/API/UI/WebAuthn | отдельные runtime/migrator роли | RP host совпадает с issuer |
 
 Default OIDC_ISSUER Settings/Compose — проектный HTTPS адрес. Start scripts меняют BASE_URL/FRONTEND_URL/WebAuthn на localhost, но не переопределяют OIDC_ISSUER из .env.example: он остаётся https://auth.alxprgs.tech. Существующий .env не перезаписывается. SDK expected_issuer должен точно совпадать с OP, даже если transport server_url иной.
 
+Слои конфигурации MFA различаются: literal default `Settings` (true), шаблон нового окружения (`.env.example`/EC2 `ssoctl configure`, true), явный override в существующем `runtime.env`, фактически загруженное значение процесса и значение в `/api/v1/auth/capabilities`. Отсутствие ключа в старом `runtime.env` означает новый default `true`; это нужно учитывать при rollout и проверять до перезапуска. `deploy/ec2/ssoctl.py mfa-status` показывает explicit/absent, `enable-mfa` меняет только четыре ключа с private backup и не перезаписывает секреты.
+
 ## Обязательные инварианты
 
-Три MFA-флага default false; enabled выбирается явно. FEATURE_EMAIL_VERIFICATION_ENABLED=true всегда, false отвергается Settings. REQUIRE_VERIFIED_EMAIL регулирует вход старых/admin-created пользователей, не саморегистрацию. Recovery зависит от TOTP. FEATURE_EXTERNAL_STEP_UP_ENABLED default false; включение глобального флага не разрешает ни одного клиента — нужны per-client step_up_enabled, assurance allowlist и actions. TTL proof не может превышать request TTL.
+Три MFA-флага **default true**; их отсутствие включает TOTP, Passkey и Recovery codes. Явный `false` — аварийное отключение; он не понижает аккаунт с настроенным фактором и не обходит обязательную admin-политику. `REQUIRE_ADMIN_MFA=true` по умолчанию; при отключении обоих факторов его нужно явно задать `false`, иначе Settings отвергает конфигурацию. Recovery требует хотя бы один из TOTP/Passkey. `FEATURE_EMAIL_VERIFICATION_ENABLED=true` всегда, false отвергается Settings. `REQUIRE_VERIFIED_EMAIL` регулирует вход старых/admin-created пользователей, не саморегистрацию. `FEATURE_EXTERNAL_STEP_UP_ENABLED=false` по умолчанию; включение глобального флага не разрешает ни одного клиента — нужны per-client `step_up_enabled`, assurance allowlist и actions. TTL proof не может превышать request TTL.
 
 Production отвергает default/слабые session и Fernet secrets, отсутствие постоянного RSA≥2048/явного kid, несогласованные HTTPS origins, DEBUG, небезопасные TTL/cookie и SMTP без verified STARTTLS. Предыдущий RSA public key и kid задаются вместе, для production нужен timezone-aware retirement deadline.
 
@@ -64,11 +67,12 @@ SMTP по умолчанию; SES использует AWS credential chain; Res
 | `SESSION_IDLE_TIMEOUT_SECONDS` | `int` | `43200` |
 | `SESSION_ABSOLUTE_TIMEOUT_SECONDS` | `int` | `604800` |
 | `MFA_STEP_TTL_SECONDS` | `int` | `300` |
-| `FEATURE_TOTP_ENABLED` | `bool` | `False` |
-| `FEATURE_PASSKEY_ENABLED` | `bool` | `False` |
-| `FEATURE_RECOVERY_CODES_ENABLED` | `bool` | `False` |
+| `FEATURE_TOTP_ENABLED` | `bool` | `True` |
+| `FEATURE_PASSKEY_ENABLED` | `bool` | `True` |
+| `FEATURE_RECOVERY_CODES_ENABLED` | `bool` | `True` |
 | `FEATURE_EMAIL_VERIFICATION_ENABLED` | `bool` | `True` |
 | `FEATURE_EXTERNAL_STEP_UP_ENABLED` | `bool` | `False` |
+| `REQUIRE_ADMIN_MFA` | `bool` | `True` |
 | `STEP_UP_REQUEST_TTL_SECONDS` | `int` | `300` |
 | `STEP_UP_PROOF_TTL_SECONDS` | `int` | `60` |
 | `STEP_UP_MAX_PENDING_PER_USER` | `int` | `5` |

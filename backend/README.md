@@ -1,10 +1,10 @@
 # ALXPRGS SSO Backend
 
-FastAPI/OIDC backend версии 0.2.0, PostgreSQL 16, SQLAlchemy async с psycopg. Пароли Argon2id, серверные сессии, CSRF/Origin, security revision и повторная аутентификация чувствительных операций.
+FastAPI/OIDC backend версии 0.3.0, PostgreSQL 16, SQLAlchemy async с psycopg. Пароли Argon2id, серверные сессии, CSRF/Origin, security revision и повторная аутентификация чувствительных операций.
 
 ## Возможности
 
-Authorization Code + PKCE S256, discovery/JWKS, RS256 access/ID profiles, refresh rotation/replay, UserInfo, revocation и RP-initiated logout. Регистрация создаёт заявку, пользователь появляется после email-confirmation и согласий. TOTP/Passkey/Recovery default-off; email обязателен. Транспорт SMTP/SES/Resend. Privacy включает отложенное удаление и retention.
+Authorization Code + PKCE S256, discovery/JWKS, RS256 access/ID profiles, refresh rotation/replay, UserInfo, revocation и RP-initiated logout. Регистрация создаёт заявку, пользователь появляется после email-confirmation и согласий. TOTP/Passkey/Recovery доступны по умолчанию; email обязателен. Администратор обязан подтвердить TOTP или Passkey в конкретной сессии (`Session.mfa_verified`); password-only сессия, `auth_time` или роль сами по себе не дают admin API и OIDC-роль `admin`. Recovery codes выпускаются при TOTP или Passkey, требуют fresh reauth и одноразовы. Транспорт SMTP/SES/Resend. Privacy включает отложенное удаление и retention.
 
 ## Запуск
 

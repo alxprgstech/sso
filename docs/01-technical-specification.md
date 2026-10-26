@@ -61,20 +61,24 @@
 - Эндпоинт отзыва токенов RFC 7009 (`/oauth/revoke`);
 - Механизм RP-initiated Logout (`/oauth/logout`) с валидацией redirect-адреса.
 
-#### 4.1.3. Отложенные возможности (Feature Flags)
-- Полная программная реализация четырех механизмов: TOTP (RFC 6238), WebAuthn Passkeys (W3C Level 3), резервные коды восстановления, верификация email;
-- Поставляемая default-конфигурация:
-  - `FEATURE_TOTP_ENABLED=false`
-  - `FEATURE_PASSKEY_ENABLED=false`
-  - `FEATURE_RECOVERY_CODES_ENABLED=false`
+#### 4.1.3. MFA, обязательная MFA администратора и feature flags
+- Полная программная реализация четырёх механизмов: TOTP (RFC 6238), WebAuthn Passkeys (W3C Level 3), резервные коды восстановления, верификация email;
+- Поставляемая default-конфигурация (отсутствие переменных сохраняет эти значения):
+  - `FEATURE_TOTP_ENABLED=true`
+  - `FEATURE_PASSKEY_ENABLED=true`
+  - `FEATURE_RECOVERY_CODES_ENABLED=true`
+  - `REQUIRE_ADMIN_MFA=true`
   - `FEATURE_EMAIL_VERIFICATION_ENABLED=true` (обязательное подтверждение самостоятельной регистрации)
   - `REQUIRE_VERIFIED_EMAIL=false`
-- При выключенных TOTP/Passkey/Recovery API возвращают HTTP 404 (feature_disabled). Email нельзя отключить: пользователь создаётся после подтверждения. Закрытая регистрация не создаёт заявку и не отправляет письмо.
+- При явно выключенных TOTP/Passkey/Recovery API возвращают HTTP 404 (feature_disabled); explicit-disabled профиль используется для диагностики и проверки fail-closed. Email нельзя отключить: пользователь создаётся после подтверждения. Закрытая регистрация не создаёт заявку и не отправляет письмо.
+- Администратор без подтверждённого второго фактора получает ограниченную onboarding-сессию; административные API и OIDC-роль `admin` недоступны до серверного подтверждения TOTP/Passkey в этой сессии. Обычный пользователь может работать по паролю, пока сам не подключит фактор; после подключения штатный вход требует фактор.
+- Session assurance хранится сервером (`Session.mfa_verified`, `mfa_method`, `amr`); `auth_time`, cookie и клиентские поля не являются доказательством. Recovery codes выпускаются при TOTP или Passkey после fresh reauthentication, одноразовы и не дают phishing-resistant assurance.
 
 #### 4.1.4. Разграничение прав доступа (RBAC)
-- Серверная проверка прав администратора (`is_superuser` или роль `admin`);
+- Серверная проверка прав администратора (`is_superuser` или роль `admin`) вместе с обязательным session assurance (`mfa_verified`); одно лишь наличие роли не даёт admin API;
 - Защита последнего администратора от деактивации или снятия административных прав (USR-08);
-- Разовый показ секрета конфиденциального клиента при создании или ротации (USR-09).
+- Разовый показ секрета конфиденциального клиента при создании или ротации (USR-09);
+- OIDC access/ID tokens не получают роль `admin` для grant без требуемого assurance; старые и password-only сессии не наследуют MFA.
 
 #### 4.1.5. Самостоятельная регистрация и первичная инициализация (GOAL-02)
 - Серверный режим регистрации пользователей `registration_mode` (`closed` по умолчанию / `open`), сохраняемый централизованно в таблице `system_configuration` СУБД PostgreSQL;

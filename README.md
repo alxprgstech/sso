@@ -114,24 +114,29 @@ docker compose exec -it backend python -m app.cli.bootstrap_admin
 
 ---
 
-## 3. Обязательные инварианты и флаги отложенных возможностей
+## 3. MFA по умолчанию, обязательная MFA администратора и флаги
 
-TOTP, Passkey и Recovery codes отключены по умолчанию. Подтверждение email обязательно при открытой самостоятельной регистрации; отключить его флагом нельзя:
+По решению владельца TOTP, Passkey и Recovery codes **доступны по умолчанию** при обычной установке и production-развёртывании. Переменные окружения для этого не обязательны: отсутствие ключей сохраняет `true`. Подтверждение email при самостоятельной регистрации обязательно и флагом не отключается:
 
 ```env
-FEATURE_TOTP_ENABLED=false
-FEATURE_PASSKEY_ENABLED=false
-FEATURE_RECOVERY_CODES_ENABLED=false
+FEATURE_TOTP_ENABLED=true
+FEATURE_PASSKEY_ENABLED=true
+FEATURE_RECOVERY_CODES_ENABLED=true
+REQUIRE_ADMIN_MFA=true
 FEATURE_EMAIL_VERIFICATION_ENABLED=true
 FEATURE_EXTERNAL_STEP_UP_ENABLED=false
 REQUIRE_VERIFIED_EMAIL=false
 ```
 
-- При выключенных MFA-флагах эндпоинты TOTP, Passkey и Recovery codes возвращают HTTP 404 (`feature_disabled`);
-- Обязательное подтверждение email при самостоятельной регистрации работает независимо от трёх MFA-флагов и отправляет письмо через настроенный транспорт;
-- Созданные администратором пользователи могут иметь `email_verified=False`; самостоятельная регистрация создаёт пользователя только после подтверждения адреса;
-- `REQUIRE_VERIFIED_EMAIL=true` дополнительно блокирует вход ранее созданных или созданных администратором пользователей с неподтверждённым адресом. Самостоятельная регистрация всегда подтверждает email до создания пользователя;
-- `FEATURE_EXTERNAL_STEP_UP_ENABLED=false` оставляет cross-application step-up выключенным. Даже после глобального включения каждый доверенный confidential-клиент требует отдельной per-client policy (assurance levels/actions/TTL); public clients и legacy clients не получают возможность автоматически. Recovery code в step-up не участвует. Подробности — [API](docs/api.md), [ADR0031](docs/adr/0031-external-transaction-step-up.md).
+- Доступность MFA не означает её обязательность для обычного пользователя: без подключённого фактора разрешён обычный парольный вход. После подключения TOTP или Passkey штатный вход требует подтверждённый фактор.
+- Администратор (`is_superuser` или роль `admin`) без подтверждённого второго фактора получает только ограниченную onboarding-сессию: парольный вход, настройка TOTP/Passkey, выход и восстановление. Административные API и OIDC-роль `admin` недоступны, пока сервер не зафиксирует MFA-подтверждение именно этой сессии.
+- Подтверждение MFA хранится сервером в `Session.mfa_verified`/`mfa_method`/`amr`. `auth_time`, cookie или поле клиента не являются доказательством MFA.
+- Recovery codes выпускаются после подключения TOTP **или** Passkey, требуют fresh reauthentication, показываются один раз, хранятся только как необратимые хеши и погашаются атомарно. Recovery code не удовлетворяет политику, требующую phishing-resistant Passkey.
+- Явный `false` — аварийное отключение для диагностики, а не способ обойти защиту. Аккаунт с уже настроенным фактором не понижается до пароля. Если отключены и TOTP, и Passkey, `REQUIRE_ADMIN_MFA=false` нужно задать явно и задокументировать.
+- При выключенных MFA-флагах соответствующие эндпоинты возвращают HTTP 404 (`feature_disabled`); explicit-disabled профиль сохраняется для проверки fail-closed.
+- Обязательное подтверждение email при самостоятельной регистрации работает независимо от MFA-флагов.
+- `REQUIRE_VERIFIED_EMAIL=true` дополнительно блокирует вход ранее созданных или созданных администратором пользователей с неподтверждённым адресом.
+- `FEATURE_EXTERNAL_STEP_UP_ENABLED=false` оставляет cross-application step-up выключенным. Включение MFA не включает step-up и не разрешает его новым клиентам: каждый доверенный confidential-клиент требует отдельной per-client policy (assurance levels/actions/TTL). Recovery code в step-up не участвует. Подробности — [API](docs/api.md), [ADR0032](docs/adr/0032-default-on-mfa-and-admin-policy.md), [ADR0031](docs/adr/0031-external-transaction-step-up.md).
 
 ### Отправка писем подтверждения
 
@@ -141,7 +146,9 @@ REQUIRE_VERIFIED_EMAIL=false
 
 AWS credentials не записываются в репозиторий или настройки приложения: локально boto3 использует стандартные AWS profile/environment providers, в AWS — IAM role. Для локального Compose стандартные AWS credential variables можно задать в игнорируемом Git файле `.env`; после этого пересоздайте backend-контейнер. Роли требуется `ses:SendEmail` для проверенной identity `alxprgs.tech` в `us-east-1`; custom MAIL FROM `bounce.alxprgs.tech` выбирается настройкой identity в SES. Пока аккаунт в SES sandbox, произвольные получатели недоступны. Успех API означает принятие письма SES, но не подтверждённую доставку. Порядок настройки и диагностики: [эксплуатация](docs/operations.md).
 
-Для локальной проверки TOTP, Passkey и резервных кодов установите в сохранённом `.env` значения `FEATURE_TOTP_ENABLED=true`, `FEATURE_PASSKEY_ENABLED=true`, `FEATURE_RECOVERY_CODES_ENABLED=true`. Скрипты первого запуска создают `WEBAUTHN_RP_ID=localhost` и `WEBAUTHN_ORIGIN=http://localhost:3000`; в ранее созданном `.env` задайте эти два значения вручную. Открывайте интерфейс именно по `http://localhost:3000` (не через `127.0.0.1` или другой порт). После изменения конфигурации пересоздайте backend командой `docker compose up -d --force-recreate backend` и обновите страницу браузера; фактические флаги проверяйте через `/api/v1/auth/capabilities`. Резервные коды доступны после подключения TOTP. Значения по умолчанию остаются `false`; production требует отдельного HTTPS origin и RP ID.
+Для локальной проверки MFA ничего дополнительно включать не нужно: `.env.example`, `start.sh`/`start.ps1` и Compose поставляют `true`. Скрипты первого запуска создают `WEBAUTHN_RP_ID=localhost` и `WEBAUTHN_ORIGIN=http://localhost:3000`; в ранее созданном `.env` с явными `false` измените значения вручную или используйте `deploy/ec2/ssoctl.py enable-mfa` на EC2. Открывайте интерфейс именно по `http://localhost:3000` (не через `127.0.0.1` или другой порт). После изменения конфигурации пересоздайте backend командой `docker compose up -d --force-recreate backend` и обновите страницу браузера; фактические флаги проверяйте через `/api/v1/auth/capabilities`. Резервные коды доступны после подключения TOTP **или** Passkey. Production требует отдельного HTTPS origin и RP ID.
+
+При первом входе администратора без MFA интерфейс `/admin` показывает защищённый onboarding: Passkey или TOTP, затем подтверждение фактора в новой сессии. Обычный пользователь может подключить фактор добровольно в `/account/security`; принудительная MFA для него не включается.
 
 При подключении TOTP кабинет показывает QR-код из серверного `otpauth_url` с названием ALXPRGS SSO и адресом учётной записи. Секрет можно ввести вручную или скопировать кнопкой. QR и секрет показываются только на шаге подключения до подтверждения одноразовым кодом.
 
@@ -164,7 +171,7 @@ python -m pytest tests/ -v
 - OIDC Protocol: PKCE S256, Authorization Code, Token, UserInfo, Refresh Token Replay Detection;
 - Регистрация и управление режимом (`tests/test_registration.py`): открытый/закрытый режим, коллизии, запрет повышения прав, rate limiting, изоляция email;
 - Мастер первого запуска (`tests/test_bootstrap_admin.py`): первичная инициализация, идемпотентность, отказ в повышении прав обычного пользователя, валидация TTY;
-- Отложенные возможности (`tests/test_mfa_features.py`): изоляция default-off и корректность enabled-профиля;
+- MFA-профили (`tests/test_mfa_features.py`, `tests/integration/test_features_pg.py`): default-on, explicit-disabled, admin-enforced и recovery;
 - Административный API и RBAC (`tests/test_admin_api.py`);
 - Python SDK unit (`tests/test_python_sdk.py`, `tests/test_sso_cross_clients.py`); реальный двухклиентский SSO проверяется отдельно в Playwright;
 - Cross-application step-up (`tests/integration/test_external_step_up_pg.py`, `tests/test_step_up_policy.py`, `packages/python-sdk/tests/test_step_up_sdk.py`): password/TOTP/Passkey, strict, replay, cross-client, session/revision/expiry и concurrent redemption;
@@ -253,7 +260,7 @@ Gmail action требует секрет письма и Google bearer; Passkey 
 
 Установка выбранных Python dependencies: `python -m pip install --require-hashes -r requirements-lock-hashed.txt`; затем локальный backend/SDK отдельно с `--no-deps --no-build-isolation`. Docker использует соответствующие build/runtime hashed companions. Проверка согласованности: `python scripts/hashed_locks.py`.
 
-SDK по умолчанию требует HTTPS и certificate verification. Для demo HTTP loopback явно выберите `SSO_TRANSPORT_PROFILE=local`, для server callback policy — `REDIRECT_TRANSPORT_PROFILE=local`; production HTTP запрещён. TOTP/Passkey/Recovery по-прежнему default-off; подтверждение самостоятельной регистрации обязательно. Детали: [API](docs/api.md), [миграция](docs/migration.md), [SDK](docs/sdk.md), [эксплуатация](docs/operations.md), [релизы](docs/releases.md).
+SDK по умолчанию требует HTTPS и certificate verification. Для demo HTTP loopback явно выберите `SSO_TRANSPORT_PROFILE=local`, для server callback policy — `REDIRECT_TRANSPORT_PROFILE=local`; production HTTP запрещён. TOTP/Passkey/Recovery доступны по умолчанию; подтверждение самостоятельной регистрации обязательно. Детали: [API](docs/api.md), [миграция](docs/migration.md), [SDK](docs/sdk.md), [эксплуатация](docs/operations.md), [релизы](docs/releases.md).
 
 Подтверждение самостоятельной регистрации (SSO-SEC-0005) требует исходный browser: HttpOnly cookie связывает email proof с заявкой. При потере cookie/legacy pending начните заново. Gmail shortcut открывает verification page (ViewAction), затем требуется явное подтверждение в исходном browser. [Миграция0014](docs/migration.md), [ADR0026](docs/adr/0026-registration-browser-binding.md).
 

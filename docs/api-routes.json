@@ -203,6 +203,14 @@
     ],
     [
       "POST",
+      "/api/v1/auth/session/elevate"
+    ],
+    [
+      "POST",
+      "/api/v1/auth/session/elevate/passkey/options"
+    ],
+    [
+      "POST",
       "/api/v1/mfa/email/confirm"
     ],
     [

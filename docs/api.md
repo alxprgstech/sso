@@ -22,6 +22,14 @@ Login возвращает user/csrf_token либо mfa_required/mfa_token/metho
 
 Admin API: PATCH users/{user_id} изменяет email/is_active/is_superuser/roles/new_password; email всегда очищает verified, критические изменения отзывают grants. POST sessions/revoke — отдельная команда, не DELETE по выдуманному пути. Clients allowed_scopes задаётся при создании; secret показывается только один раз. Audit использует offset/limit/event_type, экспорт — отдельный /audit/export. Поля/точные bounds см. схемы OpenAPI и `backend/app/schemas`.
 
+## MFA, session assurance и административный доступ
+
+`GET /api/v1/auth/capabilities` возвращает `totp_enabled`, `passkey_enabled`, `recovery_codes_enabled`, `admin_mfa_required` и `registration_mode`. Default — все три MFA и admin policy `true`. `/api/v1/auth/login` без настроенного фактора создаёт обычную сессию (`mfa_verified=false`); пользователь с TOTP/Passkey получает `mfa_required`, `mfa_token` и `available_methods`. `/api/v1/mfa/totp/verify`, `/api/v1/mfa/passkey/auth/verify`, `/api/v1/mfa/recovery-codes/verify` завершают вход и создают assured-сессию. `/api/v1/auth/me` и login/elevation возвращают `mfa_verified`, `mfa_method`, `admin_mfa_required`, `session_purpose`.
+
+Администратор без активного фактора после пароля получает `session_purpose=admin_mfa_enrollment`: доступны только `me/logout/legal`, TOTP/Passkey enrollment, управление собственными passkey, reauthentication и `POST /api/v1/auth/session/elevate`. Остальные пути отклоняются `401 admin_mfa_enrollment_required`. `POST /api/v1/auth/session/elevate` (CSRF) принимает `method=totp|passkey|recovery_code`, `code` либо `credential`; `POST /api/v1/auth/session/elevate/passkey/options` выдаёт fresh WebAuthn challenge. Успех пишет assurance в эту сессию, переводит onboarding в `full` и возвращает профиль. `auth_time`, cookie и клиентское поле `mfa_verified` не принимаются. Admin API без assurance возвращает `403 admin_mfa_required`.
+
+OIDC access/ID tokens содержат `amr` (`pwd`, `otp`, `hwk`, `mfa`) и `acr` (`urn:alxprgs:acr:pwd`/`urn:alxprgs:acr:mfa`). Роль `admin` не выдаётся authorization code/refresh, созданному без требуемого assurance; UserInfo фильтрует её по `amr` токена. `auth_time` остаётся временем аутентификации, но не доказательством MFA. Recovery codes выпускаются при TOTP или Passkey после fresh reauth; коды одноразовые и не участвуют в external step-up.
+
 ## Cross-application transaction step-up
 
 Новая возможность включена только при `FEATURE_EXTERNAL_STEP_UP_ENABLED=true`; у клиента дополнительно должны быть `step_up_enabled=true`, разрешённый `action` и assurance. Это opt-in, существующие клиенты после миграции остаются выключенными. Все `/api/v1/step-up/*` ответы имеют `Cache-Control: no-store`; browser endpoints требуют host-only SSO cookie и CSRF, server-to-server endpoints — только существующую confidential client authentication (HTTP Basic). Публичный client_id не является разрешением.
@@ -87,6 +95,8 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 | POST | `/api/v1/auth/register/confirm-link` |
 | POST | `/api/v1/auth/register/preview-link` |
 | POST | `/api/v1/auth/register/resend` |
+| POST | `/api/v1/auth/session/elevate` |
+| POST | `/api/v1/auth/session/elevate/passkey/options` |
 | POST | `/api/v1/mfa/email/confirm` |
 | POST | `/api/v1/mfa/email/confirm-code` |
 | POST | `/api/v1/mfa/email/request` |
