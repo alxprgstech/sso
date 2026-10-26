@@ -55,6 +55,7 @@ const disabled: Capabilities = {
   email_verification_enabled: true,
   require_verified_email: false,
   external_step_up_enabled: false,
+  admin_mfa_required: false,
   registration_mode: "closed",
 };
 

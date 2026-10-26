@@ -45,8 +45,57 @@ export function AccountSecurity({
   controller: AccountViewModel;
 }) {
   const { showPasswordModal, closePasswordModal } = controller;
+  const { user, capabilities } = controller;
+  const mfaConfigured = user.has_totp || user.has_passkey;
+  const isAdmin = user.is_superuser || user.roles.includes("admin");
   return (
     <>
+      <div className="section-panel space-y-3">
+        <h2 className="text-xl font-bold text-primary">
+          Состояние защиты аккаунта
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-secondary">Второй фактор:</span>
+          {mfaConfigured ? (
+            <Badge tone="success">подключён</Badge>
+          ) : (
+            <Badge tone="warning">не подключён</Badge>
+          )}
+          {user.has_passkey && <Badge tone="success">Passkey</Badge>}
+          {user.has_totp && <Badge tone="success">TOTP</Badge>}
+          <span className="text-sm text-secondary ml-2">Эта сессия:</span>
+          {user.mfa_verified ? (
+            <Badge tone="success">подтверждена вторым фактором</Badge>
+          ) : (
+            <Badge tone="neutral">пароль</Badge>
+          )}
+        </div>
+        {isAdmin && user.admin_mfa_required && (
+          <div
+            role="alert"
+            className="rounded-lg border border-warning bg-warning-soft p-3 text-sm text-warning"
+          >
+            Для доступа к панели администратора необходимо настроить и
+            подтвердить второй фактор.{" "}
+            <Link to="/admin" className="underline">
+              Перейти к защищённой настройке
+            </Link>
+          </div>
+        )}
+        {!mfaConfigured && (
+          <p className="text-sm text-secondary">
+            Для обычного пользователя второй фактор не обязателен, но мы
+            рекомендуем Passkey: он защищает вход от подбора пароля и
+            фишинговых страниц.
+          </p>
+        )}
+        {mfaConfigured && !user.has_passkey && capabilities?.passkey_enabled && (
+          <p className="text-sm text-secondary">
+            Рекомендуем добавить Passkey как более устойчивый к фишингу способ
+            подтверждения.
+          </p>
+        )}
+      </div>
       <AccountPassword controller={controller} />
       {showPasswordModal && (
         <div
@@ -939,7 +988,7 @@ function securityFeatures(
       testId: "recovery-codes-section",
       title: "Резервные коды восстановления",
       description:
-        "Одноразовые резервные коды для восстановления доступа при утрате второго фактора.",
+        "Одноразовые резервные коды доступны после подключения TOTP или Passkey. Каждый код используется один раз.",
       disabledText: "Администратор пока не включил резервные коды.",
       children: <RecoveryControls controller={controller} />,
     },

@@ -12,6 +12,7 @@ import {
   prepareRequestOptions,
   serializeRequestResponse,
 } from "../utils/webauthn";
+import { preferredFactor } from "../utils/security";
 import { DeferredDialog as AccessibleDialog } from "./DeferredDialog";
 
 interface Pending {
@@ -108,7 +109,7 @@ export function ReauthenticationDialog() {
       if (!result.factor_required) finish(result.authorization);
       else {
         setProof(result);
-        setMethod(result.methods?.[0] || "totp");
+        setMethod(preferredFactor(result.methods));
       }
     } catch (caught) {
       setError(

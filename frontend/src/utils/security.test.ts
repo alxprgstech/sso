@@ -1,6 +1,6 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeReturnTo } from "./security.ts";
+import { preferredFactor, sanitizeReturnTo } from "./security.ts";
 
 describe("Frontend Security Utils: sanitizeReturnTo (G8-SEC, FINAL-04)", () => {
   before(() => {
@@ -65,5 +65,14 @@ describe("Frontend Security Utils: sanitizeReturnTo (G8-SEC, FINAL-04)", () => {
     assert.equal(sanitizeReturnTo("https://evil.com/callback"), null);
     assert.equal(sanitizeReturnTo("https://attacker.alxprgs.tech.evil.com"), null);
     assert.equal(sanitizeReturnTo("http://localhost:3000/phish"), null);
+  });
+});
+
+describe("Frontend Security Utils: preferredFactor", () => {
+  test("prefers passkey, then TOTP, and leaves recovery as fallback", () => {
+    assert.equal(preferredFactor(["recovery_code", "passkey"]), "passkey");
+    assert.equal(preferredFactor(["recovery_code", "totp"]), "totp");
+    assert.equal(preferredFactor(["recovery_code"]), "recovery_code");
+    assert.equal(preferredFactor([]), "totp");
   });
 });

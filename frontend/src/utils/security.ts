@@ -3,6 +3,20 @@
  */
 
 /**
+ * Prefer the strongest available factor when a server returns several methods.
+ * Recovery codes are a fallback, not the default choice when Passkey/TOTP work.
+ */
+export function preferredFactor(
+  methods: string[] | null | undefined,
+): string {
+  const available = methods ?? [];
+  for (const candidate of ["passkey", "totp", "recovery_code"]) {
+    if (available.includes(candidate)) return candidate;
+  }
+  return available[0] ?? "totp";
+}
+
+/**
  * Валидация и санитизация return_to / redirect_uri (G8-SEC, FINAL-04).
  * Защищает от Open Redirect атак:
  * - Запрещает внешние домены (https://evil.com)
