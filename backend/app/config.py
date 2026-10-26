@@ -152,7 +152,17 @@ class Settings(BaseSettings):
     FEATURE_PASSKEY_ENABLED: bool = False
     FEATURE_RECOVERY_CODES_ENABLED: bool = False
     FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True
+    FEATURE_EXTERNAL_STEP_UP_ENABLED: bool = False
     REQUIRE_VERIFIED_EMAIL: bool = False
+
+    # Cross-application transaction authorization.  The proof is deliberately
+    # short-lived and must be redeemed by the relying-party backend.
+    STEP_UP_REQUEST_TTL_SECONDS: int = 300
+    STEP_UP_PROOF_TTL_SECONDS: int = 60
+    STEP_UP_MAX_PENDING_PER_USER: int = 5
+    STEP_UP_MAX_PENDING_PER_CLIENT: int = 100
+    STEP_UP_MAX_FAILED_ATTEMPTS: int = 5
+    STEP_UP_RATE_LIMIT_PER_MINUTE: int = 10
 
     # Ключ шифрования TOTP (Fernet 32 байта base64)
     TOTP_ENCRYPTION_KEY: str = "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE="
@@ -332,11 +342,19 @@ class Settings(BaseSettings):
             "SESSION_IDLE_TIMEOUT_SECONDS": 43200,
             "SESSION_ABSOLUTE_TIMEOUT_SECONDS": 604800,
             "MFA_STEP_TTL_SECONDS": 300,
+            "STEP_UP_REQUEST_TTL_SECONDS": 300,
+            "STEP_UP_PROOF_TTL_SECONDS": 300,
+            "STEP_UP_MAX_PENDING_PER_USER": 20,
+            "STEP_UP_MAX_PENDING_PER_CLIENT": 100,
+            "STEP_UP_MAX_FAILED_ATTEMPTS": 10,
+            "STEP_UP_RATE_LIMIT_PER_MINUTE": 60,
         }
         if any(not 1 <= getattr(self, name) <= limit for name, limit in bounds.items()):
             raise ValueError("Production token/session lifetimes exceed the supported bounds")
         if self.SESSION_IDLE_TIMEOUT_SECONDS > self.SESSION_ABSOLUTE_TIMEOUT_SECONDS:
             raise ValueError("Idle session timeout cannot exceed the absolute timeout")
+        if self.STEP_UP_PROOF_TTL_SECONDS > self.STEP_UP_REQUEST_TTL_SECONDS:
+            raise ValueError("Step-up proof TTL cannot exceed the request TTL")
 
     def _validate_production_transport(self) -> None:
         if self.DEBUG:

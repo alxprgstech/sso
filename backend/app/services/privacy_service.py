@@ -578,10 +578,12 @@ async def maintenance(db: AsyncSession, settings: Settings) -> int:
         )
     )
     from app.models.authentication import AuthenticationStep, SecurityAuthorization
+    from app.models.step_up import ExternalStepUpRequest
 
     for model in (
         AuthenticationStep,
         SecurityAuthorization,
+        ExternalStepUpRequest,
         DeletionAuthorization,
         PrivacyRateWindow,
         WebAuthnChallenge,

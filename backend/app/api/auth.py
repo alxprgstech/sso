@@ -101,6 +101,7 @@ async def get_capabilities(
         recovery_codes_enabled=settings.FEATURE_RECOVERY_CODES_ENABLED,
         email_verification_enabled=True,
         require_verified_email=settings.REQUIRE_VERIFIED_EMAIL,
+        external_step_up_enabled=settings.FEATURE_EXTERNAL_STEP_UP_ENABLED,
         registration_mode=reg_mode,
     )
 

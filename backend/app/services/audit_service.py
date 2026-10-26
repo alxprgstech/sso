@@ -153,6 +153,17 @@ def scrub_detail(value: Any, depth: int = 0) -> Any:
             "openid profile",
             "openid email",
             "openid profile email",
+            "reauth_basic",
+            "reauth_mfa",
+            "reauth_strict",
+            "reauth_password_mfa",
+            "password",
+            "totp",
+            "passkey",
+            "pending",
+            "approved",
+            "denied",
+            "consumed",
         }
         if value in labels:
             return value

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -7,6 +8,23 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.security import validate_new_password
+
+STEP_UP_ASSURANCE_LEVELS = frozenset(
+    {"reauth_basic", "reauth_mfa", "reauth_strict", "reauth_password_mfa"}
+)
+STEP_UP_ACTION_PATTERN = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,63}")
+
+
+def _validate_assurance_levels(value: list[str]) -> None:
+    if len(set(value)) != len(value) or not set(value) <= STEP_UP_ASSURANCE_LEVELS:
+        raise ValueError("Недопустимый уровень подтверждения")
+
+
+def _validate_actions(value: list[str]) -> None:
+    if len(set(value)) != len(value) or any(
+        not STEP_UP_ACTION_PATTERN.fullmatch(action) for action in value
+    ):
+        raise ValueError("Недопустимый идентификатор действия")
 
 
 class AdminUserCreateRequest(BaseModel):
@@ -52,6 +70,10 @@ class AdminClientCreateRequest(BaseModel):
     allowed_scopes: list[str] = Field(
         default_factory=lambda: ["openid", "profile", "email"], min_length=1, max_length=3
     )
+    step_up_enabled: bool = False
+    step_up_assurance_levels: list[str] = Field(default_factory=list, max_length=4)
+    step_up_actions: list[str] = Field(default_factory=list, max_length=32)
+    step_up_max_ttl_seconds: int = Field(default=300, ge=30, le=300)
 
     @field_validator("allowed_scopes")
     @classmethod
@@ -62,6 +84,39 @@ class AdminClientCreateRequest(BaseModel):
             or len(set(value)) != len(value)
         ):
             raise ValueError("Допустимые scopes: openid (обязательно), profile, email")
+        return value
+
+    @field_validator("step_up_assurance_levels")
+    @classmethod
+    def assurance_policy(cls, value: list[str]) -> list[str]:
+        _validate_assurance_levels(value)
+        return value
+
+    @field_validator("step_up_actions")
+    @classmethod
+    def action_policy(cls, value: list[str]) -> list[str]:
+        _validate_actions(value)
+        return value
+
+
+class AdminClientStepUpUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    step_up_enabled: bool
+    step_up_assurance_levels: list[str] = Field(default_factory=list, max_length=4)
+    step_up_actions: list[str] = Field(default_factory=list, max_length=32)
+    step_up_max_ttl_seconds: int = Field(default=300, ge=30, le=300)
+
+    @field_validator("step_up_assurance_levels")
+    @classmethod
+    def assurance_policy(cls, value: list[str]) -> list[str]:
+        _validate_assurance_levels(value)
+        return value
+
+    @field_validator("step_up_actions")
+    @classmethod
+    def action_policy(cls, value: list[str]) -> list[str]:
+        _validate_actions(value)
         return value
 
 
@@ -75,6 +130,10 @@ class AdminClientResponse(BaseModel):
     is_active: bool
     allowed_scopes: list[str] = Field(default_factory=list)
     redirect_uris: list[str] = []
+    step_up_enabled: bool = False
+    step_up_assurance_levels: list[str] = Field(default_factory=list)
+    step_up_actions: list[str] = Field(default_factory=list)
+    step_up_max_ttl_seconds: int = 300
     client_secret: str | None = None  # Показывается ТОЛЬКО при создании или ротации
     created_at: datetime
 

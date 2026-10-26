@@ -22,6 +22,7 @@ from app.models.privacy import (
 )
 from app.models.registration import PendingRegistration
 from app.models.session import Session
+from app.models.step_up import ExternalStepUpRequest
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
 
@@ -42,6 +43,7 @@ __all__ = [
     "OIDCRedirectUri",
     "AuthorizationCode",
     "RefreshToken",
+    "ExternalStepUpRequest",
     "TOTPCredential",
     "WebAuthnCredential",
     "WebAuthnChallenge",

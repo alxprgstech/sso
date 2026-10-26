@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import require_admin_user, require_recent_reauthentication, verify_csrf
 from app.core.rate_limit import get_client_ip
 from app.database import get_db
+from app.models.oidc import OIDCClient
 from app.models.user import User
 from app.schemas.admin import (
     AdminAuditEventResponse,
     AdminClientCreateRequest,
     AdminClientResponse,
+    AdminClientStepUpUpdate,
     AdminUserCreateRequest,
     AdminUserResponse,
     AdminUserUpdateRequest,
@@ -167,6 +169,24 @@ async def revoke_user_sessions(
 # ==============================================================================
 
 
+def _client_response(client: OIDCClient, client_secret: str | None = None) -> AdminClientResponse:
+    return AdminClientResponse(
+        id=client.id,
+        client_id=client.client_id,
+        client_name=client.client_name,
+        client_type=client.client_type,
+        is_active=client.is_active,
+        allowed_scopes=client.allowed_scopes.split(),
+        redirect_uris=[r.uri for r in client.redirect_uris],
+        step_up_enabled=client.step_up_enabled,
+        step_up_assurance_levels=(client.step_up_assurance_levels or "").split(),
+        step_up_actions=(client.step_up_actions or "").split(),
+        step_up_max_ttl_seconds=client.step_up_max_ttl_seconds,
+        client_secret=client_secret,
+        created_at=client.created_at,
+    )
+
+
 @router.get("/clients", response_model=list[AdminClientResponse])
 async def list_clients(
     offset: int = Query(0, ge=0),
@@ -175,20 +195,7 @@ async def list_clients(
     db: AsyncSession = Depends(get_db),
 ) -> list[AdminClientResponse]:
     clients = await AdminService.list_clients(db, offset=offset, limit=limit)
-    return [
-        AdminClientResponse(
-            id=c.id,
-            client_id=c.client_id,
-            client_name=c.client_name,
-            client_type=c.client_type,
-            is_active=c.is_active,
-            allowed_scopes=c.allowed_scopes.split(),
-            redirect_uris=[r.uri for r in c.redirect_uris],
-            client_secret=None,  # Секрет никогда не отдается при обычном листинге
-            created_at=c.created_at,
-        )
-        for c in clients
-    ]
+    return [_client_response(c) for c in clients]
 
 
 @router.post(
@@ -209,18 +216,12 @@ async def create_client(
         redirect_uris=payload.redirect_uris,
         allowed_scopes=payload.allowed_scopes,
         admin_user_id=admin.id,
+        step_up_enabled=payload.step_up_enabled,
+        step_up_assurance_levels=payload.step_up_assurance_levels,
+        step_up_actions=payload.step_up_actions,
+        step_up_max_ttl_seconds=payload.step_up_max_ttl_seconds,
     )
-    return AdminClientResponse(
-        id=client.id,
-        client_id=client.client_id,
-        client_name=client.client_name,
-        client_type=client.client_type,
-        is_active=client.is_active,
-        allowed_scopes=client.allowed_scopes.split(),
-        redirect_uris=[r.uri for r in client.redirect_uris],
-        client_secret=raw_secret,  # Возвращается ТОЛЬКО ОДИН РАЗ при регистрации
-        created_at=client.created_at,
-    )
+    return _client_response(client, raw_secret)
 
 
 @router.post(
@@ -238,17 +239,30 @@ async def rotate_client_secret(
         client_id=client_id,
         admin_user_id=admin.id,
     )
-    return AdminClientResponse(
-        id=client.id,
-        client_id=client.client_id,
-        client_name=client.client_name,
-        client_type=client.client_type,
-        is_active=client.is_active,
-        redirect_uris=[r.uri for r in client.redirect_uris],
-        client_secret=new_secret,  # Возвращается ТОЛЬКО ОДИН РАЗ при ротации
-        allowed_scopes=client.allowed_scopes.split(),
-        created_at=client.created_at,
+    return _client_response(client, new_secret)
+
+
+@router.patch(
+    "/clients/{client_id}/step-up",
+    response_model=AdminClientResponse,
+    dependencies=[Depends(verify_csrf)],
+)
+async def update_client_step_up(
+    client_id: str,
+    payload: AdminClientStepUpUpdate,
+    admin: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> AdminClientResponse:
+    client = await AdminService.update_client_step_up(
+        db,
+        client_id,
+        enabled=payload.step_up_enabled,
+        assurance_levels=payload.step_up_assurance_levels,
+        actions=payload.step_up_actions,
+        max_ttl_seconds=payload.step_up_max_ttl_seconds,
+        admin_user_id=admin.id,
     )
+    return _client_response(client)
 
 
 @router.delete("/clients/{client_id}", dependencies=[Depends(verify_csrf)])

@@ -311,11 +311,39 @@ class AdminService:
         redirect_uris: list[str],
         admin_user_id: uuid.UUID | None = None,
         allowed_scopes: list[str] | None = None,
+        step_up_enabled: bool = False,
+        step_up_assurance_levels: list[str] | None = None,
+        step_up_actions: list[str] | None = None,
+        step_up_max_ttl_seconds: int = 300,
     ) -> tuple[OIDCClient, str | None]:
         """
         Регистрация нового OIDC клиента.
         Секрет генерируется и возвращается ТОЛЬКО ОДИН РАЗ (USR-09).
+        Внешнее step-up право по умолчанию выключено и включается отдельной политикой.
         """
+        from app.services.step_up_policy import (
+            normalize_client_actions,
+            normalize_client_levels,
+        )
+
+        if step_up_enabled and client_type != "confidential":
+            raise AuthorizationException(
+                "Внешнее подтверждение действий доступно только confidential-клиентам"
+            )
+        levels = list(step_up_assurance_levels or [])
+        actions = list(step_up_actions or [])
+        if step_up_enabled and (not levels or not actions):
+            raise AuthorizationException(
+                "Для включения step-up укажите разрешённые уровни и действия"
+            )
+        try:
+            levels_value = normalize_client_levels(levels) if levels else ""
+            actions_value = normalize_client_actions(actions) if actions else ""
+        except ValueError as error:
+            raise AuthorizationException(str(error)) from None
+        if not 30 <= step_up_max_ttl_seconds <= 300:
+            raise AuthorizationException("Недопустимый срок action step-up")
+
         client_id = f"client_{generate_random_token(16)}"
         cfg = get_settings()
         for uri in redirect_uris:
@@ -342,6 +370,10 @@ class AdminService:
             client_secret_hash=secret_hash,
             is_active=True,
             allowed_scopes=" ".join(allowed_scopes or ["openid", "profile", "email"]),
+            step_up_enabled=step_up_enabled,
+            step_up_assurance_levels=levels_value,
+            step_up_actions=actions_value,
+            step_up_max_ttl_seconds=step_up_max_ttl_seconds,
         )
         db.add(client)
         await db.flush()
@@ -393,6 +425,57 @@ class AdminService:
             details={"client_id": client_id},
         )
         return client, raw_secret
+
+    @staticmethod
+    async def update_client_step_up(
+        db: AsyncSession,
+        client_id: str,
+        *,
+        enabled: bool,
+        assurance_levels: list[str],
+        actions: list[str],
+        max_ttl_seconds: int,
+        admin_user_id: uuid.UUID | None = None,
+    ) -> OIDCClient:
+        from app.services.step_up_policy import (
+            normalize_client_actions,
+            normalize_client_levels,
+        )
+
+        client = await db.scalar(
+            select(OIDCClient)
+            .options(selectinload(OIDCClient.redirect_uris))
+            .where(OIDCClient.client_id == client_id)
+            .with_for_update()
+        )
+        if client is None:
+            raise AuthorizationException("Клиент не найден")
+        if enabled and client.client_type != "confidential":
+            raise AuthorizationException(
+                "Внешнее подтверждение действий доступно только confidential-клиентам"
+            )
+        if enabled and (not assurance_levels or not actions):
+            raise AuthorizationException(
+                "Для включения step-up укажите разрешённые уровни и действия"
+            )
+        if not 30 <= max_ttl_seconds <= 300:
+            raise AuthorizationException("Недопустимый срок action step-up")
+        try:
+            levels_value = normalize_client_levels(assurance_levels) if assurance_levels else ""
+            actions_value = normalize_client_actions(actions) if actions else ""
+        except ValueError as error:
+            raise AuthorizationException(str(error)) from None
+        client.step_up_enabled = enabled
+        client.step_up_assurance_levels = levels_value
+        client.step_up_actions = actions_value
+        client.step_up_max_ttl_seconds = max_ttl_seconds
+        await AuditService.log_event(
+            db,
+            event_type="oidc_client_step_up_policy_updated",
+            user_id=admin_user_id,
+            details={"client_id": client_id, "step_up_enabled": enabled},
+        )
+        return client
 
     @staticmethod
     async def delete_client(
