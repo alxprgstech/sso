@@ -35,3 +35,13 @@
 В штатном Compose SSO_SERVER_URL=http://localhost:3000, OIDC_ISSUER буквально равен issuer OP. Start scripts не заменяют OIDC_ISSUER из .env.example: по умолчанию он остаётся https://auth.alxprgs.tech, тогда как transport — localhost:3000. Existing .env не переписывается. У каждого процесса собственный CLIENT_SECRET и точный callback. DEMO_ALLOW_HTTP_LOCALHOST=1 допускается только для локального HTTP. [SDK](../docs/sdk.md) описывает независимую установку; текущая документационная сверка не запускала live callback.
 
 Для локального SDK HTTP явно задайте `SSO_TRANSPORT_PROFILE=local` вместе с существующим demo HTTP opt-in. Серверный `REDIRECT_TRANSPORT_PROFILE=local` допускает лишь loopback callbacks. Строгий SDK default остаётся HTTPS, отключать TLS verification нельзя. Сначала установите hashed dependencies, затем собранный SDK wheel отдельно с `--no-deps --no-build-isolation`.
+
+## Reference step-up RP
+
+`examples/step_up_rp.py` — минимальный отдельный relying party для transaction step-up. Он демонстрирует OIDC login, создание challenge для exact action/payload, hosted подтверждение, server-side redemption, проверку `StepUpProof` и однократное выполнение действия. Запуск в одном worker:
+
+```bash
+python -m uvicorn examples.step_up_rp:app --host 127.0.0.1 --port 8010 --workers 1
+```
+
+Задайте `SSO_URL`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`, `RP_BASE_URL`, `RP_REDIRECT_URI` и `RP_STEP_UP_REDIRECT_URI`. Клиент должен быть confidential и иметь per-client step-up policy (assurance/action); глобальный `FEATURE_EXTERNAL_STEP_UP_ENABLED=true` сам по себе ничего не разрешает. In-memory словари — только демонстрация; production RP обязан хранить flow/proof в транзакционном серверном хранилище, привязанном к собственной HttpOnly-сессии, и защищать mutations CSRF. Повторное выполнение действия после одного proof отклоняется, но эталонный пример не заменяет E2E/нагрузочную приёмку.

@@ -1,6 +1,6 @@
 # API ALXPRGS SSO
 
-Версия продукта 0.2.0. Целевой HTTPS issuer `https://auth.alxprgs.tech` — проектный адрес, не свидетельство существующего production. Local HTTP разрешён только выбранному development/testing профилю. Нормативный machine-readable интерфейс — FastAPI OpenAPI из данной ревизии; список ниже проверяется `tests/test_documented_api_contract.py`.
+Версия продукта 0.3.0. Целевой HTTPS issuer `https://auth.alxprgs.tech` — проектный адрес, не свидетельство существующего production. Local HTTP разрешён только выбранному development/testing профилю. Нормативный machine-readable интерфейс — FastAPI OpenAPI из данной ревизии; список ниже проверяется `tests/test_documented_api_contract.py`.
 
 Cookie API использует host-only HttpOnly cookie (`__Host-alx_session`/Secure в production); mutations требуют `X-CSRF-Token` и точный Origin. OAuth client/grant authentication не подменяется browser cookie. JSON errors не отражают raw inputs/SQL/secrets. OAuth errors имеют `error/error_description`; responses `/oauth/*` включают `Cache-Control:no-store`, `Pragma:no-cache`, Basic/Bearer challenges при применимости. Duplicate query/form parameters отвергаются.
 
@@ -21,6 +21,16 @@ Login возвращает user/csrf_token либо mfa_required/mfa_token/metho
 Чувствительные mutations требуют header `X-Reauthentication`. При отсутствии proof API401 с reauthentication_required. payload_hash — canonical SHA-256 точного request body. POST `/api/v1/auth/reauthentication` принимает current_password/action/payload_hash; настроенный MFA возвращает factor_required/options/methods. POST factor принимает authorization/method и code либо signed credential. Proof5min привязан к user/session/revision/action/body и погашается в транзакции mutation. ТOTP setup хранит только pending, confirm активирует после проверки; Passkey registration challenge также связан с Session. Feature-disabled APIs404 до начала операции.
 
 Admin API: PATCH users/{user_id} изменяет email/is_active/is_superuser/roles/new_password; email всегда очищает verified, критические изменения отзывают grants. POST sessions/revoke — отдельная команда, не DELETE по выдуманному пути. Clients allowed_scopes задаётся при создании; secret показывается только один раз. Audit использует offset/limit/event_type, экспорт — отдельный /audit/export. Поля/точные bounds см. схемы OpenAPI и `backend/app/schemas`.
+
+## Cross-application transaction step-up
+
+Новая возможность включена только при `FEATURE_EXTERNAL_STEP_UP_ENABLED=true`; у клиента дополнительно должны быть `step_up_enabled=true`, разрешённый `action` и assurance. Это opt-in, существующие клиенты после миграции остаются выключенными. Все `/api/v1/step-up/*` ответы имеют `Cache-Control: no-store`; browser endpoints требуют host-only SSO cookie и CSRF, server-to-server endpoints — только существующую confidential client authentication (HTTP Basic). Публичный client_id не является разрешением.
+
+`POST /api/v1/step-up/requests` (Basic client secret) принимает subject, action, payload_hash (SHA-256 hex), description, assurance, exact redirect_uri, state, nonce, PKCE S256 challenge и ttl 30–300. Сервер проверяет клиентскую policy, фактические факторы пользователя, pending caps и возвращает короткоживущий `authorization_url`; браузер не получает client secret. `GET /api/v1/step-up/requests/{request_token}` требует SSO session, привязывает запрос к первой сессии и проверяет subject/security_revision/client policy. `POST .../passkey/options`, `.../verify` и `.../deny` требуют CSRF; verify выполняет реальную проверку password/WebAuthn/TOTP и строго соблюдает порядок password → второй фактор, когда он требуется.
+
+При успехе SSO возвращает exact registered redirect URI одноразовый `code`, `state` и `iss`; `code` живёт не более 60 секунд. `POST /api/v1/step-up/redeem` (Basic client secret, code, PKCE verifier, redirect_uri) атомарно погашает proof и возвращает RS256 JWT с `token_use=external_step_up_proof`, `aud=client_id`, `sub`, `acr`, `amr`, `transaction_id`, `action`, `payload_hash`, `nonce` и `security_revision`. Это доказательство, а не OAuth Access/ID Token и не универсальный grant. Повторное погашение, другой client, другой redirect, другой subject, изменённый payload, истёкший срок и отозванная session отклоняются. `GET /.well-known/openid-configuration` публикует `acr_values_supported`, а также `external_step_up_request_endpoint`/`external_step_up_redemption_endpoint`; стандартный OIDC login и `/oauth/*` не меняются.
+
+`PATCH /api/v1/admin/clients/{client_id}/step-up` (admin + внутренний reauth/CSRF) задаёт `step_up_enabled`, assurance levels, actions и max TTL. Включать step-up можно только confidential-клиенту; пустые списки при включении отклоняются. Существующие public/legacy клиенты не получают возможность автоматически.
 
 Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md), [observability.md](observability.md). Pending deletion допускает только ограниченное управление/выход; нет публичного API немедленного физического удаления. Body budget64KiB/10s; 413/408 при превышении. Quotas429 и инфраструктурные503 не означают успешной аутентификации.
 
@@ -55,6 +65,7 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 | GET | `/oauth/client-context` |
 | GET | `/oauth/logout` |
 | GET | `/oauth/userinfo` |
+| PATCH | `/api/v1/admin/clients/{client_id}/step-up` |
 | PATCH | `/api/v1/admin/users/{user_id}` |
 | POST | `/api/v1/admin/clients` |
 | POST | `/api/v1/admin/clients/{client_id}/rotate-secret` |
@@ -88,6 +99,12 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 | POST | `/api/v1/mfa/totp/confirm` |
 | POST | `/api/v1/mfa/totp/setup` |
 | POST | `/api/v1/mfa/totp/verify` |
+| POST | `/api/v1/step-up/redeem` |
+| POST | `/api/v1/step-up/requests` |
+| POST | `/api/v1/step-up/requests/{request_token}/deny` |
+| POST | `/api/v1/step-up/requests/{request_token}/passkey/options` |
+| POST | `/api/v1/step-up/requests/{request_token}/verify` |
+| GET | `/api/v1/step-up/requests/{request_token}` |
 | POST | `/oauth/logout` |
 | POST | `/oauth/revoke` |
 | POST | `/oauth/token` |

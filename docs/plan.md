@@ -11,6 +11,7 @@
 | AUDIT-FIX-05 | P1 | Локальное ops remediation, утверждённая инфраструктура | blocked | Подтвердить public TLS/DNS/IAM/secret storage, внешние backup/storage ACL и alerts. Локальные Linux images/Trivy/Compose проверены 18.10; внешний production-контур остаётся условием разблокировки. |
 | FR-08 | P2 | FRONTEND-REDESIGN-01 | planned | Необязательное продолжение frontend; исходные критерии и границы — [план redesign](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/frontend-redesign-plan.md). Не закрыто очисткой. |
 | DOC-CLEANUP-02 | P2 | DOC-VALUE-01 | done | Сократить историю, перенести полезные сведения и удалить заменённые отчёты; сохранить открытые требования и тестовые зависимости; links/UTF-8/diff/secret scan. |
+| EXT-STEPUP-01 | P0 | OIDC/MFA/SDK, PostgreSQL, frontend | in_progress | Реализовать opt-in cross-application hosted step-up с password/TOTP/Passkey/комбинированными политиками, transaction binding, one-use server redemption, SDK/UI/тестами и self-audit. Критерий: матрица сценариев, миграция 0015, SDK 0.3.0, локальные коммиты; production activation не входит. |
 
 Внешние SES/Gmail/Sentry, sender registration, multi-replica load и приватный owner review исторических credentials остаются условиями общей приёмки; [матрица и ограничения](acceptance.md), [безопасность](security.md). Их исторические ID/статусы/времена доступны по исходному плану и журналу, нового PASS нет. Остальные прежние незакрытые локальные/CI checkpoints требуют сверки с более поздним evidence перед возобновлением, а не автоматического выполнения старого плана.
 
@@ -96,6 +97,14 @@
 `PROJECT-PR-01`, `UI-LAYOUT-01`, `FRONTEND-REDESIGN-01`, `PRIVACY-01`, `WEB-UI-01`, `COMMIT-NEW-01`, `PR-NEW-01`, `REVIEW-PR-02-01`, `REVIEW-CI-02-01`, `PR-FIX-02`, `CI-SES-01`, `CI-SES-02`, `UI-DELETE-01`, `AUDIT-PROD-01`, `AUDIT-REMEDIATION-01`, `BRANCH-PR-01`, `PR5-CI-01`, `EMAIL-RESEND-01`, `WEB-ROBOTS-01`, `WEB-SEO-01`, `WEB-UTF8-01`, `WEB-PERF-01`, `UI-THEME-FOOTER-01`, `BUILD-PERF-01`, `BUILD-PERF-PR-01`, `BRANCH-CLEANUP-01`, `DOC-CLEANUP-01`, `MERGE-DOCS-01`, `DOC-REFRESH-01`, `DOC-VERSION-LOCK-01`, `DOC-REFRESH-PR-01`, `SEC-AUDIT-20261007`, `SEC-REMED-20261007`, `CI-FRONTEND-PR13-01`.
 
 Дополнительные исторические TASK-ID (критерии и исходные статусы доступны по той же ссылке): `TASK-043`, `TASK-044`, `TASK-045`, `TASK-046`, `TASK-047`, `TASK-048`, `TASK-049`, `TASK-050`, `TASK-051`, `TASK-052`, `TASK-053`, `TASK-054`, `TASK-055`, `TASK-067`, `TASK-068`, `TASK-069`, `TASK-070`, `TASK-071`, `TASK-072`, `TASK-073`, `TASK-074`, `TASK-075`, `TASK-076`, `TASK-077`, `TASK-078`, `TASK-079`, `TASK-080`, `TASK-081`, `TASK-082`, `TASK-083`, `TASK-084`, `TASK-085`, `TASK-086`, `TASK-087`, `TASK-088`, `TASK-089`, `TASK-090`, `TASK-091`, `TASK-092`, `TASK-093`, `TASK-094`, `TASK-095`, `TASK-096`, `TASK-097`, `TASK-098`, `TASK-099`, `TASK-100`, `TASK-101`, `TASK-102`, `TASK-103`.
+
+## EXT-STEPUP-01: cross-application transaction step-up
+
+Начало: 2026-10-26T13:08:40.0521508+03:00; исполнитель DeepSeek Harness; P0. База: `93c0fad7f92fd2ba8a4b860986fe52e8c3985234`, ветка `new/external-step-up-authentication`.
+
+План: (1) изучить существующие reauth/WebAuthn/OIDC/SDK и зафиксировать переиспользование; (2) ADR вариантов A/B/C и assurance policy; (3) PostgreSQL state/endpoints/client policy/migration; (4) hosted UI; (5) SDK 0.3.0 и reference RP; (6) unit/PG/component/SDK/static проверки; (7) adversarial self-audit и regression; (8) docs/version/changelog/локальные коммиты. Production-флаги/БД/DNS/push/merge/release/publication не входят.
+
+Критерий готовности: существующий OIDC login и внутренний reauth не сломаны; step-up принимает только разрешённые assurance/факторы и отклоняет wrong subject/client/action/payload/expiry/replay/session/revision; proof одноразовый и короткоживущий; SDK wheel проверен в изоляции; тестовая матрица и self-audit зафиксированы.
 
 ## DOC-CLEANUP-02: выполнение
 

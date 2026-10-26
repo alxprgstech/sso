@@ -121,6 +121,10 @@ frontend, manifest/checksums; сборка выполняется на runner, �
 
 `prepare-sentry-release` зависит от build и блокирует draft при включённом неуспешном upload. Trusted workflow checkout и fixed CLI installation выполняются без token; единственный upload step получает protected `SENTRY_AUTH_TOKEN`. Требуются `SENTRY_ORG`, оба `SENTRY_PROJECT_*`, `SENTRY_URL=https://de.sentry.io/`, opt-in `SENTRY_RELEASE_UPLOAD_ENABLED`. Dry-run/upload-disabled всегда offline, даже если credentials присутствуют. Dirty/untagged local bundles не допускаются к upload. Runtime release override не используется. Build не создаёт deployment record; EC2 CD описан отдельно и не создаёт Sentry deploy record. Полный порядок: [observability.md](observability.md).
 
+## 0.3.0: cross-application step-up
+
+0.3.0 — MINOR-релиз: добавлена обратно совместимая возможность внешнего transaction step-up, миграция `0015_external_step_up`, новые SDK API и UI. Существующий OIDC login и внутренний `X-Reauthentication` не меняются. `FEATURE_EXTERNAL_STEP_UP_ENABLED`, все per-client `step_up_*` policies и миграционные поля по умолчанию выключены/пусты; release не включает ни одного клиента автоматически. Для активации нужны явное решение владельца, миграция, настройка конкретного confidential client и проверка фактических Password/TOTP/Passkey политик. Публикация пакета, tag и production deployment в этой задаче не выполнялись. Сборка wheel/sdist и изолированная установка — ниже и в [SDK](sdk.md).
+
 ## Миграции текущей реализации: 0004_privacy…0010_registration_session
 
 Новый контракт регистрации требует `terms_accepted=true`, `data_processing_consent=true` и актуальные `legal_versions` из публичного API. Обновите сторонние формы и API-клиенты вместе с frontend. Старые пользователи подтверждают документы после входа; новые SSO codes/tokens до этого не выдаются.
@@ -131,7 +135,7 @@ frontend, manifest/checksums; сборка выполняется на runner, �
 
 Release запускается только workflow ref main по существующему тегу, проверяет его SHA и повторяет CI через target_sha/run_email_tests=true. Публикация остаётся draft после загрузки и повторного скачивания/проверки набора; успешный workflow не развёртывает продукт. Inputs: tag и dry_run.
 
-Build identity/release workflow допускают stable X.Y.Z и rc.N. bump_version умеет более общий SemVer и преобразование alpha/beta, но это не означает поддержки таких тегов release pipeline. Требуется отдельное решение до их использования. bump_version не обновляет package-lock.json: при изменении версии есть зарегистрированный дефект DOC-DEF-01, текущие версии 0.2.0 совпадают.
+Build identity/release workflow допускают stable X.Y.Z и rc.N. bump_version умеет более общий SemVer и преобразование alpha/beta, но это не означает поддержки таких тегов release pipeline. Требуется отдельное решение до их использования. `bump_version` не обновляет `frontend/package-lock.json`; для 0.3.0 root/package version обновлены вручную и проверяются version-consistency. DOC-VERSION-LOCK-01 остаётся задачей автоматизации, но текущий релиз не имеет расхождения.
 
 Реальные CI jobs: windows-safety, email-e2e-credentials/email-e2e, telemetry-container-check, verify-cd-template, security-and-deps-scan, version-consistency, backend-lint-and-test, sdk-build-and-test, frontend-build, playwright-e2e. Названия выше в описании направлений не являются идентификаторами jobs. CI использует Python 3.12/Node 24; закреплённые Actions проверяются в workflow.
 

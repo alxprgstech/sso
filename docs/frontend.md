@@ -1,6 +1,6 @@
 # Frontend ALXPRGS SSO
 
-Сверка документации: 06.10.2026, продукт 0.2.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
+Сверка документации: 26.10.2026, продукт 0.3.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
 
 Статус миграции: done в локальном scope FRONTEND-REDESIGN-01. Нормативный дизайн — [ALXPRGS Design Language v1](../ALXPRGS%20Design%20Language.md), решения — [ADR0021](adr/0021-frontend-design-platform.md), фактическая приёмка — [implementation report](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/FRONTEND_REDESIGN_IMPLEMENTATION_REPORT.md). Официальный artwork локально включён из ALXPRGS assets; provenance/роли — [brand README](../frontend/public/brand/README.md). Итоговые браузерные проверки46default/10enabled прошли; прежний scoped brand2 сохранён в отчёте.
 
@@ -13,6 +13,7 @@ React18 + TypeScript/Vite8; React Router7 BrowserRouter/Routes/NavLink. AppShell
 | Адрес | Экран |
 | --- | --- |
 | `/login`, `/register`, `/verify-email` | Вход, регистрация с обязательным подтверждением email, явное подтверждение ссылки |
+| `/step-up/{token}` | Hosted подтверждение конкретного действия: trusted client/action/assurance/TTL, password/TOTP/Passkey, отмена без proof и возврат в RP |
 | `/privacy`, `/terms`, `/cookies`, `/data-consent` | Публичные документы |
 | `/` | Профиль |
 | `/account/security` | Пароль, доступные TOTP/passkey/recovery/email операции |
@@ -25,6 +26,8 @@ React18 + TypeScript/Vite8; React Router7 BrowserRouter/Routes/NavLink. AppShell
 | Неизвестный адрес | Явный экран «Страница не найдена» после обязательных gates |
 
 Смена password/legal/deletion gate не обходится deep link. safe return_to остаётся exact-origin sanitization; /oauth/authorize выполняется сервером. GET /oauth/client-context показывает проверенные сервером name/origin, произвольный query branding не принимается. Администраторские mutation подтверждения UX не заменяют server-bound reauthentication.
+
+`/step-up/{token}` не является public документом: без SSO session маршрут перенаправляет в `/login` с sanitized return_to. Экран показывает `client_name` из регистрации, server-fixed action/description, assurance, список разрешённых планов и TTL; password/TOTP/Passkey последовательны и проверяются только backend. Успех показывает «Личность подтверждена» и переходит на exact redirect RP; отмена вызывает server deny и не создаёт proof. Ошибки subject/session/expiry/policy переводятся в понятные сообщения без traces; peer-account mismatch предлагает явный logout, а не silent switching. UI не хранит пароль/код/proof и не передаёт proof в URL собственного приложения.
 
 ## Компоненты и tokens
 

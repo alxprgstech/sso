@@ -1,13 +1,13 @@
 # Python SDK ALXPRGS SSO
 
-Версия продукта и пакета — 0.2.0; источник истины — корневой `VERSION`. Код закрытый, SDK не опубликован в публичном registry. SDK не импортирует серверные `app.*` модули.
+Версия продукта и пакета — 0.3.0; источник истины — корневой `VERSION`. Код закрытый, SDK не опубликован в публичном registry. SDK не импортирует серверные `app.*` модули.
 
 Сборка и установка из проверенного локального артефакта:
 
 ```bash
 python -m build --no-isolation packages/python-sdk --outdir dist/sdk
 python -m pip install --require-hashes -r requirements-lock-hashed.txt
-python -m pip install --no-deps --no-build-isolation dist/sdk/alxprgs_sso-0.2.0-py3-none-any.whl
+python -m pip install --no-deps --no-build-isolation dist/sdk/alxprgs_sso-0.3.0-py3-none-any.whl
 ```
 
 Зависимости и их точные версии находятся в `packages/python-sdk/pyproject.toml` и `requirements-lock.txt`. Для проверки примеров устанавливайте wheel в чистую среду; `PYTHONPATH` не должен подменять установленный SDK исходниками.
@@ -53,6 +53,10 @@ async def complete_callback(code, received_state, saved_flow):
 
 `refresh_token` выполняет ротацию; заменяйте сохранённый refresh немедленно и атомарно. Повтор старого refresh отзывает семейство. `revoke_token` относится к OAuth refresh grants, а не к OP browser cookie. `create_logout_url(id_token_hint, post_logout_redirect_uri, state)` требует ID Token текущей RP-сессии и заранее зарегистрированный точный redirect. RP также удаляет свою локальную сессию; logout OP не является back-channel уведомлением всех RP.
 
+## Transaction step-up
+
+0.3.0 добавляет `create_step_up_request`, `build_step_up_url` и `consume_step_up_proof` для hosted подтверждения конкретной операции. Требуется confidential client и серверная политика `step_up_enabled`/actions/assurance; recovery code не участвует. SDK хранит state/nonce/PKCE в `StepUpRequest`, обязательно погашает code на сервере и проверяет JWT `external_step_up_proof` (issuer, audience, subject, action, payload hash, acr/amr, nonce, TTL). Подпись сама по себе не даёт одноразовости. Подробный пример и ограничения — [docs/sdk.md](../../docs/sdk.md#cross-application-transaction-step-up-030).
+
 FastAPI API-защита:
 
 ```python
@@ -93,4 +97,4 @@ def admin(user: UserClaims = Depends(security.require_role("admin"))):
 
 ## Unreleased: transport policy
 
-SSOClient по умолчанию принимает только HTTPS, certificate verification обязательна. `verify_ssl=False` запрещён в любом профиле. Для локального HTTP явно передайте `transport_profile="local"`; допустимы только localhost и loopback IP, включая IPv6. Это несовместимое изменение, VERSION пока 0.2.0. Не выводите server URL с userinfo; userinfo/query/fragment в URL сервера отвергаются. Demo uses `SSO_TRANSPORT_PROFILE=local` только для локального стенда.
+SSOClient по умолчанию принимает только HTTPS, certificate verification обязательна. `verify_ssl=False` запрещён в любом профиле. Для локального HTTP явно передайте `transport_profile="local"`; допустимы только localhost и loopback IP, включая IPv6. Это несовместимое изменение, VERSION 0.3.0. Не выводите server URL с userinfo; userinfo/query/fragment в URL сервера отвергаются. Demo uses `SSO_TRANSPORT_PROFILE=local` только для локального стенда.

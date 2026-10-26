@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "routes": [
     [
       "DELETE",
@@ -87,6 +87,10 @@
     ],
     [
       "GET",
+      "/api/v1/step-up/requests/{request_token}"
+    ],
+    [
+      "GET",
       "/health/live"
     ],
     [
@@ -108,6 +112,10 @@
     [
       "GET",
       "/oauth/userinfo"
+    ],
+    [
+      "PATCH",
+      "/api/v1/admin/clients/{client_id}/step-up"
     ],
     [
       "PATCH",
@@ -240,6 +248,26 @@
     [
       "POST",
       "/api/v1/mfa/totp/verify"
+    ],
+    [
+      "POST",
+      "/api/v1/step-up/redeem"
+    ],
+    [
+      "POST",
+      "/api/v1/step-up/requests"
+    ],
+    [
+      "POST",
+      "/api/v1/step-up/requests/{request_token}/deny"
+    ],
+    [
+      "POST",
+      "/api/v1/step-up/requests/{request_token}/passkey/options"
+    ],
+    [
+      "POST",
+      "/api/v1/step-up/requests/{request_token}/verify"
     ],
     [
       "POST",

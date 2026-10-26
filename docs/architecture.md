@@ -168,5 +168,9 @@ Authlib используется для scope/PKCE helpers; API/OIDCService ре
 
 Claims email/email_verified выдаются только при email scope, preferred_username/roles — при profile. ID Token включает token_use/id-профиль и auth_time; полный контракт описан в API. Бесшовный вход возможен только при допустимой OP session и отсутствии требования fresh login/согласий/смены пароля/удаления; prompt=login/none и max_age соблюдаются.
 
+## Cross-application transaction step-up
+
+В 0.3.0 добавлен отдельный opt-in слой поверх существующего OIDC/SSO: RP backend создаёт transaction challenge, браузер проходит hosted password/TOTP/Passkey flow на SSO origin, а RP backend погашает одноразовый code и получает `external_step_up_proof` JWT. Client registry/authentication, redirect URI, PKCE, state/nonce, issuer/JWKS и session/security-revision validation переиспользуются; внутренний `X-Reauthentication` не открывается внешним клиентам. PostgreSQL `external_step_up_requests` обеспечивает binding и атомарное одноразовое погашение. Подробности, варианты и границы — [ADR-0031](adr/0031-external-transaction-step-up.md), [API](api.md), [SDK](sdk.md).
+
 ## Выделенный EC2 (DEPLOY-EC2-01)
 По решению владельца 25.10.2026 подготовлен отдельный production-контур: [ADR-0029](adr/0029-ec2-continuous-deployment.md), [эксплуатация](ec2-deployment.md). Host nginx — единственный TLS gateway; static React из проверенного frontend image, API на loopback8000, private PostgreSQL. Локальная topology выше сохраняется для разработки. Live-развёртывание требует действий владельца.

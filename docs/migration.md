@@ -1,6 +1,6 @@
 # Инструкция миграции для комплекта выпуска
 
-Сверка документации: 06.10.2026, продукт 0.2.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
+Сверка документации: 26.10.2026, продукт 0.3.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
 
 Комплект содержит пакет backend, отдельный архив `alxprgs-sso-migrations-<версия>.tar.gz` с `alembic.ini` и `alembic/versions`, пакет SDK и собранный frontend. Применяйте только комплект, чьи `release-manifest.json` и `SHA256SUMS.txt` прошли проверку целостности. Для EC2 выбран отдельный [push-main CD](ec2-deployment.md) с private transport/image identity. Его автоматический rollback не восстанавливает БД и допускается только при подтверждённой совместимости схемы.
 
@@ -24,3 +24,11 @@ SDK теперь отвергает HTTP по умолчанию и запрещ
 
 ### 0014_registration_browser / SSO-SEC-0005
 Выполните alembic upgrade head до0014_registration_browser. Добавляется nullable browser_secret_hash в pending_registrations. Существующие незавершённые регистрации больше не подтверждаются/resend без нового browser proof: пользователю нужно повторно начать регистрацию; старые письма не использовать. Существующие аккаунты/сессии не изменяются. Новые письма предлагают Gmail ViewAction в исходный browser; legacy server ConfirmAction без browser cookie отвергается. Downgrade удаляет binding и возвращает риск prehijack; не используйте его как security rollback на открытой регистрации.
+
+### 0015_external_step_up / EXTERNAL-STEPUP-01
+Выполните `alembic upgrade head` до `0015_external_step_up` до включения `FEATURE_EXTERNAL_STEP_UP_ENABLED=true`. Миграция добавляет в `oidc_clients` выключенные по умолчанию `step_up_enabled=false`, пустые `step_up_assurance_levels`/`step_up_actions`, `step_up_max_ttl_seconds=300` и таблицу `external_step_up_requests` с уникальными хэшами request/proof и индексами TTL. Существующие OIDC-клиенты, сессии, пользователи и grants не меняются, возможность никому не выдаётся автоматически. После миграции:
+1. включите глобальный флаг только в тестовом контуре;
+2. для каждого доверенного confidential-клиента через `PATCH /api/v1/admin/clients/{client_id}/step-up` задайте точные assurance/actions/TTL и только затем `step_up_enabled=true`;
+3. убедитесь, что TOTP/Passkey flags и фактические credentials соответствуют выбранной политике; при strict без Passkey запросы будут отклонены;
+4. обновите SDK до 0.3.0 и сохраняйте `StepUpRequest` (state/nonce/PKCE) на сервере RP.
+Downgrade удаляет pending/consumed proof state и возвращает клиентов к выключенной возможности; не выполняйте его при активных административных сценариях. Rollback приложения без downgrade безопасен для OIDC: старый код игнорирует новые таблицы/поля. Pending step-up requests после изменения security revision/сессии инвалидируются.

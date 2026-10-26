@@ -1,6 +1,6 @@
 # Конфигурация ALXPRGS SSO
 
-Продукт 0.2.0; сверка 06.10.2026. Источники: backend/app/config.py, .env.example, docker-compose.yml, start.ps1/start.sh. Таблица описывает literal defaults класса Settings, а не секреты локального .env.
+Продукт 0.3.0; сверка 26.10.2026. Источники: backend/app/config.py, .env.example, docker-compose.yml, start.ps1/start.sh. Таблица описывает literal defaults класса Settings, а не секреты локального .env.
 
 ## Профили и приоритет
 
@@ -17,7 +17,7 @@ Default OIDC_ISSUER Settings/Compose — проектный HTTPS адрес. St
 
 ## Обязательные инварианты
 
-Три MFA-флага default false; enabled выбирается явно. FEATURE_EMAIL_VERIFICATION_ENABLED=true всегда, false отвергается Settings. REQUIRE_VERIFIED_EMAIL регулирует вход старых/admin-created пользователей, не саморегистрацию. Recovery зависит от TOTP.
+Три MFA-флага default false; enabled выбирается явно. FEATURE_EMAIL_VERIFICATION_ENABLED=true всегда, false отвергается Settings. REQUIRE_VERIFIED_EMAIL регулирует вход старых/admin-created пользователей, не саморегистрацию. Recovery зависит от TOTP. FEATURE_EXTERNAL_STEP_UP_ENABLED default false; включение глобального флага не разрешает ни одного клиента — нужны per-client step_up_enabled, assurance allowlist и actions. TTL proof не может превышать request TTL.
 
 Production отвергает default/слабые session и Fernet secrets, отсутствие постоянного RSA≥2048/явного kid, несогласованные HTTPS origins, DEBUG, небезопасные TTL/cookie и SMTP без verified STARTTLS. Предыдущий RSA public key и kid задаются вместе, для production нужен timezone-aware retirement deadline.
 
@@ -68,6 +68,13 @@ SMTP по умолчанию; SES использует AWS credential chain; Res
 | `FEATURE_PASSKEY_ENABLED` | `bool` | `False` |
 | `FEATURE_RECOVERY_CODES_ENABLED` | `bool` | `False` |
 | `FEATURE_EMAIL_VERIFICATION_ENABLED` | `bool` | `True` |
+| `FEATURE_EXTERNAL_STEP_UP_ENABLED` | `bool` | `False` |
+| `STEP_UP_REQUEST_TTL_SECONDS` | `int` | `300` |
+| `STEP_UP_PROOF_TTL_SECONDS` | `int` | `60` |
+| `STEP_UP_MAX_PENDING_PER_USER` | `int` | `5` |
+| `STEP_UP_MAX_PENDING_PER_CLIENT` | `int` | `100` |
+| `STEP_UP_MAX_FAILED_ATTEMPTS` | `int` | `5` |
+| `STEP_UP_RATE_LIMIT_PER_MINUTE` | `int` | `10` |
 | `REQUIRE_VERIFIED_EMAIL` | `bool` | `False` |
 | `TOTP_ENCRYPTION_KEY` | `str` | `dev/example; задайте безопасно` |
 | `WEBAUTHN_RP_ID` | `str` | `'auth.alxprgs.tech'` |
