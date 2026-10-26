@@ -9,7 +9,7 @@ from app.cli.bootstrap_admin import execute_bootstrap
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.helpers.privacy import accept_current_documents
+from tests.helpers.mfa import login_admin_with_mfa_direct
 from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
@@ -73,12 +73,10 @@ async def test_oidc_client_creation_and_redirect_uri_strict_validation_pg(
     )
     assert code == 0
 
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin_client_mgr", "password": "AdminClientPass2026!"},
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "admin_client_mgr", "AdminClientPass2026!"
     )
-    await accept_current_documents(pg_client, login_res)
-    adm_csrf = login_res.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     # 2. Регистрируем клиента через админ API
     c_res = await authorized_request(
@@ -95,7 +93,7 @@ async def test_oidc_client_creation_and_redirect_uri_strict_validation_pg(
                 ],
             },
         ),
-        RequestAuthorization("AdminClientPass2026!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("AdminClientPass2026!", adm_csrf, factor=admin_mfa.factor),
     )
     assert c_res.status_code == 201
     client_data = c_res.json()
@@ -185,12 +183,10 @@ async def test_oidc_authorization_code_pkce_flow_pg(
     )
     assert code == 0
 
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "oidc_user_pkce", "password": "OidcPassword2026!"},
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "oidc_user_pkce", "OidcPassword2026!"
     )
-    await accept_current_documents(pg_client, login_res)
-    adm_csrf = login_res.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     c_res = await authorized_request(
         pg_client,
@@ -203,7 +199,7 @@ async def test_oidc_authorization_code_pkce_flow_pg(
                 "redirect_uris": ["https://pkce-client.alxprgs.tech/callback"],
             },
         ),
-        RequestAuthorization("OidcPassword2026!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("OidcPassword2026!", adm_csrf, factor=admin_mfa.factor),
     )
     client_id = c_res.json()["client_id"]
     client_secret = c_res.json()["client_secret"]
@@ -325,12 +321,10 @@ async def test_oidc_userinfo_and_id_token_rejection_pg(
     )
     assert code == 0
 
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "userinfo_tester", "password": "UserinfoPassword123!"},
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "userinfo_tester", "UserinfoPassword123!"
     )
-    await accept_current_documents(pg_client, login_res)
-    adm_csrf = login_res.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     c_res = await authorized_request(
         pg_client,
@@ -343,7 +337,7 @@ async def test_oidc_userinfo_and_id_token_rejection_pg(
                 "redirect_uris": ["https://userinfo.alxprgs.tech/callback"],
             },
         ),
-        RequestAuthorization("UserinfoPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("UserinfoPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
     client_id = c_res.json()["client_id"]
     redirect_uri = "https://userinfo.alxprgs.tech/callback"
@@ -418,12 +412,10 @@ async def test_refresh_token_rotation_and_replay_family_revocation_pg(
     )
     assert code == 0
 
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "rotation_user", "password": "RotationPassword123!"},
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "rotation_user", "RotationPassword123!"
     )
-    await accept_current_documents(pg_client, login_res)
-    adm_csrf = login_res.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     c_res = await authorized_request(
         pg_client,
@@ -436,7 +428,7 @@ async def test_refresh_token_rotation_and_replay_family_revocation_pg(
                 "redirect_uris": ["https://rotation.alxprgs.tech/callback"],
             },
         ),
-        RequestAuthorization("RotationPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("RotationPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
     client_id = c_res.json()["client_id"]
     client_secret = c_res.json()["client_secret"]
@@ -548,14 +540,11 @@ async def test_seamless_cross_client_sso_and_rp_logout_pg(
     )
     assert code == 0
 
-    # 2. Входим в SSO через логин-форму
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "sso_wanderer", "password": "WandererPass2026!"},
+    # 2. Входим в SSO; администратор обязан подтвердить MFA
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "sso_wanderer", "WandererPass2026!"
     )
-    await accept_current_documents(pg_client, login_res)
-    assert login_res.status_code == 200
-    adm_csrf = login_res.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     # 3. Регистрируем Client 1 (Analytics) и Client 2 (Docs)
     c1_res = await authorized_request(
@@ -569,7 +558,7 @@ async def test_seamless_cross_client_sso_and_rp_logout_pg(
                 "redirect_uris": ["http://localhost:8001/callback"],
             },
         ),
-        RequestAuthorization("WandererPass2026!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("WandererPass2026!", adm_csrf, factor=admin_mfa.factor),
     )
     c1_id = c1_res.json()["client_id"]
 
@@ -584,7 +573,7 @@ async def test_seamless_cross_client_sso_and_rp_logout_pg(
                 "redirect_uris": ["http://localhost:8002/callback"],
             },
         ),
-        RequestAuthorization("WandererPass2026!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("WandererPass2026!", adm_csrf, factor=admin_mfa.factor),
     )
     c2_id = c2_res.json()["client_id"]
 

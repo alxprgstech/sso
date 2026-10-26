@@ -10,6 +10,7 @@ from app.services import registration_service
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.mfa import login_admin_with_mfa_direct
 from tests.helpers.privacy import accept_current_documents
 from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
@@ -513,14 +514,11 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
     )
     assert code == 0
 
-    # 2. Входим администратором
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "admin_toggler", "password": "MasterAdminPassword123!"},
+    # 2. Входим администратором с обязательной MFA
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "admin_toggler", "MasterAdminPassword123!"
     )
-    await accept_current_documents(pg_client, login_res)
-    assert login_res.status_code == 200
-    csrf_token = login_res.json()["csrf_token"]
+    csrf_token = admin_mfa.headers
 
     # 3. Проверяем системный статус
     st_res = await pg_client.get("/api/v1/admin/system/status")
@@ -536,7 +534,7 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
             "/api/v1/admin/system/registration-mode",
             json_body={"mode": "open", "current_admin_password": "WrongPassword!"},
         ),
-        RequestAuthorization("MasterAdminPassword123!", {"X-CSRF-Token": csrf_token}),
+        RequestAuthorization("MasterAdminPassword123!", csrf_token, factor=admin_mfa.factor),
     )
     assert fail_toggle.status_code == 401
 
@@ -554,7 +552,7 @@ async def test_admin_toggle_registration_mode_with_reauth_pg(
             "/api/v1/admin/system/registration-mode",
             json_body={"mode": "open", "current_admin_password": "MasterAdminPassword123!"},
         ),
-        RequestAuthorization("MasterAdminPassword123!", {"X-CSRF-Token": csrf_token}),
+        RequestAuthorization("MasterAdminPassword123!", csrf_token, factor=admin_mfa.factor),
     )
     assert ok_toggle.status_code == 200
     assert ok_toggle.json()["registration_mode"] == "open"

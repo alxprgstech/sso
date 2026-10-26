@@ -33,25 +33,34 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
-def test_enabled_local_profile_reads_flags_and_rejects_recovery_without_totp(monkeypatch):
+def test_mfa_defaults_are_on_and_recovery_requires_a_factor(monkeypatch):
     for name in (
         "FEATURE_TOTP_ENABLED",
         "FEATURE_PASSKEY_ENABLED",
         "FEATURE_RECOVERY_CODES_ENABLED",
+        "REQUIRE_ADMIN_MFA",
     ):
-        monkeypatch.setenv(name, "true")
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("WEBAUTHN_RP_ID", "localhost")
     monkeypatch.setenv("WEBAUTHN_ORIGIN", "http://localhost:3000")
-    enabled = Settings(_env_file=None)
-    assert enabled.FEATURE_TOTP_ENABLED is True
-    assert enabled.FEATURE_PASSKEY_ENABLED is True
-    assert enabled.FEATURE_RECOVERY_CODES_ENABLED is True
-    assert enabled.WEBAUTHN_RP_ID == "localhost"
-    assert enabled.WEBAUTHN_ORIGIN == "http://localhost:3000"
+    defaults = Settings(_env_file=None)
+    assert defaults.FEATURE_TOTP_ENABLED is True
+    assert defaults.FEATURE_PASSKEY_ENABLED is True
+    assert defaults.FEATURE_RECOVERY_CODES_ENABLED is True
+    assert defaults.REQUIRE_ADMIN_MFA is True
 
     monkeypatch.setenv("FEATURE_TOTP_ENABLED", "false")
+    monkeypatch.setenv("FEATURE_PASSKEY_ENABLED", "false")
     with pytest.raises(ValueError, match="FEATURE_RECOVERY_CODES_ENABLED"):
         Settings(_env_file=None)
+
+    monkeypatch.setenv("FEATURE_RECOVERY_CODES_ENABLED", "false")
+    with pytest.raises(ValueError, match="REQUIRE_ADMIN_MFA"):
+        Settings(_env_file=None)
+    monkeypatch.setenv("REQUIRE_ADMIN_MFA", "false")
+    disabled = Settings(_env_file=None)
+    assert disabled.FEATURE_TOTP_ENABLED is False
+    assert disabled.REQUIRE_ADMIN_MFA is False
 
 
 @pytest.mark.asyncio
@@ -74,23 +83,24 @@ async def test_passkey_registration_route_uses_exact_configured_origin(monkeypat
     assert context.settings is settings
 
 
-def test_default_features_all_disabled_in_api():
+def test_explicitly_disabled_features_are_blocked_in_api():
     """
-    Инвариант SEC-FLAG-01..03:
-    Три отложенных фактора отключены; email подтверждение обязательно.
-    Эндпоинты MFA при отключенных флагах возвращают 404 c error=feature_disabled.
+    Explicit-disabled profile:
+    все три фактора выключены; email подтверждение обязательно.
+    Эндпоинты MFA возвращают 404 c error=feature_disabled.
     """
     sent_emails_sink.clear()
 
     # 1. Проверка объявленных значений по умолчанию в схеме Settings (SEC-FLAG-01)
     clean_settings = Settings.model_construct()
-    assert clean_settings.FEATURE_TOTP_ENABLED is False
-    assert clean_settings.FEATURE_PASSKEY_ENABLED is False
-    assert clean_settings.FEATURE_RECOVERY_CODES_ENABLED is False
+    assert clean_settings.FEATURE_TOTP_ENABLED is True
+    assert clean_settings.FEATURE_PASSKEY_ENABLED is True
+    assert clean_settings.FEATURE_RECOVERY_CODES_ENABLED is True
     assert clean_settings.FEATURE_EMAIL_VERIFICATION_ENABLED is True
+    assert clean_settings.REQUIRE_ADMIN_MFA is True
     assert clean_settings.REQUIRE_VERIFIED_EMAIL is False
 
-    # 2. Изоляция default-off профиля в API независима от окружения хоста
+    # 2. Explicitly-disabled профиль изолирован в API независимо от окружения хоста
     def _get_default_off_settings() -> Settings:
         current = get_settings()
         overridden = copy.copy(current)
@@ -98,6 +108,7 @@ def test_default_features_all_disabled_in_api():
         overridden.FEATURE_PASSKEY_ENABLED = False
         overridden.FEATURE_RECOVERY_CODES_ENABLED = False
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
+        overridden.REQUIRE_ADMIN_MFA = False
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 

@@ -47,6 +47,7 @@ def step_up_profile():
         FEATURE_EXTERNAL_STEP_UP_ENABLED=True,
         FEATURE_TOTP_ENABLED=True,
         FEATURE_PASSKEY_ENABLED=True,
+        REQUIRE_ADMIN_MFA=False,
         WEBAUTHN_RP_ID="localhost",
         WEBAUTHN_ORIGIN="http://localhost:5173",
         REDIRECT_TRANSPORT_PROFILE="local",

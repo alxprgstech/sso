@@ -12,8 +12,8 @@ from fastapi.testclient import TestClient
 client = TestClient(app)
 
 
-def test_capabilities_default_off(default_db_mock):
-    """Проверка витрины: три MFA-флага выключены, email обязателен."""
+def test_capabilities_default_on(default_db_mock):
+    """Витрина: MFA доступна по умолчанию, email обязателен."""
     app.dependency_overrides[get_settings] = lambda: Settings.model_construct()
     try:
         res = client.get("/api/v1/auth/capabilities")
@@ -21,9 +21,10 @@ def test_capabilities_default_off(default_db_mock):
         app.dependency_overrides.pop(get_settings, None)
     assert res.status_code == 200
     data = res.json()
-    assert data["totp_enabled"] is False
-    assert data["passkey_enabled"] is False
-    assert data["recovery_codes_enabled"] is False
+    assert data["totp_enabled"] is True
+    assert data["passkey_enabled"] is True
+    assert data["recovery_codes_enabled"] is True
+    assert data["admin_mfa_required"] is True
     assert data["email_verification_enabled"] is True
     assert data["require_verified_email"] is False
 
@@ -50,7 +51,7 @@ def test_csrf_token_validation():
 
 
 if __name__ == "__main__":
-    test_capabilities_default_off()
+    test_capabilities_default_on()
     test_unauthenticated_me()
     test_csrf_token_validation()
     print("ALL AUTH & SESSIONS TESTS PASSED!")

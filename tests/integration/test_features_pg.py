@@ -18,12 +18,25 @@ from tests.helpers.reauthentication import MutationRequest, RequestAuthorization
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_default_off_profile_capabilities_and_404_pg(
+async def test_fresh_install_capabilities_are_default_on_pg(pg_client: httpx.AsyncClient):
+    """No MFA environment variables: all three capabilities are available."""
+    response = await pg_client.get("/api/v1/auth/capabilities")
+    assert response.status_code == 200
+    caps = response.json()
+    assert caps["totp_enabled"] is True
+    assert caps["passkey_enabled"] is True
+    assert caps["recovery_codes_enabled"] is True
+    assert caps["email_verification_enabled"] is True
+    assert caps["admin_mfa_required"] is True
+
+
+@pytest.mark.postgres
+@pytest.mark.asyncio
+async def test_explicitly_disabled_profile_capabilities_and_404_pg(
     pg_session: AsyncSession, pg_client: httpx.AsyncClient
 ):
     """
-    QA-08, SEC-FLAG-01, SEC-FLAG-02: Три отложенных фактора выключены.
-    Прямые вызовы эндпоинтов MFA возвращают 404 feature_disabled.
+    Explicitly-disabled profile: три фактора выключены, direct API даёт 404.
     """
 
     def _get_default_off_settings() -> Settings:
@@ -33,6 +46,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
         overridden.FEATURE_PASSKEY_ENABLED = False
         overridden.FEATURE_RECOVERY_CODES_ENABLED = False
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
+        overridden.REQUIRE_ADMIN_MFA = False
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden
 
@@ -45,6 +59,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
         assert caps["totp_enabled"] is False
         assert caps["passkey_enabled"] is False
         assert caps["recovery_codes_enabled"] is False
+        assert caps["admin_mfa_required"] is False
         assert caps["email_verification_enabled"] is True
 
         # 2. Создаем пользователя и входим
@@ -104,7 +119,7 @@ async def test_default_off_profile_capabilities_and_404_pg(
 
 @pytest.mark.postgres
 @pytest.mark.asyncio
-async def test_default_off_no_silent_bypass_pg(
+async def test_disabled_factor_does_not_allow_password_only_bypass_pg(
     pg_session: AsyncSession, pg_client: httpx.AsyncClient
 ):
     """
@@ -112,50 +127,63 @@ async def test_default_off_no_silent_bypass_pg(
     Если у пользователя в БД есть настроенный MFA фактор (TOTP), но на сервере флаг выключен:
     вход по одному только паролю строго блокируется (login_blocked_mfa_disabled), обход запрещен.
     """
+
     # 1. Создаем пользователя
-    code, _ = await execute_bootstrap(
-        session=pg_session,
-        username="mfa_legacy_user",
-        email="legacy@alxprgs.tech",
-        password="LegacyPassword2026!",
-        registration_mode="closed",
-    )
-    assert code == 0
+    def _get_disabled_settings() -> Settings:
+        current = get_settings()
+        overridden = copy.copy(current)
+        overridden.FEATURE_TOTP_ENABLED = False
+        overridden.FEATURE_PASSKEY_ENABLED = False
+        overridden.FEATURE_RECOVERY_CODES_ENABLED = False
+        overridden.REQUIRE_ADMIN_MFA = False
+        return overridden
 
-    # Получаем id пользователя
-    u_res = await pg_session.execute(
-        text("SELECT id FROM users WHERE username = 'mfa_legacy_user'")
-    )
-    uid = u_res.scalar_one()
+    app.dependency_overrides[get_settings] = _get_disabled_settings
+    try:
+        code, _ = await execute_bootstrap(
+            session=pg_session,
+            username="mfa_legacy_user",
+            email="legacy@alxprgs.tech",
+            password="LegacyPassword2026!",
+            registration_mode="closed",
+        )
+        assert code == 0
 
-    # 2. Эмулируем запись в totp_credentials с is_confirmed = True
-    await pg_session.execute(
-        text(
-            "INSERT INTO totp_credentials (id, user_id, encrypted_secret, is_confirmed, created_at) "
-            "VALUES (gen_random_uuid(), :uid, 'dummy_encrypted_secret', true, now())"
-        ),
-        {"uid": uid},
-    )
-    await pg_session.commit()
+        # Получаем id пользователя
+        u_res = await pg_session.execute(
+            text("SELECT id FROM users WHERE username = 'mfa_legacy_user'")
+        )
+        uid = u_res.scalar_one()
 
-    # 3. Пользователь пытается войти по паролю в default-профиле (где FEATURE_TOTP_ENABLED=False)
-    # Попытка должна быть ЗАБЛОКИРОВАНА со статусом 401
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "mfa_legacy_user", "password": "LegacyPassword2026!"},
-    )
-    await accept_current_documents(pg_client, login_res)
-    assert login_res.status_code == 401
-    assert "второго фактора" in str(login_res.json())
+        # 2. Эмулируем запись в totp_credentials с is_confirmed = True
+        await pg_session.execute(
+            text(
+                "INSERT INTO totp_credentials (id, user_id, encrypted_secret, is_confirmed, created_at) "
+                "VALUES (gen_random_uuid(), :uid, 'dummy_encrypted_secret', true, now())"
+            ),
+            {"uid": uid},
+        )
+        await pg_session.commit()
 
-    # 4. Проверяем в PostgreSQL запись аудита login_blocked_mfa_disabled
-    audit_res = await pg_session.execute(
-        text(
-            "SELECT event_type FROM audit_events WHERE event_type = 'login_blocked_mfa_disabled' AND user_id = :uid"
-        ),
-        {"uid": uid},
-    )
-    assert audit_res.scalar_one_or_none() is not None
+        # 3. Пользователь пытается войти по паролю в disabled-профиле.
+        login_res = await pg_client.post(
+            "/api/v1/auth/login",
+            json={"username": "mfa_legacy_user", "password": "LegacyPassword2026!"},
+        )
+        await accept_current_documents(pg_client, login_res)
+        assert login_res.status_code == 401
+        assert "второго фактора" in str(login_res.json())
+
+        # 4. Проверяем в PostgreSQL запись аудита login_blocked_mfa_disabled
+        audit_res = await pg_session.execute(
+            text(
+                "SELECT event_type FROM audit_events WHERE event_type = 'login_blocked_mfa_disabled' AND user_id = :uid"
+            ),
+            {"uid": uid},
+        )
+        assert audit_res.scalar_one_or_none() is not None
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.mark.postgres
@@ -280,6 +308,9 @@ async def test_enabled_profile_recovery_codes_dependency_and_burn_pg(
         overridden = copy.copy(current)
         overridden.FEATURE_TOTP_ENABLED = True
         overridden.FEATURE_RECOVERY_CODES_ENABLED = True
+        # This scenario exercises recovery codes for an ordinary account; the
+        # administrator MFA policy is covered by test_admin_mfa_pg.py.
+        overridden.REQUIRE_ADMIN_MFA = False
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings

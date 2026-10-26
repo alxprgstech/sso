@@ -5,6 +5,7 @@ from app.core.rbac import ROLE_ADMIN, ROLE_USER
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.mfa import login_admin_with_mfa_direct
 from tests.helpers.privacy import accept_current_documents
 from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
@@ -208,14 +209,12 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     )
     assert code == 0
 
-    # 2. Логинимся под администратором
-    r_adm_login = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "the_only_admin", "password": "AdminPassword123!"},
+    # 2. Логинимся под администратором и подтверждаем реальную MFA
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "the_only_admin", "AdminPassword123!"
     )
-    await accept_current_documents(pg_client, r_adm_login)
-    adm_csrf = r_adm_login.json()["csrf_token"]
-    admin_id = r_adm_login.json()["user"]["id"]
+    adm_csrf = admin_mfa.headers
+    admin_id = admin_mfa.user_id
 
     # 3. Администратор имеет доступ к /api/v1/admin/users
     r_users = await pg_client.get("/api/v1/admin/users")
@@ -236,7 +235,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
                 "is_superuser": False,
             },
         ),
-        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("AdminPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
     assert r_create.status_code == 201
     normal_id = r_create.json()["id"]
@@ -245,7 +244,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     r_block_admin = await authorized_request(
         pg_client,
         MutationRequest("PATCH", f"/api/v1/admin/users/{admin_id}", json_body={"is_active": False}),
-        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("AdminPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
     assert r_block_admin.status_code == 403
     assert "последнего" in str(r_block_admin.json())
@@ -256,7 +255,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
         MutationRequest(
             "PATCH", f"/api/v1/admin/users/{admin_id}", json_body={"is_superuser": False}
         ),
-        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("AdminPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
     assert r_demote_admin.status_code == 403
 
@@ -266,7 +265,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
         MutationRequest(
             "PATCH", f"/api/v1/admin/users/{normal_id}", json_body={"is_active": False}
         ),
-        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("AdminPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
     assert r_block_user.status_code == 200
     assert r_block_user.json()["is_active"] is False
@@ -276,7 +275,7 @@ async def test_admin_rbac_and_last_admin_protection_pg(
     await authorized_request(
         pg_client,
         MutationRequest("PATCH", f"/api/v1/admin/users/{normal_id}", json_body={"is_active": True}),
-        RequestAuthorization("AdminPassword123!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("AdminPassword123!", adm_csrf, factor=admin_mfa.factor),
     )
 
     transport = httpx.ASGITransport(app=pg_client._transport.app)

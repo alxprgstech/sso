@@ -127,6 +127,61 @@ def test_existing_configuration_is_never_regenerated(tmp_path, monkeypatch):
     assert config.read_bytes() == before
 
 
+def test_new_configuration_enables_mfa_and_admin_policy(tmp_path, monkeypatch):
+    config = tmp_path / "runtime.env"
+    monkeypatch.setattr(ctl, "CONFIG", config)
+    monkeypatch.setattr(ctl.getpass, "getpass", lambda _: "re_" + secrets.token_hex(16))
+    monkeypatch.setattr(ctl, "run", lambda *a, **k: b"synthetic-private-key-material")
+    ctl.configure()
+    values = ctl.settings()
+    assert values["FEATURE_TOTP_ENABLED"] == "true"
+    assert values["FEATURE_PASSKEY_ENABLED"] == "true"
+    assert values["FEATURE_RECOVERY_CODES_ENABLED"] == "true"
+    assert values["REQUIRE_ADMIN_MFA"] == "true"
+    assert values["WEBAUTHN_ORIGIN"] == "https://auth.alxprgs.tech"
+    assert values["WEBAUTHN_RP_ID"] == "auth.alxprgs.tech"
+
+
+def test_enable_mfa_is_targeted_and_preserves_existing_configuration(tmp_path, monkeypatch, capsys):
+    config = tmp_path / "runtime.env"
+    secret = secrets.token_hex(24)
+    config.write_text(
+        "# operator comment\n"
+        f"RESEND_API_KEY={json.dumps(secret)}\n"
+        'FEATURE_TOTP_ENABLED="false"\n'
+        'FEATURE_PASSKEY_ENABLED="false"\n'
+        'FEATURE_RECOVERY_CODES_ENABLED="false"\n'
+        'CUSTOM_SETTING="preserve-me"\n'
+    )
+    monkeypatch.setattr(ctl, "CONFIG", config)
+    original = config.read_bytes()
+    ctl.enable_mfa()
+    values = ctl.settings()
+    assert values["FEATURE_TOTP_ENABLED"] == "true"
+    assert values["FEATURE_PASSKEY_ENABLED"] == "true"
+    assert values["FEATURE_RECOVERY_CODES_ENABLED"] == "true"
+    assert values["REQUIRE_ADMIN_MFA"] == "true"
+    assert values["RESEND_API_KEY"] == secret
+    assert values["CUSTOM_SETTING"] == "preserve-me"
+    assert "# operator comment" in config.read_text()
+    backups = list(tmp_path.glob("runtime.env.bak-*"))
+    assert len(backups) == 1 and backups[0].read_bytes() == original
+    output = capsys.readouterr()
+    assert secret not in output.out + output.err
+
+
+def test_mfa_status_reports_absent_keys_and_never_prints_secrets(tmp_path, monkeypatch, capsys):
+    config = tmp_path / "runtime.env"
+    secret = secrets.token_hex(24)
+    config.write_text(f'RESEND_API_KEY={json.dumps(secret)}\nFEATURE_TOTP_ENABLED="false"\n')
+    monkeypatch.setattr(ctl, "CONFIG", config)
+    ctl.mfa_status()
+    output = capsys.readouterr()
+    assert "FEATURE_TOTP_ENABLED=false [explicit]" in output.out
+    assert "FEATURE_PASSKEY_ENABLED=true [absent (code default)]" in output.out
+    assert secret not in output.out + output.err
+
+
 def test_compose_does_not_expose_owner_or_migration_password(tmp_path, monkeypatch):
     config = tmp_path / "runtime.env"
     values = {

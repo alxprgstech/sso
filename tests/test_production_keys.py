@@ -100,14 +100,15 @@ def test_production_rejects_unsafe_config(production_values, field, value):
         Settings(**production_values)
 
 
-def test_defaults_remain_development_and_mfa_off(monkeypatch):
+def test_defaults_remain_development_and_mfa_on(monkeypatch):
     for name in Settings.model_fields:
         monkeypatch.delenv(name, raising=False)
     settings = Settings(_env_file=None)
     assert settings.ENVIRONMENT == "development"
-    assert not settings.FEATURE_TOTP_ENABLED
-    assert not settings.FEATURE_PASSKEY_ENABLED
-    assert not settings.FEATURE_RECOVERY_CODES_ENABLED
+    assert settings.FEATURE_TOTP_ENABLED
+    assert settings.FEATURE_PASSKEY_ENABLED
+    assert settings.FEATURE_RECOVERY_CODES_ENABLED
+    assert settings.REQUIRE_ADMIN_MFA
     assert settings.FEATURE_EMAIL_VERIFICATION_ENABLED
 
 

@@ -24,6 +24,7 @@ def test_email_capabilities_require_verified_login(monkeypatch):
         "passkey_enabled": False,
         "totp_enabled": False,
         "recovery_codes_enabled": False,
+        "admin_mfa_required": False,
         "email_verification_enabled": True,
         "require_verified_email": False,
     }
@@ -185,6 +186,7 @@ def test_preflight_capabilities_mismatch_fail_fast():
             "passkey_enabled": False,
             "totp_enabled": False,
             "recovery_codes_enabled": False,
+            "admin_mfa_required": False,
             "email_verification_enabled": True,
         }
     }
@@ -483,6 +485,7 @@ def test_browser_campaign_fails_closed_and_cleans_up(failure_stage, monkeypatch)
     assert len(cleanups) == 1
     assert len(calls) == failure_stage + 1
     assert calls[0][1]["FEATURE_PASSKEY_ENABLED"] == "false"
+    assert calls[0][1]["REQUIRE_ADMIN_MFA"] == "false"
     if failure_stage >= 3:
         browser_command = calls[3][0]
         assert "e2e/appearance.spec.ts" in browser_command
@@ -495,7 +498,9 @@ def test_browser_campaign_profiles_preserve_flags_and_required_suites():
     profiles = browser_profiles("all", {"SMTP_HOST": "127.0.0.1"})
     assert [profile.name for profile in profiles] == ["default-off", "enabled"]
     assert profiles[0].env["FEATURE_TOTP_ENABLED"] == "false"
+    assert profiles[0].env["REQUIRE_ADMIN_MFA"] == "false"
     assert profiles[1].env["FEATURE_TOTP_ENABLED"] == "true"
+    assert profiles[1].env["REQUIRE_ADMIN_MFA"] == "true"
     for profile in profiles:
         assert profile.env["FEATURE_EMAIL_VERIFICATION_ENABLED"] == "true"
         assert profile.env["SMTP_HOST"] == "127.0.0.1"

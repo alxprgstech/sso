@@ -20,10 +20,11 @@ from app.core.security import (
 
 def test_core_security() -> None:
     s = Settings.model_construct()
-    assert s.FEATURE_TOTP_ENABLED is False
-    assert s.FEATURE_PASSKEY_ENABLED is False
-    assert s.FEATURE_RECOVERY_CODES_ENABLED is False
+    assert s.FEATURE_TOTP_ENABLED is True
+    assert s.FEATURE_PASSKEY_ENABLED is True
+    assert s.FEATURE_RECOVERY_CODES_ENABLED is True
     assert s.FEATURE_EMAIL_VERIFICATION_ENABLED is True
+    assert s.REQUIRE_ADMIN_MFA is True
     assert s.REQUIRE_VERIFIED_EMAIL is False
 
     h = hash_password("TestPassword123!")

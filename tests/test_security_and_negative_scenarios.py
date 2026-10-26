@@ -199,6 +199,7 @@ def test_deferred_features_return_404_when_disabled():
         overridden.FEATURE_TOTP_ENABLED = False
         overridden.FEATURE_PASSKEY_ENABLED = False
         overridden.FEATURE_RECOVERY_CODES_ENABLED = False
+        overridden.REQUIRE_ADMIN_MFA = False
         overridden.FEATURE_EMAIL_VERIFICATION_ENABLED = True
         overridden.REQUIRE_VERIFIED_EMAIL = False
         return overridden

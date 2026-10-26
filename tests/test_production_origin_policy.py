@@ -18,6 +18,7 @@ def test_cors_production_does_not_trust_local_origins(production_values):  # noq
         FEATURE_TOTP_ENABLED="false",
         FEATURE_PASSKEY_ENABLED="false",
         FEATURE_RECOVERY_CODES_ENABLED="false",
+        REQUIRE_ADMIN_MFA="false",
         FEATURE_EMAIL_VERIFICATION_ENABLED="true",
         SENTRY_ENABLED="false",
         SENTRY_FRONTEND_ENABLED="false",

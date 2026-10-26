@@ -16,6 +16,7 @@ from app.services import registration_service
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.helpers.mfa import login_admin_with_mfa_direct
 from tests.helpers.privacy import accept_current_documents
 from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
@@ -48,14 +49,11 @@ async def test_concurrent_auth_code_redemption_pg(
     )
     user_id = user_row.scalar_one()
 
-    # 2. Логинимся как админ и регистрируем confidential клиента
-    login_res = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "code_race_user", "password": "RacePassword2026!"},
+    # 2. Логинимся как админ с реальной MFA и регистрируем confidential клиента
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "code_race_user", "RacePassword2026!"
     )
-    await accept_current_documents(pg_client, login_res)
-    assert login_res.status_code == 200
-    adm_csrf = login_res.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     client_reg = await authorized_request(
         pg_client,
@@ -68,7 +66,7 @@ async def test_concurrent_auth_code_redemption_pg(
                 "redirect_uris": ["http://localhost:8081/callback"],
             },
         ),
-        RequestAuthorization("RacePassword2026!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("RacePassword2026!", adm_csrf, factor=admin_mfa.factor),
     )
     assert client_reg.status_code == 201
     c_data = client_reg.json()
@@ -95,10 +93,12 @@ async def test_concurrent_auth_code_redemption_pg(
         text(
             "INSERT INTO authorization_codes ("
             "  id, code_hash, client_id, user_id, redirect_uri, scope, "
-            "  code_challenge, code_challenge_method, expires_at, is_used, created_at, auth_time"
+            "  code_challenge, code_challenge_method, expires_at, is_used, created_at, auth_time, "
+            "  security_revision, mfa_verified, amr"
             ") VALUES ("
             "  gen_random_uuid(), :ch, :cid, :uid, 'http://localhost:8081/callback', 'openid profile email', "
-            "  :chal, 'S256', now() + interval '5 minutes', false, now(), now()"
+            "  :chal, 'S256', now() + interval '5 minutes', false, now(), now(), "
+            "  (SELECT security_revision FROM users WHERE id = :uid), true, 'pwd hwk'"
             ")"
         ),
         {
@@ -242,6 +242,8 @@ async def test_concurrent_recovery_code_burn_pg(
         overridden = copy.copy(current)
         overridden.FEATURE_TOTP_ENABLED = True
         overridden.FEATURE_RECOVERY_CODES_ENABLED = True
+        # Recovery-code burn concurrency is independent of admin onboarding.
+        overridden.REQUIRE_ADMIN_MFA = False
         return overridden
 
     app.dependency_overrides[get_settings] = _get_enabled_settings
@@ -363,14 +365,11 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
     )
     user_id = user_row.scalar_one()
 
-    # 2. Входим как админ и регистрируем клиента
-    login_adm = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "rt_race_user", "password": "RtRacePassword2026!"},
+    # 2. Входим как админ с MFA и регистрируем клиента
+    admin_mfa = await login_admin_with_mfa_direct(
+        pg_session, pg_client, "rt_race_user", "RtRacePassword2026!"
     )
-    await accept_current_documents(pg_client, login_adm)
-    assert login_adm.status_code == 200
-    adm_csrf = login_adm.json()["csrf_token"]
+    adm_csrf = admin_mfa.headers
 
     client_reg = await authorized_request(
         pg_client,
@@ -383,7 +382,7 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
                 "redirect_uris": ["http://localhost:8081/callback"],
             },
         ),
-        RequestAuthorization("RtRacePassword2026!", {"X-CSRF-Token": adm_csrf}),
+        RequestAuthorization("RtRacePassword2026!", adm_csrf, factor=admin_mfa.factor),
     )
     c_data = client_reg.json()
     client_id = c_data["client_id"]
@@ -404,10 +403,11 @@ async def test_concurrent_refresh_token_rotation_and_replay_pg(
         text(
             "INSERT INTO refresh_tokens ("
             "  id, token_hash, client_id, user_id, scope, family_id, "
-            "  expires_at, is_revoked, created_at, auth_time"
+            "  expires_at, is_revoked, created_at, auth_time, security_revision, mfa_verified, amr"
             ") VALUES ("
             "  gen_random_uuid(), :th, :cid, :uid, 'openid profile', :fid, "
-            "  now() + interval '7 days', false, now(), now()"
+            "  now() + interval '7 days', false, now(), now(), "
+            "  (SELECT security_revision FROM users WHERE id = :uid), true, 'pwd hwk'"
             ")"
         ),
         {

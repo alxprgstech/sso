@@ -11,7 +11,7 @@ from app.models.user import Role, User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.helpers.privacy import accept_current_documents
+from tests.helpers.mfa import login_admin_with_mfa_direct
 from tests.helpers.reauthentication import MutationRequest, RequestAuthorization, authorized_request
 
 
@@ -70,13 +70,8 @@ async def test_status_counts_and_audit_export_pg(
     denied = await pg_client.get("/api/v1/admin/audit/export?format=jsonl")
     assert denied.status_code == 401
 
-    login = await pg_client.post(
-        "/api/v1/auth/login",
-        json={"username": "status_admin", "password": password},
-    )
-    await accept_current_documents(pg_client, login)
-    assert login.status_code == 200
-    csrf = login.json()["csrf_token"]
+    admin_mfa = await login_admin_with_mfa_direct(pg_session, pg_client, "status_admin", password)
+    csrf = admin_mfa.headers
 
     status = await pg_client.get("/api/v1/admin/system/status")
     assert status.status_code == 200
@@ -90,7 +85,7 @@ async def test_status_counts_and_audit_export_pg(
             "/api/v1/admin/system/registration-mode",
             json_body={"mode": "open", "current_admin_password": password},
         ),
-        RequestAuthorization(password, {"X-CSRF-Token": csrf}),
+        RequestAuthorization(password, csrf, factor=admin_mfa.factor),
     )
     assert changed.status_code == 200
     assert changed.json()["total_users"] == 5

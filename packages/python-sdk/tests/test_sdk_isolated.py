@@ -158,6 +158,45 @@ def test_sdk_token_validation_with_jwks_isolated():
         assert "ID Token" in str(exc_info.value)
 
 
+def test_sdk_accepts_assurance_claims_without_upgrading_privileges():
+    """Signed amr/acr are compatible; roles remain the only role evidence."""
+    private_key, jwks, kid = _generate_test_jwks_and_key()
+    client = SSOClient(server_url="https://auth.alxprgs.tech", client_id="assurance_client")
+    with patch.object(client, "get_jwks", return_value=jwks):
+        user_id = str(uuid.uuid4())
+        password_only = _create_signed_jwt(
+            {
+                "sub": user_id,
+                "roles": ["user"],
+                "token_use": "access_token",
+                "aud": "assurance_client",
+                "amr": ["pwd"],
+                "acr": "urn:alxprgs:acr:pwd",
+            },
+            private_key=private_key,
+            kid=kid,
+            expires_in_seconds=300,
+        )
+        claims = client.verify_access_token(password_only)
+        assert claims.roles == ["user"]
+        assert not getattr(claims, "mfa_verified", False)
+
+        assured_admin = _create_signed_jwt(
+            {
+                "sub": user_id,
+                "roles": ["admin", "user"],
+                "token_use": "access_token",
+                "aud": "assurance_client",
+                "amr": ["pwd", "hwk"],
+                "acr": "urn:alxprgs:acr:mfa",
+            },
+            private_key=private_key,
+            kid=kid,
+            expires_in_seconds=300,
+        )
+        assert client.verify_access_token(assured_admin).roles == ["admin", "user"]
+
+
 def test_sdk_fastapi_security_dependency_isolated():
     """
     QA-12, SDK-03: Тестирование интеграции с FastAPI (get_current_user, require_role).
