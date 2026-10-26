@@ -4,8 +4,11 @@ import base64
 import hashlib
 import ipaddress
 import json
+import re
 import secrets
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
@@ -18,10 +21,33 @@ from alxprgs_sso.exceptions import (
     ConfigurationError,
     InvalidTokenError,
     SSOError,
+    StepUpAuthenticationError,
+    StepUpBindingError,
+    StepUpExpiredError,
+    StepUpPolicyError,
+    StepUpRejectedError,
+    StepUpReplayError,
+    StepUpUnavailableError,
     TokenExpiredError,
 )
-from alxprgs_sso.models import TokenResponse, UserClaims, WebSessionInfo
+from alxprgs_sso.models import (
+    StepUpProof,
+    StepUpProofClaims,
+    StepUpRequest,
+    TokenResponse,
+    UserClaims,
+    WebSessionInfo,
+)
 from alxprgs_sso.token_profiles import validate_claims
+
+STEP_UP_ASSURANCE = {
+    "reauth_basic": ({"pwd"}, {"hwk"}),
+    "reauth_mfa": ({"hwk"}, {"pwd", "otp"}),
+    "reauth_strict": ({"pwd", "hwk"},),
+    "reauth_password_mfa": ({"pwd", "otp"}, {"pwd", "hwk"}),
+}
+STEP_UP_ACTIONS = re.compile(r"^[a-z0-9][a-z0-9_.:-]{0,63}$")
+PAYLOAD_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 class SSOClient:
@@ -203,6 +229,40 @@ class SSOClient:
         if not signing_key:
             raise InvalidTokenError("Ключ подписи с указанным kid не найден в JWKS сервера")
         return signing_key
+
+    async def _get_signing_key_async(self, token_or_header: str | dict[str, Any]) -> Any:
+        """Async variant used by the transaction proof flow."""
+        if isinstance(token_or_header, str):
+            if len(token_or_header) > 16384:
+                raise InvalidTokenError("Превышен допустимый размер JWT")
+            try:
+                unverified_header = jwt.get_unverified_header(token_or_header)
+            except Exception:
+                raise InvalidTokenError("Некорректный заголовок JWT") from None
+        else:
+            unverified_header = token_or_header
+        kid = unverified_header.get("kid")
+        if (
+            not isinstance(kid, str)
+            or not 1 <= len(kid) <= 128
+            or unverified_header.get("alg") != "RS256"
+        ):
+            raise InvalidTokenError("В заголовке JWT отсутствует обязательный kid")
+        jwks_data = await self.get_jwks_async()
+        signing_key = self._signing_key_by_id(jwks_data, kid)
+        if signing_key is None:
+            jwks_data = await self.get_jwks_async(force_refresh=True)
+            signing_key = self._signing_key_by_id(jwks_data, kid)
+        if signing_key is None:
+            raise InvalidTokenError("Ключ подписи с указанным kid не найден в JWKS сервера")
+        return signing_key
+
+    def _signing_key_by_id(self, data: dict[str, Any], kid: str) -> Any | None:
+        jwk_set = self._parse_jwks(data)
+        for key in jwk_set.keys:
+            if key.key_id == kid:
+                return key
+        return None
 
     @staticmethod
     def _parse_jwks(data: dict[str, Any]) -> PyJWKSet:
@@ -562,3 +622,302 @@ class SSOClient:
         async with httpx.AsyncClient(verify=True, timeout=10.0) as client:
             resp = await client.post(revoke_url, data=data)
             return resp.status_code == 200
+
+    # --------------------------------------------------------------------------
+    # Cross-application transaction step-up (external hosted confirmation)
+    # --------------------------------------------------------------------------
+
+    def _require_confidential_for_step_up(self) -> None:
+        if not self.client_secret:
+            raise ConfigurationError(
+                "Для внешнего step-up требуется confidential client с client_secret"
+            )
+
+    @staticmethod
+    def _step_up_error(status_code: int, payload: dict[str, Any]) -> Exception:
+        error = payload.get("error")
+        error = error if isinstance(error, str) else "request_rejected"
+        details = {"status": status_code, "error": error}
+        if error in {"proof_replayed"}:
+            return StepUpReplayError("Подтверждение уже использовано", details)
+        if error in {"step_up_expired", "proof_expired"}:
+            return StepUpExpiredError("Срок действия подтверждения истёк", details)
+        if error in {"step_up_not_enabled", "feature_disabled", "step_up_client_inactive"}:
+            return StepUpUnavailableError("Внешнее подтверждение недоступно", details)
+        if error in {
+            "step_up_policy_denied",
+            "assurance_unavailable",
+            "step_up_factor_unavailable",
+            "step_up_method_not_allowed",
+        }:
+            return StepUpPolicyError("Сервер не разрешает выбранный способ", details)
+        if status_code == 401:
+            return StepUpAuthenticationError("Клиент или сессия не прошли проверку", details)
+        if status_code == 404:
+            return StepUpUnavailableError("Внешнее подтверждение недоступно", details)
+        if status_code == 410:
+            return StepUpExpiredError("Срок действия подтверждения истёк", details)
+        return StepUpRejectedError("Подтверждение отклонено", details)
+
+    @staticmethod
+    def _step_up_json(response: httpx.Response) -> dict[str, Any]:
+        if len(response.content) > 65536:
+            raise StepUpRejectedError("Слишком большой ответ step-up")
+        try:
+            payload = response.json()
+        except ValueError:
+            raise StepUpRejectedError("Некорректный ответ step-up") from None
+        if not isinstance(payload, dict):
+            raise StepUpRejectedError("Некорректный ответ step-up")
+        return payload
+
+    async def create_step_up_request(
+        self,
+        *,
+        action: str,
+        payload_hash: str,
+        subject: str,
+        assurance: str,
+        redirect_uri: str,
+        description: str,
+        ttl_seconds: int = 300,
+        state: str | None = None,
+        nonce: str | None = None,
+    ) -> StepUpRequest:
+        """Create a server-owned challenge for one exact sensitive action.
+
+        The caller must persist the returned ``StepUpRequest`` server-side until
+        the browser returns.  It contains the PKCE verifier, state and nonce.
+        """
+        self._require_confidential_for_step_up()
+        if not STEP_UP_ACTIONS.fullmatch(action):
+            raise ConfigurationError("Недопустимый идентификатор действия")
+        if not PAYLOAD_HASH.fullmatch(payload_hash):
+            raise ConfigurationError("payload_hash должен быть SHA-256 hex")
+        try:
+            subject_value = str(uuid.UUID(subject))
+        except (ValueError, AttributeError, TypeError):
+            raise ConfigurationError("subject должен быть UUID") from None
+        if assurance not in STEP_UP_ASSURANCE:
+            raise ConfigurationError("Недопустимый уровень подтверждения")
+        if type(ttl_seconds) is not int or not 30 <= ttl_seconds <= 300:
+            raise ConfigurationError("ttl_seconds должен быть от 30 до 300")
+        if (
+            not description
+            or len(description) > 280
+            or any(ord(character) < 32 or ord(character) == 127 for character in description)
+            or "<" in description
+            or ">" in description
+        ):
+            raise ConfigurationError("Описание действия должно быть безопасным текстом")
+        if not redirect_uri or len(redirect_uri) > 512:
+            raise ConfigurationError("Некорректный redirect_uri")
+
+        actual_state = state or secrets.token_urlsafe(24)
+        actual_nonce = nonce or secrets.token_urlsafe(24)
+        if not 16 <= len(actual_state) <= 128 or not re.fullmatch(
+            r"[A-Za-z0-9._~-]+", actual_state
+        ):
+            raise ConfigurationError("state должен содержать 16-128 безопасных символов")
+        if not 16 <= len(actual_nonce) <= 128 or not re.fullmatch(
+            r"[A-Za-z0-9._~-]+", actual_nonce
+        ):
+            raise ConfigurationError("nonce должен содержать 16-128 безопасных символов")
+
+        code_verifier = secrets.token_urlsafe(64)[:96]
+        digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+        code_challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+        body = {
+            "subject": subject_value,
+            "action": action,
+            "payload_hash": payload_hash,
+            "description": description,
+            "assurance": assurance,
+            "redirect_uri": redirect_uri,
+            "state": actual_state,
+            "nonce": actual_nonce,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "ttl_seconds": ttl_seconds,
+        }
+        try:
+            async with httpx.AsyncClient(verify=True, timeout=15.0) as client:
+                response = await client.post(
+                    f"{self.server_url}/api/v1/step-up/requests",
+                    auth=(self.client_id, self.client_secret or ""),
+                    json=body,
+                )
+        except httpx.HTTPError as error:
+            raise SSOError("Не удалось создать step-up запрос") from error
+        data = self._step_up_json(response)
+        if response.status_code not in {200, 201}:
+            raise self._step_up_error(response.status_code, data)
+        return StepUpRequest(
+            **data,
+            redirect_uri=redirect_uri,
+            state=actual_state,
+            nonce=actual_nonce,
+            code_verifier=code_verifier,
+        )
+
+    def build_step_up_url(self, request: StepUpRequest, redirect_uri: str | None = None) -> str:
+        """Return the trusted SSO-hosted confirmation URL."""
+        if redirect_uri is not None and redirect_uri != request.redirect_uri:
+            raise ConfigurationError("redirect_uri не совпадает с созданным запросом")
+        return request.authorization_url
+
+    async def consume_step_up_proof(
+        self,
+        *,
+        code: str,
+        request: StepUpRequest,
+        state: str,
+        expected_action: str | None = None,
+        expected_payload_hash: str | None = None,
+        expected_subject: str,
+        expected_assurance: str | None = None,
+    ) -> StepUpProof:
+        """Redeem one proof and verify the returned transaction-bound JWT.
+
+        Server-side redemption supplies one-time semantics.  Local JWT checks
+        additionally prove issuer, audience, subject, action, payload, nonce and
+        assurance before the caller performs the action.
+        """
+        self._require_confidential_for_step_up()
+        if not isinstance(request, StepUpRequest):
+            raise ConfigurationError("Для redemption требуется сохранённый StepUpRequest")
+        if not state or not secrets.compare_digest(state, request.state):
+            raise StepUpBindingError("state не совпадает с исходным запросом")
+        if request.expires_at <= datetime.now(timezone.utc):
+            raise StepUpExpiredError("Срок действия запроса истёк")
+        target_action = expected_action or request.action
+        target_payload = expected_payload_hash or request.payload_hash
+        target_assurance = expected_assurance or request.assurance
+        if target_assurance not in STEP_UP_ASSURANCE:
+            raise ConfigurationError("Недопустимый ожидаемый уровень подтверждения")
+        if target_action != request.action or target_payload != request.payload_hash:
+            raise StepUpBindingError("Ожидаемая операция не совпадает с запросом")
+        if target_assurance != request.assurance:
+            raise StepUpBindingError("Уровень подтверждения не совпадает с запросом")
+        body = {
+            "code": code,
+            "code_verifier": request.code_verifier,
+            "redirect_uri": request.redirect_uri,
+        }
+        try:
+            async with httpx.AsyncClient(verify=True, timeout=15.0) as client:
+                response = await client.post(
+                    f"{self.server_url}/api/v1/step-up/redeem",
+                    auth=(self.client_id, self.client_secret or ""),
+                    json=body,
+                )
+        except httpx.HTTPError as error:
+            raise SSOError("Не удалось погасить step-up proof") from error
+        data = self._step_up_json(response)
+        if response.status_code != 200:
+            raise self._step_up_error(response.status_code, data)
+        proof = data.get("proof")
+        if not isinstance(proof, str) or not proof:
+            raise StepUpRejectedError("Сервер не вернул step-up proof")
+        claims = await self._verify_step_up_proof(
+            proof,
+            request=request,
+            expected_subject=expected_subject,
+            expected_action=target_action,
+            expected_payload_hash=target_payload,
+            expected_assurance=target_assurance,
+        )
+        return StepUpProof(proof=proof, claims=claims)
+
+    async def _verify_step_up_proof(
+        self,
+        proof: str,
+        *,
+        request: StepUpRequest,
+        expected_subject: str,
+        expected_action: str,
+        expected_payload_hash: str,
+        expected_assurance: str,
+    ) -> StepUpProofClaims:
+        signing_key = await self._get_signing_key_async(proof)
+        target_issuer = self.expected_issuer or self.server_url
+        decode_options: Any = {
+            "verify_signature": True,
+            "verify_exp": True,
+            "verify_nbf": True,
+            "verify_iat": True,
+            "verify_aud": True,
+            "verify_iss": True,
+            "require": [
+                "exp",
+                "iat",
+                "sub",
+                "aud",
+                "iss",
+                "token_use",
+                "transaction_id",
+                "action",
+                "payload_hash",
+                "acr",
+                "amr",
+                "nonce",
+                "auth_time",
+                "security_revision",
+                "jti",
+            ],
+        }
+        try:
+            payload = jwt.decode(
+                proof,
+                signing_key.key,
+                algorithms=["RS256"],
+                options=decode_options,
+                audience=self.client_id,
+                issuer=target_issuer,
+            )
+        except jwt.ExpiredSignatureError:
+            raise StepUpExpiredError("Срок действия step-up proof истёк") from None
+        except (jwt.InvalidTokenError, ValueError, TypeError):
+            raise StepUpBindingError("Недействительный step-up proof") from None
+
+        if payload.get("token_use") != "external_step_up_proof":
+            raise StepUpBindingError("Неверный token_use step-up proof")
+        if payload.get("aud") != self.client_id:
+            raise StepUpBindingError("Неверная audience step-up proof")
+        if payload.get("sub") != str(expected_subject):
+            raise StepUpBindingError("Подтверждение относится к другому subject")
+        if payload.get("action") != expected_action:
+            raise StepUpBindingError("Подтверждение относится к другому действию")
+        if payload.get("payload_hash") != expected_payload_hash:
+            raise StepUpBindingError("Payload изменился после подтверждения")
+        if payload.get("acr") != expected_assurance:
+            raise StepUpBindingError("Уровень подтверждения не совпадает")
+        if not isinstance(payload.get("nonce"), str) or not secrets.compare_digest(
+            payload["nonce"], request.nonce
+        ):
+            raise StepUpBindingError("nonce не совпадает с запросом")
+        if not isinstance(payload.get("transaction_id"), str) or not payload["transaction_id"]:
+            raise StepUpBindingError("Отсутствует transaction_id")
+        if type(payload.get("security_revision")) is not int or payload["security_revision"] < 0:
+            raise StepUpBindingError("Некорректная security revision")
+        if type(payload.get("auth_time")) is not int:
+            raise StepUpBindingError("Некорректный auth_time")
+        if payload["auth_time"] > payload.get("iat", 0):
+            raise StepUpBindingError("auth_time позже выдачи proof")
+        if int(time.time()) - payload["auth_time"] > 300:
+            raise StepUpExpiredError("Подтверждение слишком старое")
+        amr = payload.get("amr")
+        if (
+            not isinstance(amr, list)
+            or not amr
+            or len(amr) > 3
+            or len(set(amr)) != len(amr)
+            or any(method not in {"pwd", "otp", "hwk"} for method in amr)
+        ):
+            raise StepUpBindingError("Некорректный amr")
+        if not any(set(amr) == required for required in STEP_UP_ASSURANCE[expected_assurance]):
+            raise StepUpBindingError("Факторы не соответствуют уровню подтверждения")
+        try:
+            return StepUpProofClaims.model_validate(payload)
+        except Exception:
+            raise StepUpBindingError("Некорректные claims step-up proof") from None
