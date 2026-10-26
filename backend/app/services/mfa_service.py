@@ -405,9 +405,7 @@ class WebAuthnService:
         # Recovery codes must not remain dormant and become valid again after a
         # later factor enrolment once the account has no active factor.
         remaining = await db.scalar(
-            select(func.count(WebAuthnCredential.id)).where(
-                WebAuthnCredential.user_id == user.id
-            )
+            select(func.count(WebAuthnCredential.id)).where(WebAuthnCredential.user_id == user.id)
         )
         has_totp = bool(user.totp_credential and user.totp_credential.is_confirmed)
         if (remaining or 0) == 0 and not has_totp:

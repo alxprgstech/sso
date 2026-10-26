@@ -267,9 +267,7 @@ async def test_recovery_codes_work_with_passkey_only_pg(
     )
     removed = await authorized_request(
         pg_client,
-        MutationRequest(
-            "DELETE", f"/api/v1/mfa/passkey/credentials/{credential.credential_id}"
-        ),
+        MutationRequest("DELETE", f"/api/v1/mfa/passkey/credentials/{credential.credential_id}"),
         RequestAuthorization(PASSWORD, session_headers, factor=factor),
     )
     assert removed.status_code == 200, removed.json()

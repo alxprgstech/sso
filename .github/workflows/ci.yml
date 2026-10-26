@@ -633,6 +633,7 @@ jobs:
       - name: Seed Synthetic E2E Test Accounts (Default-off Profile)
         env:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          REQUIRE_ADMIN_MFA: "false"
         run: |
           python scripts/prepare_e2e_data.py
 
@@ -697,6 +698,7 @@ jobs:
       - name: Seed Synthetic E2E Test Accounts (Enabled Profile)
         env:
           TEST_DATABASE_URL: postgresql+psycopg://sso_user:sso_test_password@localhost:5432/alxprgs_sso_test
+          REQUIRE_ADMIN_MFA: "true"
         run: |
           python scripts/prepare_e2e_data.py
 

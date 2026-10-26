@@ -217,7 +217,7 @@ async def prepare_e2e_data(*, reset_rate_limits: bool = False) -> None:
         compose_admin = (
             await session.execute(select(User).where(User.username == "compose_admin"))
         ).scalar_one()
-        admin_mfa_enforced = os.environ.get("REQUIRE_ADMIN_MFA", "true").lower() == "true"
+        admin_mfa_enforced = os.environ.get("REQUIRE_ADMIN_MFA", "false").lower() == "true"
         totp = (
             await session.execute(
                 select(TOTPCredential).where(TOTPCredential.user_id == compose_admin.id)
