@@ -14,8 +14,11 @@ concurrency:
   group: production-ec2-deploy
   cancel-in-progress: false
 
+env:
+  DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
 jobs:
-  deploy:
+  build:
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
@@ -23,11 +26,12 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository)
-    env:
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
     runs-on: ubuntu-24.04
-    environment: production
     timeout-minutes: 40
+    outputs:
+      current: ${{ steps.freshness.outputs.current }}
+      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
+      artifact_name: sso-ec2-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout exact deployment revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -67,18 +71,74 @@ jobs:
       - name: Build private transport bundle
         if: steps.freshness.outputs.current == 'true'
         run: python3 scripts/build_ec2_bundle.py --sha "$DEPLOY_SHA" --output sso-ec2.tar.gz
-      - name: Set up transport check Python
+      - name: Save immutable private transport
         if: steps.freshness.outputs.current == 'true'
+        id: bundle
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        with:
+          name: sso-ec2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sso-ec2.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  verify:
+    needs: build
+    if: needs.build.outputs.current == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact deployment revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+      - name: Download this run's immutable transport
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+      - name: Pin classic Docker image store to match the EC2 server
+        run: |
+          # Hosted runners default to the containerd image store, whose image IDs
+          # and docker-save format differ from the EC2 server's classic store.
+          sudo python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("/etc/docker/daemon.json")
+          config = json.loads(path.read_text()) if path.exists() else {}
+          config.setdefault("features", {})["containerd-snapshotter"] = False
+          path.write_text(json.dumps(config, indent=2))
+          PY
+          sudo systemctl restart docker
+          sudo systemctl is-active docker
+      - name: Set up transport check Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Verify the transport to be installed
-        if: steps.freshness.outputs.current == 'true'
         run: |
           python3 -m pip install --require-hashes -r requirements-lock-hashed.txt
           python3 -m scripts.check_ec2_runtime --bundle sso-ec2.tar.gz --sha "$DEPLOY_SHA"
+
+  deploy:
+    needs: [build, verify]
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 40
+    outputs:
+      installed: ${{ steps.install.outputs.installed }}
+    steps:
+      - name: Checkout exact deployment revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+      - name: Download this run's immutable transport
+        uses: actions/download-artifact@cc203385981b70ca67e1cc392babf9cc229d5806
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
       - name: Recheck main and install
-        if: steps.freshness.outputs.current == 'true'
+        id: install
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_SEQUENCE: ${{ github.run_number }}
@@ -94,3 +154,18 @@ jobs:
             exit 0
           fi
           bash deploy/ec2/upload.sh
+          echo 'installed=true' >> "$GITHUB_OUTPUT"
+
+  public-check:
+    needs: deploy
+    if: needs.deploy.outputs.installed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Checkout exact deployment revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+      - name: Check public domain and backend readiness over HTTPS
+        run: python3 scripts/check_public_readiness.py

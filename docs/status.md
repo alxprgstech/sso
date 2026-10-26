@@ -38,3 +38,14 @@ TOTP/Passkey/Recovery доступны по умолчанию; MFA админи
 2026-10-25T19:41:38+0300: найдена первопричина падения CD run 6 на проверке image ID: раннер ubuntu-24.04 использует containerd image store (ID=digest манифеста, docker save=OCI), сервер — классический store (ID=config-digest); backend получил другой ID, PostgreSQL без тега не загрузился. Исправление: pin классического store на раннерах CD/CI, config-digest из парса images.tar, тег alxprgs-sso-postgres, репетиция серверной проверки после load, argv в ошибках ssoctl, ADR-0030; 42 targeted PASS. Пуш в main по прямому указанию владельца запускает CI→CD; live-деплой подтверждается новым CD run.
 
 2026-10-25T20:52:00+0300: первый успешный production-деплой — 69794fb, sequence 11, публичная HTTPS/discovery проверка PASS (auth.alxprgs.tech). Транспорт образов стабилизирован: классический image store закреплён на раннерах CD/CI и на сервере (bootstrap + инструкция). Автоматический CD из push заблокирован красными security-audit job до отдельного обновления зависимостей (undici npm; setuptools/filelock pip; trivy); ручной workflow_dispatch из main работает. Следующий шаг владельца: sudo ssoctl admin и live-приёмка.
+
+## CD-STAGES-01 — in_progress
+2026-10-26T19:06:39+03:00: разделение CD на повторяемые стадии; следующий шаг — workflow, regression tests, документация.
+
+CD-STAGES-01 — done (local), 2026-10-26T19:09:37+03:00: в new/cd-retry-stages подготовлены build → verify → deploy с повторным использованием immutable transport (7 дней). EC2/policy41PASS, Ruff/diffPASS. Push/deploy не выполнялись; live-повтор GitHub Actions ещё не проверен. Продолжение: review и интеграция, новый run использует разделённый workflow.
+
+CD-PUBLIC-CHECK-01 — in_progress, 2026-10-26T19:11:57+03:00: добавление внешнего HTTPS readiness последним job, затем проверка, push и PR.
+
+2026-10-26T19:14:23+03:00 — CD-PUBLIC-CHECK-01 локально done: build → verify → deploy → public-check. Последний job проверяет публичный /health/ready, повторяется без установки. Targeted60PASS/Ruff/diffPASS; реальный HTTPS с рабочей станции PASS. Готовится push/PR; remote CI и selective rerun пока не проверены.
+
+2026-10-26T19:15:37+03:00 — CD-STAGES-01/CD-PUBLIC-CHECK-01: изменения запушены, [PR #34](https://github.com/alxprgstech/sso/pull/34) открыт в main, конфликтов нет по GitHub metadata. Код07f871a;60 targeted PASS и live HTTPS PASS. Merge/deploy не выполнялись; remote CI не оценён.

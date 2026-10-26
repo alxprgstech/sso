@@ -336,7 +336,7 @@ def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
         "workflow_dispatch": {},
         "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]},
     }
-    gate = workflow["jobs"]["deploy"]["if"]
+    gate = workflow["jobs"]["build"]["if"]
     for condition in (
         "conclusion == 'success'",
         "event == 'push'",
@@ -345,21 +345,25 @@ def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
     ):
         assert condition in gate
     assert workflow["concurrency"]["cancel-in-progress"] == "false"
-    steps = workflow["jobs"]["deploy"]["steps"]
+    steps = workflow["jobs"]["build"]["steps"]
     assert steps[0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
-    assert workflow["jobs"]["deploy"]["env"]["DEPLOY_SHA"] == (
+    assert workflow["env"]["DEPLOY_SHA"] == (
         "${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}"
     )
     transport = next(
-        step for step in steps if step["name"] == "Verify the transport to be installed"
+        step
+        for step in workflow["jobs"]["verify"]["steps"]
+        if step["name"] == "Verify the transport to be installed"
     )
     assert "scripts.check_ec2_runtime" in transport["run"]
-    assert transport["if"] == "steps.freshness.outputs.current == 'true'"
-    assert all("continue-on-error" not in step for step in steps)
-    for step in steps:
+    assert workflow["jobs"]["verify"]["if"] == "needs.build.outputs.current == 'true'"
+    all_steps = [step for job in workflow["jobs"].values() for step in job["steps"]]
+    assert all("continue-on-error" not in step for step in all_steps)
+    for step in all_steps:
         if "uses" in step:
             assert __import__("re").search(r"@[a-f0-9]{40}$", step["uses"])
-    assert "latest" in steps[-1]["run"] and "deploy/ec2/upload.sh" in steps[-1]["run"]
+    install = workflow["jobs"]["deploy"]["steps"][-1]["run"]
+    assert "latest" in install and "deploy/ec2/upload.sh" in install
 
 
 @pytest.mark.parametrize(
@@ -380,7 +384,7 @@ def test_cd_event_gate_matrix(event, ref, conclusion, origin, branch, same_repo,
     from types import SimpleNamespace as NS
 
     workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    expression = workflow["jobs"]["deploy"]["if"].replace("&&", "and").replace("||", "or")
+    expression = workflow["jobs"]["build"]["if"].replace("&&", "and").replace("||", "or")
     github = NS(
         event_name=event,
         ref=ref,
@@ -537,7 +541,8 @@ def test_operation_error_names_failing_command_without_child_output(monkeypatch)
 def test_transport_pipeline_pins_classic_docker_image_store():
     pinning = "Pin classic Docker image store to match the EC2 server"
     for path, job, anchor in (
-        (".github/workflows/cd.yml", "deploy", "Build private transport bundle"),
+        (".github/workflows/cd.yml", "build", "Build private transport bundle"),
+        (".github/workflows/cd.yml", "verify", "Verify the transport to be installed"),
         (
             ".github/workflows/ci.yml",
             "verify-cd-template",
@@ -552,3 +557,53 @@ def test_transport_pipeline_pins_classic_docker_image_store():
     bootstrap = (ROOT / "deploy/ec2/bootstrap.sh").read_text()
     assert '["containerd-snapshotter"] = False' in bootstrap
     assert bootstrap.index("containerd-snapshotter") < bootstrap.index("enable --now docker")
+
+
+def test_cd_retry_uses_same_immutable_bundle_and_requires_verification():
+    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"build", "verify", "deploy", "public-check"}
+    assert jobs["verify"]["needs"] == "build"
+    assert jobs["deploy"]["needs"] == ["build", "verify"]
+    assert "if" not in jobs["deploy"]  # Default success() keeps verification mandatory.
+    assert jobs["deploy"]["environment"] == "production"
+    assert all("environment" not in jobs[name] for name in ("build", "verify"))
+    upload = next(step for step in jobs["build"]["steps"] if step.get("id") == "bundle")
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert upload["with"]["retention-days"] == "7"
+    assert "github.run_attempt" in upload["with"]["name"]
+    assert "overwrite" not in upload["with"]
+    assert jobs["build"]["outputs"]["artifact_id"] == "${{ steps.bundle.outputs.artifact-id }}"
+    assert jobs["build"]["outputs"]["artifact_name"] == upload["with"]["name"]
+    for name in ("verify", "deploy"):
+        steps = jobs[name]["steps"]
+        download = next(step for step in steps if "download-artifact@" in step.get("uses", ""))
+        assert download["with"]["name"] == "${{ needs.build.outputs.artifact_name }}"
+        assert "run-id" not in download["with"]  # Only artifacts of this workflow run.
+        assert "pattern" not in download["with"]
+        assert steps[0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
+        assert not any("build_ec2_bundle.py" in step.get("run", "") for step in steps)
+    install = jobs["deploy"]["steps"][-1]
+    assert install["env"]["DEPLOY_SEQUENCE"] == "${{ github.run_number }}"
+    assert 'latest" != "$DEPLOY_SHA' in install["run"]
+    assert "scripts.check_ec2_runtime" in jobs["verify"]["steps"][-1]["run"]
+
+
+def test_public_check_runs_only_after_actual_install_and_can_retry_independently():
+    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
+    deploy = workflow["jobs"]["deploy"]
+    install = deploy["steps"][-1]
+    assert install["id"] == "install"
+    assert deploy["outputs"]["installed"] == "${{ steps.install.outputs.installed }}"
+    assert install["run"].index("exit 0") < install["run"].index("bash deploy/ec2/upload.sh")
+    assert install["run"].index("bash deploy/ec2/upload.sh") < install["run"].index(
+        "installed=true"
+    )
+    check = workflow["jobs"]["public-check"]
+    assert check["needs"] == "deploy"
+    assert check["if"] == "needs.deploy.outputs.installed == 'true'"
+    assert "environment" not in check
+    assert check["steps"][0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
+    assert check["steps"][-1]["run"] == "python3 scripts/check_public_readiness.py"
+    assert "continue-on-error" not in check
+    assert not any("upload.sh" in step.get("run", "") for step in check["steps"])
