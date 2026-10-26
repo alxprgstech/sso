@@ -47,3 +47,5 @@ CD-STAGES-01 — done (local), 2026-10-26T19:09:37+03:00: в new/cd-retry-stages
 CD-PUBLIC-CHECK-01 — in_progress, 2026-10-26T19:11:57+03:00: добавление внешнего HTTPS readiness последним job, затем проверка, push и PR.
 
 2026-10-26T19:14:23+03:00 — CD-PUBLIC-CHECK-01 локально done: build → verify → deploy → public-check. Последний job проверяет публичный /health/ready, повторяется без установки. Targeted60PASS/Ruff/diffPASS; реальный HTTPS с рабочей станции PASS. Готовится push/PR; remote CI и selective rerun пока не проверены.
+
+2026-10-26T19:15:37+03:00 — CD-STAGES-01/CD-PUBLIC-CHECK-01: изменения запушены, [PR #34](https://github.com/alxprgstech/sso/pull/34) открыт в main, конфликтов нет по GitHub metadata. Код07f871a;60 targeted PASS и live HTTPS PASS. Merge/deploy не выполнялись; remote CI не оценён.

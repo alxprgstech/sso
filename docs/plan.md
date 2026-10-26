@@ -213,3 +213,5 @@ CD-STAGES-01 — done (local), 2026-10-26T19:09:37+03:00. Build/verify/deploy и
 Приоритет P1; зависимость CD-STAGES-01. Начало 2026-10-26T19:11:57+03:00; Codex. Добавить финальный отдельный job public-check: HTTPS /health/ready на auth.alxprgs.tech после фактической установки; ошибка делает CD красным, повтор не развёртывает заново. Критерии: positive/negative unit и workflow tests, docs, push всех изменений ветки и PR в main.
 
 CD-PUBLIC-CHECK-01 — done (local), 2026-10-26T19:14:23+03:00. Реализован отдельный public-check после installed=true, HTTPS /health/ready с TLS/HTTP/JSON validation без redirects/retries; добавлен в обязательный CI test suite. EC2/public/backup/workspace:60PASS, Ruff/check/format/diffPASS. Live HTTPS с рабочей станции PASS (200/database connected). Следующий шаг: commit/push/PR; live GitHub scheduler и selective rerun остаются непроверенными.
+
+2026-10-26T19:15:37+03:00 — CD-STAGES-01/CD-PUBLIC-CHECK-01: push и [PR #34](https://github.com/alxprgstech/sso/pull/34) выполнены; критерии текущего запроса закрыты. Новые jobs/selective rerun проверяются после интеграции; merge/deploy не поручены.
