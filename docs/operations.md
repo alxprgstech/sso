@@ -60,10 +60,10 @@ python scripts/rotate_keys.py --kind rsa --output-dir <новый-защищён
 
 Не перезаписывайте `runtime.env` целиком и не перегенерируйте секреты. Порядок:
 
-1. Проверьте фактические значения: `sudo ssoctl.py mfa-status`; отдельно проверьте `/etc/alxprgs-sso/runtime.env`. Если ключи отсутствуют, новый код применит default `true` — это планируемое изменение, а не «сохранение старого режима».
+1. Проверьте фактические значения: `sudo ssoctl mfa-status`; отдельно проверьте `/etc/alxprgs-sso/runtime.env`. Если ключи отсутствуют, новый код применит default `true` — это планируемое изменение, а не «сохранение старого режима».
 2. Перед rollout проверьте администраторов и настроенные факторы (`totp_credentials.is_confirmed`, `webauthn_credentials`); парольный вход без MFA после обновления даст только onboarding. Убедитесь, что владелец может пройти настройку TOTP/Passkey и что email/HTTPS/WebAuthn origin корректны.
 3. Сделайте backup БД и `runtime.env` по [инструкции](ec2-deployment.md); запишите текущий SHA/sequence.
-4. Для существующих явных `false` используйте `sudo ssoctl.py enable-mfa`: меняются только четыре ключа, создаётся private backup, остальные значения/секреты сохраняются. Для новой установки `ssoctl.py configure` уже создаёт `true`.
+4. Для существующих явных `false` используйте `sudo ssoctl enable-mfa`: меняются только четыре ключа, создаётся private backup, остальные значения/секреты сохраняются. Для новой установки `ssoctl configure` уже создаёт `true`.
 5. Разверните тот же проверенный SHA и примените миграцию `0016_session_assurance`. Все старые сессии/grants становятся non-assured; администраторы должны пройти onboarding и подтвердить фактор. Это ожидаемо и не является сбоем.
 6. Проверьте `/api/v1/auth/capabilities`: `totp_enabled`, `passkey_enabled`, `recovery_codes_enabled`, `admin_mfa_required` = true. Проверьте вход обычного пользователя, admin onboarding, fresh elevation и admin API.
 7. Rollback: верните предыдущий release и `runtime.env` из backup. Не откатывайте только backend без совместимой схемы; `0016` downgrade удаляет assurance-колонки, все browser sessions и authorization codes и отзывает refresh tokens, чтобы старый код не получил non-assured grants как admin. После rollback пользователи выполнят новый вход. Если нужен временный explicit-disabled профиль, задайте `FEATURE_*=false` и `REQUIRE_ADMIN_MFA=false` отдельным решением владельца и задокументируйте причину; это не должно затрагивать production users/секреты.
