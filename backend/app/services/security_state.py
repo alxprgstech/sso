@@ -64,17 +64,32 @@ async def invalidate_security_state(
     *,
     preserve_session_id: uuid.UUID | None = None,
     preserve_email_token_id: uuid.UUID | None = None,
+    preserve_assurance: bool = False,
 ) -> None:
-    """Caller holds User lock and owns commit. Old refresh rows retain replay evidence."""
+    """Caller holds User lock and owns commit. Old refresh rows retain replay evidence.
+
+    The preserved browser session keeps its cookie but loses any prior MFA
+    assurance unless the caller already proved a fresh factor for exactly this
+    operation.  That makes factor enrolment/removal require a new explicit
+    elevation instead of silently inheriting old trust.
+    """
     user.security_revision = revision(user) + 1
     await db.flush()
     sessions = delete(Session).where(Session.user_id == user.id)
     if preserve_session_id is not None:
         sessions = sessions.where(Session.id != preserve_session_id)
+        values: dict[str, object] = {"security_revision": user.security_revision}
+        if not preserve_assurance:
+            values.update(
+                mfa_verified=False,
+                mfa_method=None,
+                mfa_verified_at=None,
+                amr="pwd",
+            )
         await db.execute(
             update(Session)
             .where(Session.id == preserve_session_id, Session.user_id == user.id)
-            .values(security_revision=user.security_revision)
+            .values(**values)
         )
     await db.execute(sessions)
     await db.execute(

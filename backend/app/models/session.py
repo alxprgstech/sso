@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,8 +18,12 @@ class Session(Base):
     __tablename__ = "sessions"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('full', 'deletion_management', 'password_change')",
+            "purpose IN ('full', 'deletion_management', 'password_change', 'admin_mfa_enrollment')",
             name="ck_sessions_purpose",
+        ),
+        CheckConstraint(
+            "mfa_method IS NULL OR mfa_method IN ('totp', 'passkey', 'recovery_code')",
+            name="ck_sessions_mfa_method",
         ),
     )
     security_revision: Mapped[int] = mapped_column(
@@ -29,6 +33,16 @@ class Session(Base):
     purpose: Mapped[str] = mapped_column(String(32), default="full", nullable=False)
     auth_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    # Server-written proof that this exact session completed a verified second
+    # factor. Client input can never set these columns.
+    mfa_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    mfa_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    amr: Mapped[str] = mapped_column(
+        String(64), default="pwd", server_default="pwd", nullable=False
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -54,6 +54,19 @@ class UserProfileResponse(BaseModel):
     deletion_pending: bool = False
     deletion_scheduled_for: datetime | None = None
     session_purpose: str = "full"
+    mfa_verified: bool = False
+    mfa_method: str | None = None
+    admin_mfa_required: bool = False
+
+
+class SessionElevationRequest(BaseModel):
+    """A fresh server-verified factor for this exact browser session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["totp", "passkey", "recovery_code"]
+    code: str | None = Field(None, min_length=1, max_length=64)
+    credential: dict[str, Any] | None = None
 
 
 class SessionInfoResponse(BaseModel):
@@ -77,6 +90,7 @@ class CapabilitiesResponse(BaseModel):
     email_verification_enabled: bool
     require_verified_email: bool
     external_step_up_enabled: bool = False
+    admin_mfa_required: bool = True
     registration_mode: str = "closed"
 
 

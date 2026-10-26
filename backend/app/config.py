@@ -147,12 +147,17 @@ class Settings(BaseSettings):
     SESSION_ABSOLUTE_TIMEOUT_SECONDS: int = 604800  # 7 дней
     MFA_STEP_TTL_SECONDS: int = 300  # 5 минут на подтверждение второго фактора
 
-    # Отложенные факторы выключены по умолчанию. Email для саморегистрации обязателен.
-    FEATURE_TOTP_ENABLED: bool = False
-    FEATURE_PASSKEY_ENABLED: bool = False
-    FEATURE_RECOVERY_CODES_ENABLED: bool = False
+    # MFA доступна по умолчанию при обычной установке. Отсутствие переменных
+    # окружения включает все три возможности; явный false остаётся аварийным
+    # переключателем для диагностики и контролируемых исключений.
+    FEATURE_TOTP_ENABLED: bool = True
+    FEATURE_PASSKEY_ENABLED: bool = True
+    FEATURE_RECOVERY_CODES_ENABLED: bool = True
     FEATURE_EMAIL_VERIFICATION_ENABLED: bool = True
     FEATURE_EXTERNAL_STEP_UP_ENABLED: bool = False
+    # Обязательная MFA администратора. Отключается только явным решением
+    # владельца; уже настроенные факторы никогда не понижаются до пароля.
+    REQUIRE_ADMIN_MFA: bool = True
     REQUIRE_VERIFIED_EMAIL: bool = False
 
     # Cross-application transaction authorization.  The proof is deliberately
@@ -227,10 +232,20 @@ class Settings(BaseSettings):
         """
         if not self.FEATURE_EMAIL_VERIFICATION_ENABLED:
             raise ValueError("Подтверждение email обязательно и не может быть отключено")
-        if self.FEATURE_RECOVERY_CODES_ENABLED and not self.FEATURE_TOTP_ENABLED:
+        if self.FEATURE_RECOVERY_CODES_ENABLED and not (
+            self.FEATURE_TOTP_ENABLED or self.FEATURE_PASSKEY_ENABLED
+        ):
             raise ValueError(
-                "Конфигурационная ошибка: FEATURE_RECOVERY_CODES_ENABLED не может быть включен "
-                "без включения FEATURE_TOTP_ENABLED."
+                "Конфигурационная ошибка: FEATURE_RECOVERY_CODES_ENABLED требует хотя бы одного "
+                "активного MFA-фактора (FEATURE_TOTP_ENABLED или FEATURE_PASSKEY_ENABLED)."
+            )
+        if self.REQUIRE_ADMIN_MFA and not (
+            self.FEATURE_TOTP_ENABLED or self.FEATURE_PASSKEY_ENABLED
+        ):
+            raise ValueError(
+                "Конфигурационная ошибка: REQUIRE_ADMIN_MFA=true требует доступного "
+                "MFA-фактора; при аварийном отключении TOTP и Passkey явно задайте "
+                "REQUIRE_ADMIN_MFA=false и задокументируйте причину."
             )
         self.validate_resend_configuration()
         self.validate_key_configuration()

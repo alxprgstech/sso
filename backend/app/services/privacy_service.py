@@ -205,8 +205,10 @@ def factor_methods(user: User, settings: Settings) -> list[str]:
     methods = []
     if totp:
         methods.append("totp")
-        if settings.FEATURE_RECOVERY_CODES_ENABLED:
-            methods.append("recovery_code")
+    # Recovery codes back any confirmed factor, not only TOTP.  They remain a
+    # recovery method: they never create an MFA-required account on their own.
+    if (totp or passkey) and settings.FEATURE_RECOVERY_CODES_ENABLED:
+        methods.append("recovery_code")
     if passkey:
         methods.append("passkey")
     return methods

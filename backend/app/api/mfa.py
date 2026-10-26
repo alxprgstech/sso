@@ -17,6 +17,7 @@ from app.api.deps import (
     require_recent_reauthentication,
     verify_csrf,
 )
+from app.api.profile import build_user_profile
 from app.config import Settings, get_settings
 from app.core.exceptions import AuthenticationException
 from app.core.rate_limit import get_client_ip
@@ -24,7 +25,6 @@ from app.database import get_db
 from app.models.mfa import WebAuthnCredential
 from app.models.session import Session
 from app.models.user import User
-from app.schemas.auth import UserProfileResponse
 from app.schemas.mfa import (
     EmailVerificationCodeConfirmRequest,
     EmailVerificationConfirmRequest,
@@ -115,7 +115,9 @@ async def verify_totp_login(
         request=SessionRequest(user.id, ip, ua),
         settings=settings,
         authorization=SessionAuthorization(
-            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+            expected_revision=user.security_revision or 0,
+            mfa_token=payload.mfa_token,
+            mfa_method="totp",
         ),
     )
 
@@ -134,19 +136,7 @@ async def verify_totp_login(
     return {
         "status": "ok",
         "csrf_token": csrf_token,
-        "user": UserProfileResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active,
-            is_superuser=user.is_superuser,
-            email_verified=user.email_verified,
-            roles=[r.name for r in user.roles],
-            has_totp=True,
-            has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
-            created_at=user.created_at,
-            session_purpose=session.purpose,
-        ),
+        "user": await build_user_profile(db, user, session, settings),
     }
 
 
@@ -176,8 +166,9 @@ async def generate_recovery_codes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
 ) -> RecoveryCodesResponse:
-    codes = await RecoveryCodesService.generate_codes(db, user, session.id)
+    codes = await RecoveryCodesService.generate_codes(db, user, session.id, settings)
     return RecoveryCodesResponse(recovery_codes=codes)
 
 
@@ -209,7 +200,9 @@ async def verify_recovery_code_login(
         request=SessionRequest(user.id, ip, ua),
         settings=settings,
         authorization=SessionAuthorization(
-            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+            expected_revision=user.security_revision or 0,
+            mfa_token=payload.mfa_token,
+            mfa_method="recovery_code",
         ),
     )
 
@@ -361,7 +354,10 @@ async def passkey_auth_verify(
         request=SessionRequest(user.id, ip, ua),
         settings=settings,
         authorization=SessionAuthorization(
-            expected_revision=user.security_revision or 0, mfa_token=payload.mfa_token
+            expected_revision=user.security_revision or 0,
+            mfa_token=payload.mfa_token,
+            mfa_method="passkey",
+            password_used=bool(payload.mfa_token),
         ),
     )
 

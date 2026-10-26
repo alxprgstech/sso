@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -16,7 +17,13 @@ from app.api.deps import (
     verify_csrf,
     validate_cookie_origin,
 )
+from app.api.profile import build_user_profile
 from app.config import Settings, get_settings
+from app.core.exceptions import (
+    AuthenticationException,
+    AuthorizationException,
+    FeatureDisabledException,
+)
 from app.core.rate_limit import get_client_ip
 from app.core.registration_flow import browser_secret, set_browser_secret
 from app.core.security import generate_random_token
@@ -35,12 +42,19 @@ from app.schemas.auth import (
     RegistrationLinkConfirmRequest,
     RegistrationResendRequest,
     SessionInfoResponse,
+    SessionElevationRequest,
     TelemetryConfigResponse,
     UserProfileResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService, SessionRequest, SessionAuthorization
 from app.services.registration_service import RegistrationService, verify_gmail_bearer
+from app.services.security_state import lock_user, revision
+from app.services.session_assurance import (
+    amr_for_method,
+    session_is_mfa_assured,
+    split_amr,
+)
 from app.services.system_service import SystemService
 from app.services.verification_email import request_details
 
@@ -102,6 +116,7 @@ async def get_capabilities(
         email_verification_enabled=True,
         require_verified_email=settings.REQUIRE_VERIFIED_EMAIL,
         external_step_up_enabled=settings.FEATURE_EXTERNAL_STEP_UP_ENABLED,
+        admin_mfa_required=settings.REQUIRE_ADMIN_MFA,
         registration_mode=reg_mode,
     )
 
@@ -294,19 +309,7 @@ async def login(
     return {
         "status": "ok",
         "csrf_token": csrf_token,
-        "user": UserProfileResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active,
-            is_superuser=user.is_superuser,
-            email_verified=user.email_verified,
-            roles=[r.name for r in user.roles],
-            has_totp=bool(user.totp_credential and user.totp_credential.is_confirmed),
-            has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
-            created_at=user.created_at,
-            session_purpose=session.purpose,
-        ),
+        "user": await build_user_profile(db, user, session, settings),
     }
 
 
@@ -348,24 +351,8 @@ async def get_me(
     csrf = generate_csrf_token(session.id, settings)
     response.headers["X-CSRF-Token"] = csrf
     response.headers["Access-Control-Expose-Headers"] = "X-CSRF-Token"
-    from app.services.privacy_service import has_current_acceptance
 
-    return UserProfileResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        is_active=user.is_active,
-        is_superuser=user.is_superuser,
-        email_verified=user.email_verified,
-        roles=[r.name for r in user.roles],
-        has_totp=bool(user.totp_credential and user.totp_credential.is_confirmed),
-        has_passkey=bool(user.webauthn_credentials and len(user.webauthn_credentials) > 0),
-        created_at=user.created_at,
-        legal_acceptance_required=not await has_current_acceptance(db, user.id),
-        deletion_pending=bool(user.deletion_scheduled_for),
-        deletion_scheduled_for=user.deletion_scheduled_for,
-        session_purpose=session.purpose,
-    )
+    return await build_user_profile(db, user, session, settings)
 
 
 @router.post("/change-password", dependencies=[Depends(verify_csrf)])
@@ -400,6 +387,134 @@ async def change_password(
         if forced
         else "Пароль успешно изменён, остальные сессии отозваны",
     }
+
+
+@router.post(
+    "/session/elevate",
+    response_model=UserProfileResponse,
+    dependencies=[Depends(verify_csrf)],
+)
+async def elevate_session(
+    payload: SessionElevationRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> UserProfileResponse:
+    """Upgrade this exact session only after a real server-side factor check."""
+    if session_is_mfa_assured(session):
+        return await build_user_profile(db, user, session, settings)
+
+    from app.services.mfa_service import (
+        PasskeyAuthentication,
+        RecoveryCodesService,
+        TOTPService,
+        WebAuthnContext,
+        WebAuthnService,
+    )
+    from app.services.privacy_service import RateLimit, consume_rate_limit, factor_methods
+
+    await consume_rate_limit(db, settings, RateLimit("session-elevate", str(user.id), 5))
+    current = await lock_user(db, user.id)
+    locked = await db.scalar(
+        select(Session)
+        .where(Session.id == session.id, Session.user_id == current.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None or locked.security_revision != revision(current):
+        raise AuthenticationException(
+            "Сессия больше не допускает подтверждение", error="session_invalid"
+        )
+    methods = factor_methods(current, settings)
+    if payload.method not in methods:
+        raise AuthenticationException(
+            "Этот способ подтверждения недоступен", error="factor_unavailable"
+        )
+
+    if payload.method == "totp":
+        if not payload.code:
+            raise AuthenticationException("Введите код аутентификатора", error="code_required")
+        valid = await TOTPService.verify_totp(db, current, payload.code, commit=False)
+    elif payload.method == "recovery_code":
+        if not payload.code:
+            raise AuthenticationException("Введите резервный код", error="recovery_code_required")
+        valid = await RecoveryCodesService.consume_code(db, current, payload.code, commit=False)
+    else:
+        if not payload.credential:
+            raise AuthenticationException("Отсутствует ответ Passkey", error="passkey_required")
+        valid = await WebAuthnService.verify_authentication(
+            db,
+            current,
+            payload.credential,
+            operation=PasskeyAuthentication(
+                trust=WebAuthnContext(
+                    rp_id=settings.WEBAUTHN_RP_ID,
+                    origin=settings.WEBAUTHN_ORIGIN,
+                    settings=settings,
+                ),
+                purpose="session_elevation",
+                commit=False,
+            ),
+        )
+    if not valid:
+        raise AuthenticationException(
+            "Не удалось подтвердить второй фактор", error="factor_verification_failed"
+        )
+
+    now = datetime.now(timezone.utc)
+    locked.mfa_verified = True
+    locked.mfa_method = payload.method
+    locked.mfa_verified_at = now
+    # A fresh factor verification is itself an authentication event; OIDC
+    # auth_time/max_age must not report the older password-only login.
+    locked.auth_time = now
+    locked.amr = amr_for_method(payload.method, password_used="pwd" in split_amr(locked.amr))
+    if locked.purpose == "admin_mfa_enrollment":
+        locked.purpose = "full"
+    await AuditService.log_event(
+        db,
+        event_type="session_mfa_elevated",
+        user_id=current.id,
+        details={"method": payload.method},
+        commit=False,
+    )
+    await db.commit()
+    return await build_user_profile(db, current, locked, settings)
+
+
+@router.post("/session/elevate/passkey/options", dependencies=[Depends(verify_csrf)])
+async def elevate_passkey_options(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Fresh, session-purpose-bound WebAuthn challenge for elevation."""
+    if not settings.FEATURE_PASSKEY_ENABLED:
+        raise FeatureDisabledException(feature="FEATURE_PASSKEY_ENABLED")
+    if not user.webauthn_credentials:
+        raise AuthorizationException("Для аккаунта не зарегистрирован Passkey")
+    from app.services.mfa_service import PasskeyAuthentication, WebAuthnContext, WebAuthnService
+    from app.services.privacy_service import RateLimit, consume_rate_limit
+
+    await consume_rate_limit(db, settings, RateLimit("session-elevate-options", str(user.id), 10))
+    options = await WebAuthnService.get_authentication_options(
+        db,
+        user,
+        operation=PasskeyAuthentication(
+            trust=WebAuthnContext(
+                rp_id=settings.WEBAUTHN_RP_ID,
+                origin=settings.WEBAUTHN_ORIGIN,
+                settings=settings,
+                session_id=session.id,
+            ),
+            purpose="session_elevation",
+            commit=False,
+        ),
+    )
+    await db.commit()
+    return options
 
 
 @router.get("/sessions", response_model=list[SessionInfoResponse])

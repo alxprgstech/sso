@@ -165,7 +165,9 @@ async def execute_bootstrap(
         f"Режим регистрации: {registration_mode}\n"
         f"Статус подтверждения email: False (email_verified=False, default-профиль)\n"
         f"Адрес для входа: http://localhost:3000\n"
-        f"Панель управления: http://localhost:3000/admin\n" + "=" * 64
+        f"Панель управления: http://localhost:3000/admin\n"
+        f"ВАЖНО: при первом входе администратор обязан настроить Passkey или TOTP;\n"
+        f"до подтверждения второго фактора панель администратора недоступна.\n" + "=" * 64
     )
     return 0, msg
 

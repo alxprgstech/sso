@@ -34,6 +34,7 @@ from app.services.security_state import (
     revoke_oidc_grants,
     revision,
 )
+from app.services.session_assurance import admin_enrollment_required, amr_for_method
 
 settings = get_settings()
 
@@ -57,6 +58,8 @@ class SessionRequest:
 class SessionAuthorization:
     expected_revision: int | None = None
     mfa_token: str | None = None
+    mfa_method: str | None = None
+    password_used: bool = True
 
 
 class AuthService:
@@ -76,7 +79,15 @@ class AuthService:
         now = datetime.now(timezone.utc)
         authorization = authorization or SessionAuthorization()
         user = await AuthService._session_account(db, request.user_id, settings)
-        expires_at, purpose = AuthService._session_lifetime(user, settings, now)
+        mfa_method = authorization.mfa_method
+        mfa_verified = mfa_method is not None
+        if mfa_verified and mfa_method not in ("totp", "passkey", "recovery_code"):
+            raise AuthenticationException("Недопустимый метод подтверждения")
+        if mfa_method is not None and mfa_method != "passkey" and authorization.mfa_token is None:
+            raise AuthenticationException("Незавершённое подтверждение второго фактора")
+        expires_at, purpose = AuthService._session_lifetime(
+            user, settings, now, mfa_verified=mfa_verified
+        )
         await AuthService._authorize_session(db, user, authorization, now)
 
         session = Session(
@@ -89,6 +100,10 @@ class AuthService:
             purpose=purpose,
             security_revision=revision(user),
             auth_time=now,
+            mfa_verified=mfa_verified,
+            mfa_method=mfa_method,
+            mfa_verified_at=now if mfa_verified else None,
+            amr=amr_for_method(mfa_method, password_used=authorization.password_used),
         )
         db.add(session)
         if authorization.mfa_token is not None:
@@ -120,15 +135,22 @@ class AuthService:
         return user
 
     @staticmethod
-    def _session_lifetime(user: User, settings: Settings, now: datetime) -> tuple[datetime, str]:
+    def _session_lifetime(
+        user: User, settings: Settings, now: datetime, *, mfa_verified: bool = False
+    ) -> tuple[datetime, str]:
         expires_at = now + timedelta(seconds=settings.SESSION_ABSOLUTE_TIMEOUT_SECONDS)
         credential = user.password_credential
         temporary = bool(credential and credential.requires_change)
         if temporary:
             expires_at = AuthService._consume_temporary_password(user, now, expires_at)
             return expires_at, "password_change"
-        purpose = "deletion_management" if user.deletion_scheduled_for else "full"
-        return expires_at, purpose
+        if user.deletion_scheduled_for:
+            return expires_at, "deletion_management"
+        # A privileged account with no usable factor gets only the limited
+        # enrolment session.  Password alone never becomes an admin session.
+        if not mfa_verified and admin_enrollment_required(user, settings):
+            return expires_at, "admin_mfa_enrollment"
+        return expires_at, "full"
 
     @staticmethod
     async def _authorize_session(
