@@ -35,7 +35,7 @@
 - **Reproduction (до исправления):** войти с TOTP, открыть `/account/sessions`, ввести тот же код в диалоге → generic `401 reauthentication_required` «Подтвердите пароль и действующий второй фактор». Повторные попытки увеличивали `failed_attempts`; после 5 операция требовала заново пароль, хотя код был реальным и просто уже погашенным.
 - **Root cause:** `verify_totp` возвращал `False` и для неверного кода, и для replay; вызывающий код не мог отличить одно от другого.
 - **Fix:** replay детектируется до мутации шага и поднимает `TOTPReplayException` → `401 totp_code_reused` с `Retry-After`/`retry_after` (только для аутентифицированных elevation/reauthentication путей). Replay **не** увеличивает `failed_attempts`; сама политика «строго больше предыдущего шага» не изменена. UI показывает пояснение об одноразовости и countdown до следующего кода; Passkey остаётся предпочтительным методом.
-- **Regression tests:** `tests/integration/test_totp_reauth_replay_pg.py` (5 PG-тестов: spent step + retry hint + authorization survives; wrong code generic + failure count; concurrent same-step → ровно один 200; login→reauth replay; следующий шаг проходит), `tests/test_totp_policy.py` (строгая монотонность и bounded retry), dialog component test (countdown + пояснение).
+- **Regression tests:** `tests/integration/test_totp_reauth_replay_pg.py` (4 PG-теста: spent step + retry hint + authorization survives; wrong code generic + failure count; concurrent same-step → ровно один 200; login→reauth replay + следующий шаг), `tests/test_totp_policy.py` (строгая монотонность и bounded retry), dialog component test (countdown + пояснение).
 - **Verification:** браузер: после login тем же кодом → alert «Этот код уже был использован…», countdown «через 24 с», password-поле не появилось (proof жив). Replay-защита не ослаблена: второй код того же шага не принимается ни на одном пути.
 - **Residual risk:** в пределах одного шага пользователь обязан дождаться следующего кода либо использовать Passkey; это осознанная цена RFC 6238 one-time semantics.
 
@@ -107,3 +107,4 @@
 | Внешний клиент может использовать чужой step-up proof | `test_external_step_up_pg.py` (cross-client/replay/session/revision/redirect) | Отклоняется |
 | ID token принимается вместо access token | OIDC contract tests / UserInfo | Отклоняется (`invalid_token`) |
 | Ошибка БД открывает доступ (fail-open) | `test_fail_closed_on_database_failure`, deny-audit tests | Fail-closed |
+

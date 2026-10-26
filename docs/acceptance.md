@@ -238,7 +238,7 @@ Self-audit (не независимый аудит): проверены admin AP
 | Проверка | Фактический результат |
 | --- | --- |
 | Backend pytest default-on (`pytest -v tests/`, PostgreSQL16.10, Windows/Python3.13.0) | 820 passed, 3 environment-only failed (psql/pg_dump ×2, SMTP CA до fixture-фикса; после фикса 5/5), 5 deselected; см. final-verification |
-| Новые PostgreSQL регрессии | `test_totp_reauth_replay_pg.py` 5, `test_registration_mode_reauth_pg.py` 1, `test_admin_authorization_order_pg.py` 3, `test_totp_policy.py` (unit) PASS |
+| Новые PostgreSQL регрессии | `test_totp_reauth_replay_pg.py` 4, `test_registration_mode_reauth_pg.py` 1, `test_admin_authorization_order_pg.py` 3, `test_totp_policy.py` (unit) PASS |
 | Ruff check/format, mypy | PASS для изменённых файлов; полный CI-набор — ниже |
 | Frontend | `npm ci`, audit 0, lint, typecheck, typecheck:tests, unit 14, components 51, build PASS; npm audit `--audit-level=high` 0 |
 | Playwright default-off | sso 6 + multi_client/protocol/telemetry/privacy/appearance/step_up 44 = **50 passed** |
@@ -250,3 +250,4 @@ Self-audit (не независимый аудит): проверены admin AP
 | Secret scan | `scripts/check_secret_scan.py --self-test` — см. final-verification |
 
 Ограничения: локальный Windows-стенд не содержит `psql`/`pg_dump` — соответствующие migration/backup тесты остаются environment-only и проверяются Linux CI; CodeScene live-gates, Firefox/WebKit, внешние SES/Resend/Sentry, публичный TLS/DNS и production load не проверялись. GitHub Actions для финального HEAD — после push; локальные PASS не заменяют remote CI.
+

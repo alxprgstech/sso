@@ -95,3 +95,7 @@ Baseline до изменений: 803 passed, 6 failed (те же 2 env + отс
 ## 9. Вердикт
 
 Все подтверждённые дефекты исправлены и покрыты регрессиями; TOTP replay protection не ослаблена; необоснованные повторные подтверждения устранены; API/frontend/container/supply-chain проверки пройдены локально. **READY FOR REVIEW** — при условии успешного GitHub CI на точном HEAD ветки; production-приёмка остаётся открытой.
+
+## 10. Первый PR run и исправления
+
+Run `40404078649` (HEAD `0342046`): Security/SDK/Containers/CD/Windows/Version/Playwright — success; backend — 1 failed тест, frontend — cancelled по timeout. Причины и исправления: [CI remediation](2026-10-26-ci-remediation.md#первый-pr-run-40404078649-head-0342046). После правки теста (фиксация exact TOTP step) и увеличения job-timeout (без изменения гейтов) выполнен повторный run на новом HEAD; его результат фиксируется в PR.

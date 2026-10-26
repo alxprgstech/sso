@@ -57,3 +57,10 @@ RUN apk upgrade --no-cache && apk add --no-cache libexpat=2.9.0-r0 pcre2=10.49-r
 - CodeScene live-gates недоступны локально; сложность/дублирование оценивались вручную по затронутым модулям, поведение не менялось.
 - Windows safety jobs и CD policy jobs не воспроизводились локально (unit-наборы для них входят в общий pytest).
 - SES external job по-прежнему требует credentials и не считается проверкой доставки.
+
+## Первый PR run 40404078649 (HEAD 0342046)
+
+- **Green:** Security & Dependencies, SDK, Containers/Trivy, CD policy/EC2, Windows safety, Version.
+- **Backend:** `test_login_totp_code_cannot_be_reused_for_reauthentication` упал с `assert 200 == 401`. Причина — дефект самого теста: код TOTP генерировался повторно по текущему времени, и через границу 30-секундного шага во второй запрос уходил уже следующий код (легитимно принимался). Исправлено: код фиксируется один раз для login и replay; в spent-step тесте используется код точного шага (`_code_at_step`); «неверный» код исключает расширенное окружение шагов. Проверка через границу окна: 4 passed. Продукт replay не пропускал.
+- **Frontend job cancelled по 10-минутному timeout:** шаг `playwright install --with-deps` скачивал apt-пакеты с медленного зеркала 9+ минут (лог: Get:2…Get:16, 21:25→21:34), гейт не падал. Timeout job увеличен до 25 минут; сам гейт не изменён и обязателен. Playwright E2E job прошёл за 13.5 мин при лимите 15 → лимит увеличен до 20.
+- **Playwright E2E:** success (default-off + enabled).

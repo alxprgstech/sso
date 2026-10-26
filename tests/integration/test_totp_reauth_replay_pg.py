@@ -42,8 +42,15 @@ def _code(secret: str, offset: int = 0) -> str:
     return pyotp.TOTP(secret).at(step * 30)
 
 
+def _code_at_step(secret: str, step: int) -> str:
+    """Generate the code of an exact RFC 6238 step, independent of wall clock."""
+    return pyotp.TOTP(secret).at(step * 30)
+
+
 def _wrong_code(secret: str) -> str:
-    valid = {_code(secret, offset) for offset in (-1, 0, 1)}
+    # Exclude a wide neighbourhood so a step boundary during the test can never
+    # turn the "wrong" value into a freshly acceptable code.
+    valid = {_code(secret, offset) for offset in range(-3, 4)}
     return next(f"{value:06}" for value in range(10**6) if f"{value:06}" not in valid)
 
 
@@ -128,7 +135,9 @@ async def test_spent_step_reports_retry_hint_and_keeps_authorization_alive(pg_se
     assert started.json()["factor_required"] is True
     assert "totp" in started.json()["methods"]
 
-    replayed = await _confirm(pg_client, headers, started.json()["authorization"], _code(secret, 0))
+    replayed = await _confirm(
+        pg_client, headers, started.json()["authorization"], _code_at_step(secret, current_step)
+    )
     assert replayed.status_code == 401, replayed.json()
     assert replayed.json()["error"] == "totp_code_reused"
     assert 1 <= replayed.json()["retry_after"] <= 31
@@ -201,16 +210,19 @@ async def test_login_totp_code_cannot_be_reused_for_reauthentication(pg_session,
     )
     assert login.status_code == 200, login.json()
     assert login.json()["mfa_required"] is True
+    # Capture the exact code once: regenerating "the current code" after a
+    # 30-second boundary would test the next step instead of replay.
+    login_code = _code(secret, 0)
     verified = await pg_client.post(
         "/api/v1/mfa/totp/verify",
-        json={"code": _code(secret, 0), "mfa_token": login.json()["mfa_token"]},
+        json={"code": login_code, "mfa_token": login.json()["mfa_token"]},
     )
     assert verified.status_code == 200, verified.json()
     headers = {"X-CSRF-Token": verified.json()["csrf_token"]}
 
     started = await _start(pg_client, headers)
     assert started.status_code == 200, started.json()
-    replayed = await _confirm(pg_client, headers, started.json()["authorization"], _code(secret, 0))
+    replayed = await _confirm(pg_client, headers, started.json()["authorization"], login_code)
     assert replayed.status_code == 401
     assert replayed.json()["error"] == "totp_code_reused"
     next_step = await _confirm(
