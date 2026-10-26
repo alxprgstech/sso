@@ -168,6 +168,7 @@ async def safe_truncate_test_tables(session: AsyncSession) -> None:
         "oidc_redirect_uris, oidc_clients, sessions, password_credentials, "
         "user_roles, users, pending_registrations, recovery_codes, email_verification_tokens, "
         "webauthn_challenges, webauthn_credentials, totp_credentials, "
-        "legal_acceptances, deletion_authorizations, privacy_rate_windows, deleted_subjects CASCADE;"
+        "legal_acceptances, deletion_authorizations, privacy_rate_windows, deleted_subjects, "
+        "external_step_up_requests CASCADE;"
     )
     await session.execute(truncate_sql)
