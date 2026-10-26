@@ -220,3 +220,11 @@ SDK/backend integration checkpoint 2026-10-26T14:22:35+03:00: добавлен �
 Self-audit (не независимый аудит): проверены admin API без MFA/со старой сессией, role grant во время password-only сессии, фактор-фейк в теле, pending TOTP/Passkey, удаление последнего фактора, повтор recovery code, cross-user proof, OIDC amr/acr/refresh/UserInfo, session binding, default-on без env, explicit-disabled, конфликт `REQUIRE_ADMIN_MFA`/факторов, non-destructive EC2 update. Найденные в ходе работы проблемы исправлены (rate-limit fixture, migration downgrade fail-closed, admin recovery). Остаточные риски: legacy access JWT до exp, live production rollout/backup, внешний OIDC/SDK review, multi-replica/OIF, отсутствие независимого аудита.
 
 Артефакты: wheel/sdist в `artifacts/sdk-mfa` (ignored build output, не опубликованы). Точные команды/логи — worklog и CI после push (push не выполнялся).
+
+## CD-STAGES-01 — локальная проверка разделённого CD
+
+2026-10-26T19:09:37+03:00, Codex. `.venv/Scripts/python.exe -m pytest tests/test_ec2_deployment.py -q --basetemp artifacts/pytest-cd-stages-02`: **41 passed**. Ruff check/format и `git diff --check`: PASS. Regression проверяет зависимости build → verify → deploy, единый immutable artifact, сохранение SHA/run number, gate автоматического/ручного запуска, отсутствие повторной сборки в verify/deploy, classic Docker store в build/verify. Это unit/policy-проверка; live GitHub повтор failed jobs, transport в новом workflow и production не выполнялись. Приёмка на GitHub остаётся открыта до интеграции.
+
+## CD-PUBLIC-CHECK-01 — финальная внешняя readiness проверка
+
+2026-10-26T19:14:23+03:00, Codex: `.venv/Scripts/python.exe -m pytest tests/test_ec2_deployment.py tests/test_public_readiness.py tests/test_backup_collision.py tests/test_ec2_runtime_workspace.py -q --basetemp artifacts/pytest-cd-public-final`: **60 passed**. Ruff check/format и diff check PASS. Unit negative cases: DNS, TLS certificate, timeout, HTTP503/302, wrong destination, HTML, wrong JSON/DB readiness; positive exact readiness. Workflow: public-check зависит от deploy/installed=true, без повторной установки. Live script с рабочей станции вне sandbox: **HTTP200/database connected**, TLS verification включена; sandbox DNS недоступен. Фактическое выполнение новых jobs на GitHub и selective rerun не проверено до интеграции.
