@@ -12,9 +12,10 @@ from app.core.security import (
     generate_random_token,
     hash_token,
 )
+from app.models.mfa import RecoveryCode, WebAuthnCredential
 from app.models.session import Session
 from app.models.user import PasswordCredential, Role, User
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.helpers.mfa import login_admin_with_mfa_direct
@@ -257,3 +258,24 @@ async def test_recovery_codes_work_with_passkey_only_pg(
         },
     )
     assert replay.status_code == 401
+
+    # Removing the last passkey also removes dormant recovery codes, so they
+    # cannot become valid again after a later factor enrolment.
+    session_headers = {"X-CSRF-Token": used.json()["csrf_token"]}
+    credential = await pg_session.scalar(
+        select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
+    )
+    removed = await authorized_request(
+        pg_client,
+        MutationRequest(
+            "DELETE", f"/api/v1/mfa/passkey/credentials/{credential.credential_id}"
+        ),
+        RequestAuthorization(PASSWORD, session_headers, factor=factor),
+    )
+    assert removed.status_code == 200, removed.json()
+    assert (
+        await pg_session.scalar(
+            select(func.count(RecoveryCode.id)).where(RecoveryCode.user_id == user.id)
+        )
+        == 0
+    )
