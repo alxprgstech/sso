@@ -107,4 +107,3 @@
 | Внешний клиент может использовать чужой step-up proof | `test_external_step_up_pg.py` (cross-client/replay/session/revision/redirect) | Отклоняется |
 | ID token принимается вместо access token | OIDC contract tests / UserInfo | Отклоняется (`invalid_token`) |
 | Ошибка БД открывает доступ (fail-open) | `test_fail_closed_on_database_failure`, deny-audit tests | Fail-closed |
-

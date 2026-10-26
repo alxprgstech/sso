@@ -250,4 +250,3 @@ Self-audit (не независимый аудит): проверены admin AP
 | Secret scan | `scripts/check_secret_scan.py --self-test` — см. final-verification |
 
 Ограничения: локальный Windows-стенд не содержит `psql`/`pg_dump` — соответствующие migration/backup тесты остаются environment-only и проверяются Linux CI; CodeScene live-gates, Firefox/WebKit, внешние SES/Resend/Sentry, публичный TLS/DNS и production load не проверялись. GitHub Actions для финального HEAD — после push; локальные PASS не заменяют remote CI.
-
