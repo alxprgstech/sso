@@ -15,7 +15,40 @@ export interface Capabilities {
   recovery_codes_enabled: boolean;
   email_verification_enabled: boolean;
   require_verified_email: boolean;
+  external_step_up_enabled: boolean;
   registration_mode: "closed" | "open" | string;
+}
+
+export type StepUpMethod = "password" | "totp" | "passkey";
+
+export interface StepUpPlan {
+  id: string;
+  label: string;
+  methods: StepUpMethod[];
+}
+
+export interface StepUpDetails {
+  client_name: string;
+  action: string;
+  description: string;
+  payload_hash: string;
+  assurance: string;
+  assurance_label: string;
+  plans: StepUpPlan[];
+  verified_methods: StepUpMethod[];
+  plan: string | null;
+  status: string;
+  passkey_enabled: boolean;
+  expires_at: string;
+}
+
+export interface StepUpVerifyResult {
+  completed: boolean;
+  status: string;
+  verified_methods: StepUpMethod[];
+  remaining_methods: StepUpMethod[];
+  redirect_to: string | null;
+  expires_at: string;
 }
 
 export interface SystemStatus {
@@ -123,6 +156,10 @@ export interface AdminClient {
   client_type: string;
   is_active: boolean;
   redirect_uris: string[];
+  step_up_enabled: boolean;
+  step_up_assurance_levels: string[];
+  step_up_actions: string[];
+  step_up_max_ttl_seconds: number;
   client_secret: string | null;
   created_at: string;
 }

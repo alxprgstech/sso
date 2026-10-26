@@ -12,6 +12,9 @@ import {
   SystemStatus,
   TOTPSetupResponse,
   RecoveryCodesResponse,
+  StepUpDetails,
+  StepUpMethod,
+  StepUpVerifyResult,
 } from "../types/api";
 import type { EncodedCreationOptions, EncodedRequestOptions } from "../utils/webauthn";
 import { captureContractFailure } from "../telemetry/sentry";
@@ -61,6 +64,36 @@ class ApiClient {
   async getClientContext(clientId: string, redirectUri: string): Promise<{client_name:string;redirect_origin:string}> {
     const query=new URLSearchParams({client_id:clientId,redirect_uri:redirectUri});
     return this.request(`/oauth/client-context?${query.toString()}`);
+  }
+
+  async getStepUpRequest(token: string): Promise<StepUpDetails> {
+    return this.request<StepUpDetails>(`/api/v1/step-up/requests/${encodeURIComponent(token)}`);
+  }
+
+  async getStepUpPasskeyOptions(token: string, plan: string): Promise<EncodedRequestOptions | { publicKey: EncodedRequestOptions }> {
+    return this.request(`/api/v1/step-up/requests/${encodeURIComponent(token)}/passkey/options`, {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    });
+  }
+
+  async verifyStepUpFactor(
+    token: string,
+    plan: string,
+    method: StepUpMethod,
+    values: { password?: string; code?: string; credential?: object },
+  ): Promise<StepUpVerifyResult> {
+    return this.request<StepUpVerifyResult>(
+      `/api/v1/step-up/requests/${encodeURIComponent(token)}/verify`,
+      { method: "POST", body: JSON.stringify({ plan, method, ...values }) },
+    );
+  }
+
+  async denyStepUpRequest(token: string): Promise<{ status: "denied" }> {
+    return this.request<{ status: "denied" }>(
+      `/api/v1/step-up/requests/${encodeURIComponent(token)}/deny`,
+      { method: "POST" },
+    );
   }
 
   async getLegalDocuments(): Promise<import("../types/api").LegalDocuments> {
@@ -221,7 +254,16 @@ class ApiClient {
     return this.request<AdminClient[]>("/api/v1/admin/clients");
   }
 
-  async createAdminClient(data: { client_name: string; client_type: string; redirect_uris: string[]; allowed_scopes?: string[] }): Promise<AdminClient> {
+  async createAdminClient(data: {
+    client_name: string;
+    client_type: string;
+    redirect_uris: string[];
+    allowed_scopes?: string[];
+    step_up_enabled?: boolean;
+    step_up_assurance_levels?: string[];
+    step_up_actions?: string[];
+    step_up_max_ttl_seconds?: number;
+  }): Promise<AdminClient> {
     return this.request<AdminClient>("/api/v1/admin/clients", {
       method: "POST",
       body: JSON.stringify(data),

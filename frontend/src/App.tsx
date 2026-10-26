@@ -16,6 +16,7 @@ import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { AcceptancePage, LegalPage } from "./pages/LegalPage";
 import { AccountDeletionPage } from "./pages/AccountDeletionPage";
 import { ForcedPasswordPage } from "./pages/ForcedPasswordPage";
+import { StepUpPage } from "./pages/StepUpPage";
 import { ReauthenticationDialog } from "./components/ReauthenticationDialog";
 import { AppShell } from "./components/AppShell";
 import { Navbar } from "./components/Navbar";
@@ -116,7 +117,13 @@ function SessionRoutes() {
       </section>
     );
   if (gate === "password") return <ForcedPasswordPage />;
-  if (gate === "login")
+  if (gate === "login") {
+    if (location.pathname.startsWith("/step-up/")) {
+      const returnTo = encodeURIComponent(
+        `${location.pathname}${location.search}`,
+      );
+      return <Navigate to={`/login?return_to=${returnTo}`} replace />;
+    }
     return (
       <Routes>
         <Route
@@ -158,8 +165,10 @@ function SessionRoutes() {
         <Route path="*" element={<NotFound />} />
       </Routes>
     );
+  }
   if (gate === "deletion") return <AccountDeletionPage />;
   if (gate === "legal") return <AcceptancePage />;
+  if (location.pathname.startsWith("/step-up/")) return <StepUpPage />;
   const admin = Boolean(
     user && (user.is_superuser || user.roles.includes("admin")),
   );

@@ -64,6 +64,10 @@ export function useAdminController(section: string | undefined) {
     "email",
   ]);
   const [newRedirectUris, setNewRedirectUris] = useState("");
+  const [newStepUpEnabled, setNewStepUpEnabled] = useState(false);
+  const [newStepUpLevels, setNewStepUpLevels] = useState("");
+  const [newStepUpActions, setNewStepUpActions] = useState("");
+  const [newStepUpTtl, setNewStepUpTtl] = useState(120);
 
   // Модальное окно разового показа секрета (USR-09)
   const [secretModal, setSecretModal] = useState<{
@@ -281,15 +285,38 @@ export function useAdminController(section: string | undefined) {
     }
     setMutationBusy(true);
     try {
+      const levels = newStepUpLevels
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const actions = newStepUpActions
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (newStepUpEnabled && (levels.length === 0 || actions.length === 0)) {
+        setPageError(
+          "Для внешнего подтверждения укажите уровни и разрешённые действия",
+        );
+        setMutationBusy(false);
+        return;
+      }
       const res = await api.createAdminClient({
         client_name: newClientName,
         client_type: newClientType,
         allowed_scopes: newClientScopes,
         redirect_uris: uris,
+        step_up_enabled: newStepUpEnabled,
+        step_up_assurance_levels: levels,
+        step_up_actions: actions,
+        step_up_max_ttl_seconds: newStepUpTtl,
       });
       setShowCreateClientModal(false);
       setNewClientName("");
       setNewRedirectUris("");
+      setNewStepUpEnabled(false);
+      setNewStepUpLevels("");
+      setNewStepUpActions("");
+      setNewStepUpTtl(120);
       await loadClients();
 
       revealClientSecret(res);
@@ -419,6 +446,14 @@ export function useAdminController(section: string | undefined) {
     setNewClientScopes,
     newRedirectUris,
     setNewRedirectUris,
+    newStepUpEnabled,
+    setNewStepUpEnabled,
+    newStepUpLevels,
+    setNewStepUpLevels,
+    newStepUpActions,
+    setNewStepUpActions,
+    newStepUpTtl,
+    setNewStepUpTtl,
     secretModal,
     setSecretModal,
     auditEvents,
