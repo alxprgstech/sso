@@ -544,6 +544,73 @@ async def test_expiry_revision_and_session_revocation_invalidate(
 
 
 @pytest.mark.asyncio
+async def test_installed_sdk_creates_and_redeems_real_step_up(
+    pg_session, pg_client, step_up_profile, monkeypatch
+):
+    """The public SDK must speak the real protocol, not a local mock."""
+    from alxprgs_sso import SSOClient, StepUpReplayError
+
+    real_async_client = httpx.AsyncClient
+
+    def asgi_client(*args, **kwargs):
+        kwargs.pop("verify", None)
+        return real_async_client(
+            *args,
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+            **kwargs,
+        )
+
+    monkeypatch.setattr("alxprgs_sso.client.httpx.AsyncClient", asgi_client)
+    user, _, headers = await login_user(
+        pg_client, pg_session, username="step_up_sdk", email="sdk@example.test"
+    )
+    rp = await create_rp(pg_session, name="SDK RP")
+    sdk = SSOClient(
+        server_url="https://auth.alxprgs.tech",
+        client_id=rp.client_id,
+        client_secret=CLIENT_SECRET,
+        expected_issuer="https://auth.alxprgs.tech",
+    )
+    request = await sdk.create_step_up_request(
+        action=ACTION,
+        payload_hash=hashlib.sha256(b'{"enabled":true}').hexdigest(),
+        subject=str(user.id),
+        assurance="reauth_basic",
+        redirect_uri=REDIRECT_URI,
+        description="Изменить критические настройки",
+        ttl_seconds=120,
+    )
+    details = await pg_client.get(f"/api/v1/step-up/requests/{request.request_token}")
+    assert details.status_code == 200
+    approved = await verify_factor(
+        pg_client,
+        request.request_token,
+        headers,
+        "password",
+        "password",
+        password=PASSWORD,
+    )
+    assert approved.status_code == 200 and approved.json()["completed"] is True
+    code, _ = response_code(approved.json()["redirect_to"])
+    proof = await sdk.consume_step_up_proof(
+        code=code,
+        request=request,
+        state=request.state,
+        expected_subject=str(user.id),
+    )
+    assert proof.claims.sub == str(user.id)
+    assert proof.claims.action == ACTION
+    with pytest.raises(StepUpReplayError):
+        await sdk.consume_step_up_proof(
+            code=code,
+            request=request,
+            state=request.state,
+            expected_subject=str(user.id),
+        )
+
+
+@pytest.mark.asyncio
 async def test_redirect_removal_rejects_redeem(pg_session, pg_client, step_up_profile):
     user, _, headers = await login_user(
         pg_client, pg_session, username="step_up_redirect", email="redirect@example.test"
