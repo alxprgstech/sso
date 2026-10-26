@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.core.exceptions import AuthenticationException
+from app.core.exceptions import AuthenticationException, TOTPReplayException
 from app.core.security import async_verify_password, generate_random_token, hash_token
 from app.models.authentication import SecurityAuthorization
 from app.models.session import Session
@@ -54,7 +54,9 @@ async def _confirm_totp(db: AsyncSession, context: FactorVerification, proof: Fa
 
     if not proof.code:
         return False
-    return await TOTPService.verify_totp(db, context.user, proof.code, commit=False)
+    return await TOTPService.verify_totp(
+        db, context.user, proof.code, commit=False, replay_error=True
+    )
 
 
 async def _confirm_recovery(
@@ -97,6 +99,10 @@ async def _verify_factor(db: AsyncSession, context: FactorVerification, proof: F
     }
     try:
         return await verifiers[proof.method](db, context, proof)
+    except TOTPReplayException:
+        # A real but already redeemed code is not a wrong guess: the one-use
+        # authorization stays valid and must not lose a failed-attempt budget.
+        raise
     except AuthenticationException:
         return False
 

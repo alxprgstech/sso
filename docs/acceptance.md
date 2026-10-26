@@ -228,3 +228,25 @@ Self-audit (не независимый аудит): проверены admin AP
 ## CD-PUBLIC-CHECK-01 — финальная внешняя readiness проверка
 
 2026-10-26T19:14:23+03:00, Codex: `.venv/Scripts/python.exe -m pytest tests/test_ec2_deployment.py tests/test_public_readiness.py tests/test_backup_collision.py tests/test_ec2_runtime_workspace.py -q --basetemp artifacts/pytest-cd-public-final`: **60 passed**. Ruff check/format и diff check PASS. Unit negative cases: DNS, TLS certificate, timeout, HTTP503/302, wrong destination, HTML, wrong JSON/DB readiness; positive exact readiness. Workflow: public-check зависит от deploy/installed=true, без повторной установки. Live script с рабочей станции вне sandbox: **HTTP200/database connected**, TLS verification включена; sandbox DNS недоступен. Фактическое выполнение новых jobs на GitHub и selective rerun не проверено до интеграции.
+
+## AUDIT-FULL-20261026 — локальная проверка комплексного аудита
+
+2026-10-27T00:15:00+03:00, DeepSeek Harness. Ветка `audit/full-stack-security-ui-ci-20261026` от `a35550f223cbd38b303311ddb48842a54681c3b7`. Продукт 0.3.0; production/EC2/DNS/secrets/`runtime.env` не изменялись; merge/release/deploy не выполнялись. Отчёты: [summary](audit/2026-10-26-full-audit-summary.md), [findings](audit/2026-10-26-security-findings.md), [API](audit/2026-10-26-api-coverage.md), [frontend](audit/2026-10-26-frontend-qa.md), [CI](audit/2026-10-26-ci-remediation.md), [final](audit/2026-10-26-final-verification.md).
+
+Обнаружено и исправлено 10 подтверждённых дефектов (AUD-2026-01…10): двойной пароль при смене режима регистрации, потеря 5-минутного session-read grant при reload, неотличимый replay TOTP (generic error + расход failed attempts), потеря `Retry-After` headers, reauth-челлендж до RBAC для admin API, падение второго конкурентного подтверждения, уязвимые Python/npm зависимости, 6 HIGH в frontend image, портативность SMTP TLS fixture. TOTP one-use политика не ослаблена.
+
+| Проверка | Фактический результат |
+| --- | --- |
+| Backend pytest default-on (`pytest -v tests/`, PostgreSQL16.10, Windows/Python3.13.0) | 820 passed, 3 environment-only failed (psql/pg_dump ×2, SMTP CA до fixture-фикса; после фикса 5/5), 5 deselected; см. final-verification |
+| Новые PostgreSQL регрессии | `test_totp_reauth_replay_pg.py` 4, `test_registration_mode_reauth_pg.py` 1, `test_admin_authorization_order_pg.py` 3, `test_totp_policy.py` (unit) PASS |
+| Ruff check/format, mypy | PASS для изменённых файлов; полный CI-набор — ниже |
+| Frontend | `npm ci`, audit 0, lint, typecheck, typecheck:tests, unit 14, components 51, build PASS; npm audit `--audit-level=high` 0 |
+| Playwright default-off | sso 6 + multi_client/protocol/telemetry/privacy/appearance/step_up 44 = **50 passed** |
+| Playwright enabled | passkey, totp, privacy, telemetry = **9 passed** |
+| API inventory | 73 фактических = 73 документированных; snapshot contract PASS; anonymous/regular/admin матрица (73/37/37) без неожиданных 200 |
+| Python deps | setuptools 84.1.0/filelock 4.2.1; `pip-audit --strict` 0; hashed/runtime/build locks согласованы |
+| Container | frontend nginx 1.30.6-alpine + apk upgrade; Trivy 0.75.0 → 0 HIGH/CRITICAL; non-root/read-only/nginx -t PASS |
+| SMTP TLS regression | 5 PASS после добавления KeyUsage/SKI/AKI в синтетические сертификаты |
+| Secret scan | `scripts/check_secret_scan.py --self-test` — см. final-verification |
+
+Ограничения: локальный Windows-стенд не содержит `psql`/`pg_dump` — соответствующие migration/backup тесты остаются environment-only и проверяются Linux CI; CodeScene live-gates, Firefox/WebKit, внешние SES/Resend/Sentry, публичный TLS/DNS и production load не проверялись. GitHub Actions для финального HEAD — после push; локальные PASS не заменяют remote CI.

@@ -33,7 +33,10 @@ from app.services.system_service import SystemService
 router = APIRouter(
     prefix="/api/v1/admin",
     tags=["Admin Panel"],
-    dependencies=[Depends(require_recent_reauthentication)],
+    # Authorise before asking anyone for a fresh password/MFA proof: a regular
+    # authenticated account must receive 403 without a reauthentication
+    # challenge for an administrative operation it can never perform.
+    dependencies=[Depends(require_admin_user), Depends(require_recent_reauthentication)],
 )
 
 

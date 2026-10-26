@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import HTTPException, status
 
 
@@ -24,10 +26,34 @@ class AuthenticationException(HTTPException):
         self,
         detail: str = "Неверный логин или пароль",
         error: str = "invalid_credentials",
+        *,
+        headers: dict[str, str] | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": error, "detail": detail},
+            detail={"error": error, "detail": detail, **(extra or {})},
+            headers=headers,
+        )
+
+
+class TOTPReplayException(AuthenticationException):
+    """A structurally valid TOTP code whose time step is already spent.
+
+    Distinct from a wrong code: the authenticator produced a real code, but it
+    was already redeemed (login, elevation or reauthentication). The client
+    receives a stable machine code and a bounded wait hint so it can ask for the
+    next code instead of retrying the burned one. Security semantics are
+    unchanged: a code is never accepted twice.
+    """
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        retry_after = max(1, int(retry_after_seconds))
+        super().__init__(
+            "Этот код уже был использован. Введите следующий код из приложения-аутентификатора.",
+            error="totp_code_reused",
+            headers={"Retry-After": str(retry_after)},
+            extra={"retry_after": retry_after},
         )
 
 

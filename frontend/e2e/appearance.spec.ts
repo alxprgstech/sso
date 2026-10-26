@@ -248,6 +248,7 @@ test("legal footer reaches the page bottom across routes and cookie states", asy
   };
   for (const viewport of [
     { width: 320, height: 800 },
+    { width: 375, height: 812 },
     { width: 1440, height: 1200 },
     { width: 390, height: 1200 },
     { width: 1908, height: 1200 },

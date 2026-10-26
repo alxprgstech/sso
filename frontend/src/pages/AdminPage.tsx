@@ -80,8 +80,6 @@ export const AdminPage: React.FC = () => {
     systemLoading,
     selectedMode,
     setSelectedMode,
-    adminPassword,
-    setAdminPassword,
     modeUpdateMsg,
     modeUpdating,
     loadUsers,
@@ -785,24 +783,11 @@ export const AdminPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="adminpage-field-1"
-                    className="block text-sm font-medium text-primary"
-                  >
-                    Текущий пароль администратора (re-authentication)
-                  </label>
-                  <PasswordInput
-                    id="adminpage-field-1"
-                    type="password"
-                    required
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="Введите ваш пароль для подтверждения смены режима"
-                    className="mt-1 w-full"
-                  />
-                  <p className="mt-1 text-xs text-secondary">
-                    В соответствии с инвариантом REG-02 операция защищена
-                    повторной аутентификацией администратора.
+                  <p className="text-xs text-secondary">
+                    После нажатия «Применить режим регистрации» сервер запросит
+                    текущий пароль и второй фактор один раз. Это одноразовое
+                    подтверждение привязано к новой настройке (REG-02); пароль не
+                    нужно вводить повторно в этой форме.
                   </p>
                 </div>
 

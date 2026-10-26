@@ -26,22 +26,131 @@ export interface SecurityAuthorization {
   factor_required: boolean;
   methods?: string[];
   passkey_options?: EncodedRequestOptions | null;
+  expires_at?: string;
+}
+
+export interface ApiErrorInit {
+  message: string;
+  status: number;
+  code: string;
+  route: string;
+  retryAfter?: number;
 }
 
 export class ApiError extends Error {
   readonly name = "ApiError";
-  constructor(message: string, readonly status: number, readonly code: string, readonly route: string) {
-    super(message);
+  readonly status: number;
+  readonly code: string;
+  readonly route: string;
+  readonly retryAfter?: number;
+
+  constructor(init: ApiErrorInit) {
+    super(init.message);
+    this.status = init.status;
+    this.code = init.code;
+    this.route = init.route;
+    this.retryAfter = init.retryAfter;
+  }
+}
+
+// Tab-scoped survival of the five-minute sessions-read grant. The server still
+// owns the expiry, session binding and security revision; this only keeps the
+// documented five-minute window across a page reload instead of re-prompting
+// for the password and MFA on every refresh. Never used for mutations.
+export const SESSIONS_READ_GRANT_KEY = "alxprgs.sso.sessions-read-grant.v1";
+
+interface StoredSessionGrant {
+  authorization: string;
+  expiresAt: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null) return false;
+  return typeof value === "object";
+}
+
+function isFutureTimestamp(value: unknown): value is number {
+  if (typeof value !== "number") return false;
+  if (!Number.isFinite(value)) return false;
+  return value > Date.now();
+}
+
+function validateStoredGrant(value: unknown): StoredSessionGrant | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.authorization !== "string") return null;
+  if (!isFutureTimestamp(value.expiresAt)) return null;
+  return { authorization: value.authorization, expiresAt: value.expiresAt };
+}
+
+function parseStoredGrant(raw: string): StoredSessionGrant | null {
+  try {
+    return validateStoredGrant(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function readStoredGrant(): StoredSessionGrant | null {
+  try {
+    const storage = globalThis.sessionStorage;
+    if (!storage) return null;
+    return parseStoredGrant(storage.getItem(SESSIONS_READ_GRANT_KEY) ?? "");
+  } catch {
+    // Storage can be disabled by the browser; the request proceeds without it.
+    return null;
   }
 }
 
 class ApiClient {
   private csrfToken: string | null = null;
   private sessionReadGrant: string | null = null;
-  private reauthenticationHandler: ((action: string, digest: string) => Promise<string>) | null = null;
+  private pendingReadProofs = new Map<string, Promise<SecurityAuthorization>>();
+  private reauthenticationHandler:
+    | ((action: string, digest: string) => Promise<SecurityAuthorization>)
+    | null = null;
 
-  setReauthenticationHandler(handler: ((action: string, digest: string) => Promise<string>) | null) {
+  setReauthenticationHandler(
+    handler: ((action: string, digest: string) => Promise<SecurityAuthorization>) | null,
+  ) {
     this.reauthenticationHandler = handler;
+  }
+
+  private clearSessionReadGrant() {
+    this.sessionReadGrant = null;
+    try {
+      globalThis.sessionStorage?.removeItem(SESSIONS_READ_GRANT_KEY);
+    } catch {
+      // Storage can be disabled by the browser; the in-memory grant still works.
+    }
+  }
+
+  private rememberSessionReadGrant(proof: SecurityAuthorization) {
+    const parsed = proof.expires_at ? Date.parse(proof.expires_at) : NaN;
+    const expiresAt = Number.isFinite(parsed) ? parsed : Date.now() + 5 * 60 * 1000;
+    if (expiresAt <= Date.now()) {
+      this.clearSessionReadGrant();
+      return;
+    }
+    this.sessionReadGrant = proof.authorization;
+    try {
+      globalThis.sessionStorage?.setItem(
+        SESSIONS_READ_GRANT_KEY,
+        JSON.stringify({ authorization: proof.authorization, expiresAt }),
+      );
+    } catch {
+      // A grant that cannot be persisted is simply requested again next reload.
+    }
+  }
+
+  private storedSessionReadGrant(): string | null {
+    if (this.sessionReadGrant) return this.sessionReadGrant;
+    const stored = readStoredGrant();
+    if (!stored) {
+      this.clearSessionReadGrant();
+      return null;
+    }
+    this.sessionReadGrant = stored.authorization;
+    return this.sessionReadGrant;
   }
 
   async startReauthentication(action: string, payload_hash: string, current_password: string): Promise<SecurityAuthorization> {
@@ -53,7 +162,7 @@ class ApiClient {
   }
 
   setCsrfToken(token: string | null) {
-    if (this.csrfToken !== token) this.sessionReadGrant = null;
+    if (this.csrfToken !== token) this.clearSessionReadGrant();
     this.csrfToken = token;
   }
 
@@ -126,8 +235,9 @@ class ApiClient {
     // Добавление CSRF заголовка для мутирующих запросов
     const method = options.method?.toUpperCase() || "GET";
     const sessionRead = method === "GET" && endpoint === "/api/v1/auth/sessions";
-    if (sessionRead && this.sessionReadGrant && !headers.has("X-Reauthentication")) {
-      headers.set("X-Reauthentication", this.sessionReadGrant);
+    if (sessionRead && !headers.has("X-Reauthentication")) {
+      const grant = this.storedSessionReadGrant();
+      if (grant) headers.set("X-Reauthentication", grant);
     }
     if (["POST", "PUT", "DELETE", "PATCH"].includes(method) && this.csrfToken) {
       headers.set("X-CSRF-Token", this.csrfToken);
@@ -148,22 +258,51 @@ class ApiClient {
     if (!response.ok) {
       let errorMessage = `Ошибка HTTP ${response.status}`;
       let errorCode = response.status < 500 ? "request_rejected" : "server_unavailable";
+      let retryAfter: number | undefined;
       try {
         const errorData = await response.json();
         errorCode = errorData.error || errorData.detail?.error || errorCode;
         errorMessage = errorData.detail?.detail || errorData.detail || errorData.error_description || errorData.error || errorMessage;
+        const bodyRetry = errorData.retry_after ?? errorData.detail?.retry_after;
+        if (typeof bodyRetry === "number" && Number.isFinite(bodyRetry)) retryAfter = bodyRetry;
       } catch {
         // Игнорируем ошибку парсинга JSON
       }
+      if (retryAfter === undefined) {
+        const headerRetry = Number(response.headers.get("Retry-After"));
+        if (Number.isFinite(headerRetry) && headerRetry > 0) retryAfter = headerRetry;
+      }
       if (errorCode === "reauthentication_required" && allowReauthentication && this.reauthenticationHandler) {
         const digest = await requestDigest(typeof options.body === "string" ? options.body : "");
-        const authorization = await this.reauthenticationHandler(`${method} ${endpoint}`, digest);
-        if (sessionRead) this.sessionReadGrant = authorization;
-        headers.set("X-Reauthentication", authorization);
+        // A rejected grant is stale, expired or bound to an old revision.
+        if (sessionRead) this.clearSessionReadGrant();
+        const action = `${method} ${endpoint}`;
+        let proofRequest = sessionRead
+          ? this.pendingReadProofs.get(`${action}\u0000${digest}`)
+          : undefined;
+        if (!proofRequest) {
+          proofRequest = this.reauthenticationHandler(action, digest);
+          if (sessionRead) {
+            // Concurrent identical reads share one prompt; mutations never do,
+            // because each one-use write proof authorises exactly one request.
+            const key = `${action}\u0000${digest}`;
+            this.pendingReadProofs.set(key, proofRequest);
+            const forget = () => this.pendingReadProofs.delete(key);
+            proofRequest.then(forget, forget);
+          }
+        }
+        const proof = await proofRequest;
+        if (sessionRead) this.rememberSessionReadGrant(proof);
+        headers.set("X-Reauthentication", proof.authorization);
         return this.request<T>(endpoint, { ...options, headers }, false);
       }
-      throw new ApiError(typeof errorMessage === "string" ? errorMessage : `Ошибка HTTP ${response.status}`,
-        response.status, errorCode, canonicalRoute(endpoint));
+      throw new ApiError({
+        message: errorMessage,
+        status: response.status,
+        code: errorCode,
+        route: canonicalRoute(endpoint),
+        retryAfter,
+      });
     }
 
     // Если 204 No Content
@@ -177,7 +316,12 @@ class ApiClient {
       return payload as T;
     } catch {
       captureContractFailure();
-      throw new ApiError("Некорректный ответ сервера", response.status, "invalid_response", canonicalRoute(endpoint));
+      throw new ApiError({
+        message: "Некорректный ответ сервера",
+        status: response.status,
+        code: "invalid_response",
+        route: canonicalRoute(endpoint),
+      });
     }
   }
 
@@ -339,10 +483,13 @@ class ApiClient {
     return this.request<SystemStatus>("/api/v1/admin/system/status");
   }
 
-  async updateRegistrationMode(mode: string, current_admin_password: string): Promise<SystemStatus> {
+  async updateRegistrationMode(mode: string): Promise<SystemStatus> {
+    // The action-bound X-Reauthentication proof (password + MFA, one use) is
+    // collected by the dialog after the 401; the body must not carry the
+    // administrator password a second time.
     return this.request<SystemStatus>("/api/v1/admin/system/registration-mode", {
       method: "POST",
-      body: JSON.stringify({ mode, current_admin_password }),
+      body: JSON.stringify({ mode }),
     });
   }
 

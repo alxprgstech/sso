@@ -435,7 +435,9 @@ async def elevate_session(
     if payload.method == "totp":
         if not payload.code:
             raise AuthenticationException("Введите код аутентификатора", error="code_required")
-        valid = await TOTPService.verify_totp(db, current, payload.code, commit=False)
+        valid = await TOTPService.verify_totp(
+            db, current, payload.code, commit=False, replay_error=True
+        )
     elif payload.method == "recovery_code":
         if not payload.code:
             raise AuthenticationException("Введите резервный код", error="recovery_code_required")

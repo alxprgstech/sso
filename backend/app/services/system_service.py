@@ -50,16 +50,25 @@ class SystemService:
     async def update_registration_mode(
         db: AsyncSession,
         admin_user: User,
-        admin_password: str,
+        admin_password: str | None,
         new_mode: str,
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> SystemConfiguration:
         """
         Переключение режима регистрации администратором после повторной аутентификации (REG-02).
+
+        The caller already proved freshness for this exact action through the
+        one-use ``X-Reauthentication`` proof, which requires the current password
+        and the configured MFA factor. ``admin_password`` is the legacy
+        in-body confirmation; when present it is still verified, but clients
+        must not ask the administrator to type the password twice.
         """
-        if not admin_user.password_credential or not await async_verify_password(
-            admin_password, admin_user.password_credential.password_hash
+        if admin_password is not None and (
+            not admin_user.password_credential
+            or not await async_verify_password(
+                admin_password, admin_user.password_credential.password_hash
+            )
         ):
             await AuditService.log_event(
                 db,

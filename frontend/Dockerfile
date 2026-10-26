@@ -12,8 +12,8 @@ ARG ALX_BUILD_SHA
 ENV ALX_BUILD_SHA=$ALX_BUILD_SHA
 RUN npm run build && test -z "$(find dist -name '*.map' -print -quit)"
 
-FROM nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
-RUN apk add --no-cache --upgrade libexpat=2.9.0-r0 pcre2=10.49-r0 tiff=4.7.2-r0 libx11=1.8.14-r0
+FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
+RUN apk upgrade --no-cache && apk add --no-cache libexpat=2.9.0-r0 pcre2=10.49-r0 tiff=4.7.2-r0 libx11=1.8.14-r0
 
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
