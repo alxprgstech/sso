@@ -131,15 +131,16 @@ def main():
         "FEATURE_TOTP_ENABLED",
         "FEATURE_PASSKEY_ENABLED",
         "FEATURE_RECOVERY_CODES_ENABLED",
+        "REQUIRE_ADMIN_MFA",
     ):
-        assert cfg[flag] == "false"
+        assert cfg[flag] == "true"
     private_key = Path("/tmp/synthetic-rsa.pem")
     private_key.write_text(cfg["JWT_PRIVATE_KEY_PEM"])
     run("openssl", "pkey", "-in", str(private_key), "-check", "-noout")
     ctl.configure()
     assert ctl.CONFIG.read_bytes() == generated
     print(
-        "PASS: real OpenSSL persistent configuration, permissions, default-off flags and idempotent configure"
+        "PASS: real OpenSSL persistent configuration, permissions, default-on MFA flags and idempotent configure"
     )
     # Prove actual flock exclusion between independent processes.
     marker = state / "child-acquired"

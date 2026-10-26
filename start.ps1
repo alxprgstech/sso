@@ -156,9 +156,10 @@ if (-not (Test-Path $envFile)) {
         TOTP_ENCRYPTION_KEY = $totpKey
         WEBAUTHN_RP_ID = "localhost"
         WEBAUTHN_ORIGIN = "http://localhost:3000"
-        FEATURE_TOTP_ENABLED = "false"
-        FEATURE_PASSKEY_ENABLED = "false"
-        FEATURE_RECOVERY_CODES_ENABLED = "false"
+        FEATURE_TOTP_ENABLED = "true"
+        FEATURE_PASSKEY_ENABLED = "true"
+        FEATURE_RECOVERY_CODES_ENABLED = "true"
+        REQUIRE_ADMIN_MFA = "true"
         REQUIRE_VERIFIED_EMAIL = "false"
     }
     foreach ($key in $replacements.Keys) {

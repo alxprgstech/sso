@@ -84,9 +84,10 @@ def main() -> None:
         "EMAIL_PROVIDER": "resend",
         "RESEND_API_KEY": secrets.token_urlsafe(32),
         "SMTP_FROM_EMAIL": "sso@example.invalid",
-        "FEATURE_TOTP_ENABLED": "false",
-        "FEATURE_PASSKEY_ENABLED": "false",
-        "FEATURE_RECOVERY_CODES_ENABLED": "false",
+        "FEATURE_TOTP_ENABLED": "true",
+        "FEATURE_PASSKEY_ENABLED": "true",
+        "FEATURE_RECOVERY_CODES_ENABLED": "true",
+        "REQUIRE_ADMIN_MFA": "true",
         "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
         "SENTRY_ENABLED": "false",
     }

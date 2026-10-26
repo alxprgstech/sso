@@ -27,7 +27,8 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from app.core.rbac import ROLE_ADMIN, ROLE_USER
-from app.core.security import hash_password
+from app.core.security import encrypt_totp_secret, hash_password
+from app.models.mfa import TOTPCredential
 from app.models.oidc import OIDCClient, OIDCRedirectUri
 from app.models.system import SystemConfiguration
 from app.models.user import PasswordCredential, Role, User, UserRole
@@ -39,6 +40,10 @@ from tests.db_guard import (
     mask_dsn,
     verify_test_database_marker,
 )
+
+# Synthetic administrator factor for the default-on E2E profile. It is a
+# deterministic local fixture, never a production credential.
+COMPOSE_ADMIN_TOTP_SECRET = "JBSWY3DPEHPK3PXP"  # pragma: allowlist secret
 
 SYNTHETIC_USERS = [
     {
@@ -205,6 +210,43 @@ async def prepare_e2e_data(*, reset_rate_limits: bool = False) -> None:
                         )
                     )
                 print(f"[OK] Обновлен синтетический пользователь {u_data['username']}")
+
+        # 3.0 Deterministic confirmed TOTP for the synthetic administrator, so
+        # default-on E2E can complete the mandatory admin MFA login. The
+        # explicitly-disabled profile removes it to preserve that profile.
+        compose_admin = (
+            await session.execute(select(User).where(User.username == "compose_admin"))
+        ).scalar_one()
+        admin_mfa_enforced = os.environ.get("REQUIRE_ADMIN_MFA", "true").lower() == "true"
+        totp = (
+            await session.execute(
+                select(TOTPCredential).where(TOTPCredential.user_id == compose_admin.id)
+            )
+        ).scalar_one_or_none()
+        if not admin_mfa_enforced:
+            if totp is not None:
+                await session.delete(totp)
+            print("[OK] Explicitly-disabled profile: synthetic admin TOTP removed")
+        else:
+            encrypted = encrypt_totp_secret(COMPOSE_ADMIN_TOTP_SECRET)
+            if totp is None:
+                session.add(
+                    TOTPCredential(
+                        user_id=compose_admin.id,
+                        encrypted_secret=encrypted,
+                        is_confirmed=True,
+                        confirmed_at=datetime.now(timezone.utc),
+                    )
+                )
+            else:
+                totp.encrypted_secret = encrypted
+                totp.is_confirmed = True
+                totp.confirmed_at = datetime.now(timezone.utc)
+                totp.last_verified_step = None
+                totp.pending_encrypted_secret = None
+                totp.pending_expires_at = None
+                totp.pending_session_id = None
+            print("[OK] Синтетический администратор получил детерминированный TOTP")
 
         # 3.1 Обеспечиваем наличие двух независимых демонстрационных OIDC клиентов
         demo_clients = [

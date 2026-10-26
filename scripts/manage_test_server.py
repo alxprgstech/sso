@@ -123,10 +123,12 @@ def check_capabilities(
     totp = caps.get("totp_enabled")
     recovery = caps.get("recovery_codes_enabled")
     email = caps.get("email_verification_enabled")
+    admin_mfa = caps.get("admin_mfa_required")
 
     print(
         f"[PREFLIGHT-INFO] {label} ({endpoint}) capabilities: "
-        f"passkey={passkey}, totp={totp}, recovery={recovery}, email={email}"
+        f"passkey={passkey}, totp={totp}, recovery={recovery}, email={email}, "
+        f"admin_mfa={admin_mfa}"
     )
 
     if expected_profile in ("default-off", "email"):
@@ -136,15 +138,21 @@ def check_capabilities(
                 f"но получено: passkey={passkey}, totp={totp}, recovery={recovery}, email={email}"
             )
             return False
+        if admin_mfa is not False:
+            print("[PREFLIGHT-FAIL] Explicitly-disabled profile must disable admin MFA policy")
+            return False
         if expected_profile == "email" and caps.get("require_verified_email") is not True:
             print("[PREFLIGHT-FAIL] Email profile requires verified email before login")
             return False
     elif expected_profile == "enabled":
-        if passkey is not True:
+        if passkey is not True or totp is not True or recovery is not True:
             print(
-                f"[PREFLIGHT-FAIL] {label}: Ожидался профиль enabled (passkey=True), "
-                f"но получено: passkey={passkey}"
+                f"[PREFLIGHT-FAIL] {label}: Ожидался профиль enabled (все MFA=true), "
+                f"но получено: passkey={passkey}, totp={totp}, recovery={recovery}"
             )
+            return False
+        if admin_mfa is not True:
+            print("[PREFLIGHT-FAIL] Default-on profile requires the admin MFA policy")
             return False
     return True
 
@@ -187,12 +195,14 @@ def start_server(
         merged_env["FEATURE_TOTP_ENABLED"] = "false"
         merged_env["FEATURE_PASSKEY_ENABLED"] = "false"
         merged_env["FEATURE_RECOVERY_CODES_ENABLED"] = "false"
+        merged_env["REQUIRE_ADMIN_MFA"] = "false"
         merged_env["FEATURE_EMAIL_VERIFICATION_ENABLED"] = "true"
         merged_env["REQUIRE_VERIFIED_EMAIL"] = "false"
     elif profile == "enabled":
         merged_env["FEATURE_TOTP_ENABLED"] = "true"
         merged_env["FEATURE_PASSKEY_ENABLED"] = "true"
         merged_env["FEATURE_RECOVERY_CODES_ENABLED"] = "true"
+        merged_env["REQUIRE_ADMIN_MFA"] = "true"
         merged_env["FEATURE_EMAIL_VERIFICATION_ENABLED"] = "true"
         merged_env["REQUIRE_VERIFIED_EMAIL"] = "false"
 
@@ -225,6 +235,7 @@ def start_server(
                 "FEATURE_TOTP_ENABLED": "false",
                 "FEATURE_PASSKEY_ENABLED": "false",
                 "FEATURE_RECOVERY_CODES_ENABLED": "false",
+                "REQUIRE_ADMIN_MFA": "false",
                 "FEATURE_EMAIL_VERIFICATION_ENABLED": "true",
                 "REQUIRE_VERIFIED_EMAIL": "true",
                 "EMAIL_PROVIDER": "ses",
