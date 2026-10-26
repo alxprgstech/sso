@@ -3763,3 +3763,5 @@ Default browser: 48 PASS; enabled: 5 PASS / 4 FAIL. Снимок показыв�
 2026-10-26T14:24:00+03:00 — DeepSeek Harness, EXT-STEPUP-01 SDK integration evidence. `test_installed_sdk_creates_and_redeems_real_step_up` (public SDK → ASGI FastAPI → real PostgreSQL/JWKS) PASS; replay maps to StepUpReplayError. New suite20PASS (policy10+PG10). Acceptance/status updated; commit pending.
 
 2026-10-26T14:30:00+03:00 — DeepSeek Harness, EXT-STEPUP-01 final full-suite retest with SDK path: 776 passed, 5 environment-only failed (psql, pg_dump, hatchling metadata, OpenSSL SMTP trust), 5 deselected; no feature/protocol failures. HEAD f11ba13 plus this docs checkpoint. Acceptance/status corrected to exact count.
+
+2026-10-26T14:32:43+03:00 — DeepSeek Harness, EXT-STEPUP-01 Passkey-only MFA regression added: real HTTP challenge with `acr=reauth_mfa`, one Passkey UV assertion, proof `amr=["hwk"]`; 21PASS new suite (policy10+PG11). Existing STRICT password+Passkey and MFA policy covered separately. Full-suite count in acceptance remains the earlier 776 run; this additional test is verified in the targeted suite.

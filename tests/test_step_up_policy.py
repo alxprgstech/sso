@@ -102,6 +102,7 @@ def test_disabled_features_do_not_count_as_available_factors() -> None:
     assert factors.totp is False
     assert factors.passkey is False
     assert plans_for("reauth_mfa", user, cfg) == ()
+    assert plans_for("reauth_strict", user, cfg) == ()
     assert {plan.id for plan in plans_for("reauth_basic", user, cfg)} == {"password"}
 
 

@@ -343,6 +343,47 @@ async def test_password_and_passkey_strict_flow(pg_session, pg_client, step_up_p
 
 
 @pytest.mark.asyncio
+async def test_passkey_only_satisfies_mfa_policy(pg_session, pg_client, step_up_profile):
+    user, session, headers = await login_user(
+        pg_client, pg_session, username="step_up_passkey_mfa", email="passkey-mfa@example.test"
+    )
+    authenticator = await seed_passkey(pg_session, user, session, step_up_profile)
+    rp = await create_rp(pg_session, name="Passkey MFA RP", assurance="reauth_mfa")
+    created, _, verifier, _ = await create_step_up(
+        pg_client, rp, subject=user.id, assurance="reauth_mfa"
+    )
+    assert created.status_code == 201, created.json()
+    token = created.json()["request_token"]
+    details = await pg_client.get(f"/api/v1/step-up/requests/{token}")
+    assert details.status_code == 200
+    plan = details.json()["plans"][0]["id"]
+    assert plan == "passkey"
+    options = await pg_client.post(
+        f"/api/v1/step-up/requests/{token}/passkey/options",
+        headers=headers,
+        json={"plan": plan},
+    )
+    assert options.status_code == 200, options.json()
+    assertion = authenticator.assertion(options.json(), step_up_profile.WEBAUTHN_ORIGIN)
+    completed = await verify_factor(
+        pg_client, token, headers, plan, "passkey", credential=assertion
+    )
+    assert completed.status_code == 200 and completed.json()["completed"] is True
+    code, _ = response_code(completed.json()["redirect_to"])
+    redeemed = await redeem(pg_client, rp, code, verifier)
+    assert redeemed.status_code == 200, redeemed.json()
+    from app.core.security import decode_jwt
+
+    payload = decode_jwt(
+        redeemed.json()["proof"],
+        audience=rp.client_id,
+        expected_use="external_step_up_proof",
+    )
+    assert payload["acr"] == "reauth_mfa"
+    assert payload["amr"] == ["hwk"]
+
+
+@pytest.mark.asyncio
 async def test_password_and_totp_order_and_totp_replay(pg_session, pg_client, step_up_profile):
     user, session, headers = await login_user(
         pg_client, pg_session, username="step_up_totp", email="totp@example.test"
