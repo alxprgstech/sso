@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 
 class OIDCClient(Base):
     __tablename__ = "oidc_clients"
+    __table_args__ = (
+        CheckConstraint(
+            "step_up_max_ttl_seconds BETWEEN 30 AND 300",
+            name="step_up_max_ttl",
+        ),
+    )
 
     client_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     client_secret_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -26,6 +32,21 @@ class OIDCClient(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     allowed_scopes: Mapped[str] = mapped_column(
         String(255), default="openid profile email", server_default="openid profile email"
+    )
+
+    # External transaction step-up is opt-in per client.  Existing clients stay
+    # disabled after migration; empty policies deny every action.
+    step_up_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    step_up_assurance_levels: Mapped[str] = mapped_column(
+        String(128), default="", server_default="", nullable=False
+    )
+    step_up_actions: Mapped[str] = mapped_column(
+        String(512), default="", server_default="", nullable=False
+    )
+    step_up_max_ttl_seconds: Mapped[int] = mapped_column(
+        Integer, default=300, server_default="300", nullable=False
     )
 
     redirect_uris: Mapped[list[OIDCRedirectUri]] = relationship(

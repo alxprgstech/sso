@@ -56,6 +56,14 @@ export const AdminPage: React.FC = () => {
     setNewClientScopes,
     newRedirectUris,
     setNewRedirectUris,
+    newStepUpEnabled,
+    setNewStepUpEnabled,
+    newStepUpLevels,
+    setNewStepUpLevels,
+    newStepUpActions,
+    setNewStepUpActions,
+    newStepUpTtl,
+    setNewStepUpTtl,
     secretModal,
     setSecretModal,
     auditEvents,
@@ -1056,6 +1064,83 @@ export const AdminPage: React.FC = () => {
                       className="mt-1 w-full"
                     />
                   </div>
+                  <fieldset className="space-y-3 rounded-md border border-border p-3">
+                    <legend className="px-1 text-xs font-medium text-primary">
+                      Внешнее подтверждение действий
+                    </legend>
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        checked={newStepUpEnabled}
+                        disabled={newClientType !== "confidential"}
+                        onChange={(event) =>
+                          setNewStepUpEnabled(event.target.checked)
+                        }
+                      />
+                      <span>
+                        Разрешить hosted step-up
+                        <small className="block text-xs text-secondary">
+                          Только для confidential-клиента с секретом.
+                        </small>
+                      </span>
+                    </label>
+                    {newStepUpEnabled && (
+                      <>
+                        <div>
+                          <label
+                            htmlFor="adminpage-step-up-levels"
+                            className="block text-xs font-medium text-primary"
+                          >
+                            Уровни (через пробел)
+                          </label>
+                          <Input
+                            id="adminpage-step-up-levels"
+                            value={newStepUpLevels}
+                            onChange={(event) =>
+                              setNewStepUpLevels(event.target.value)
+                            }
+                            placeholder="reauth_mfa reauth_strict"
+                            className="mt-1 w-full"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="adminpage-step-up-actions"
+                            className="block text-xs font-medium text-primary"
+                          >
+                            Действия (через пробел)
+                          </label>
+                          <Input
+                            id="adminpage-step-up-actions"
+                            value={newStepUpActions}
+                            onChange={(event) =>
+                              setNewStepUpActions(event.target.value)
+                            }
+                            placeholder="critical_settings_change"
+                            className="mt-1 w-full"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="adminpage-step-up-ttl"
+                            className="block text-xs font-medium text-primary"
+                          >
+                            Максимальный срок, секунд
+                          </label>
+                          <Input
+                            id="adminpage-step-up-ttl"
+                            type="number"
+                            min={30}
+                            max={300}
+                            value={newStepUpTtl}
+                            onChange={(event) =>
+                              setNewStepUpTtl(Number(event.target.value))
+                            }
+                            className="mt-1 w-full"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </fieldset>
                   <div className="flex space-x-3 pt-3">
                     <Button
                       type="submit"

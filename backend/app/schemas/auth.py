@@ -76,6 +76,7 @@ class CapabilitiesResponse(BaseModel):
     recovery_codes_enabled: bool
     email_verification_enabled: bool
     require_verified_email: bool
+    external_step_up_enabled: bool = False
     registration_mode: str = "closed"
 
 

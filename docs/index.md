@@ -1,6 +1,6 @@
 # Документация ALXPRGS SSO
 
-Продукт 0.2.0. Актуализация: 18.10.2026. Источник версии — `VERSION`; состояние приёмки — [status.md](status.md), [приёмка исправлений](acceptance.md). Целевой issuer `https://auth.alxprgs.tech` не подтверждает существование production.
+Продукт 0.3.0. Актуализация: 26.10.2026. Источник версии — `VERSION`; состояние приёмки — [status.md](status.md), [приёмка исправлений](acceptance.md). Целевой issuer `https://auth.alxprgs.tech` не подтверждает существование production.
 
 ## Как читать комплект
 

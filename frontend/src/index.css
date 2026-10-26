@@ -370,6 +370,73 @@
   .auth-heading {
     @apply text-3xl leading-10;
   }
+  .step-up-summary {
+    @apply space-y-4 rounded-lg border border-border bg-surface p-4;
+  }
+  .step-up-summary-heading {
+    @apply flex items-center gap-3;
+  }
+  .step-up-summary-heading > svg {
+    @apply shrink-0 text-brand;
+  }
+  .step-up-summary-heading span,
+  .step-up-summary-heading strong {
+    @apply block;
+  }
+  .step-up-summary dl {
+    @apply space-y-3;
+  }
+  .step-up-summary dl > div {
+    @apply grid gap-1;
+  }
+  .step-up-summary dt {
+    @apply text-xs font-medium text-secondary;
+  }
+  .step-up-summary dd {
+    @apply flex items-center gap-2 break-words text-sm text-primary;
+  }
+  .step-up-summary code {
+    @apply font-mono text-xs;
+  }
+  .step-up-warning {
+    @apply rounded-md bg-warning-soft p-3 text-xs text-warning;
+  }
+  .step-up-plans {
+    @apply mt-6 space-y-2;
+  }
+  .step-up-plans legend {
+    @apply mb-2 text-sm font-semibold text-primary;
+  }
+  .step-up-plan {
+    @apply flex cursor-pointer items-start gap-3 rounded-md border border-border bg-surface p-3;
+  }
+  .step-up-plan-selected {
+    @apply border-brand bg-selected;
+  }
+  .step-up-plan input {
+    @apply mt-1 size-4 shrink-0;
+  }
+  .step-up-plan span {
+    @apply grid gap-0.5;
+  }
+  .step-up-plan small {
+    @apply text-xs text-secondary;
+  }
+  .step-up-factors {
+    @apply mt-6 space-y-4;
+  }
+  .step-up-actions {
+    @apply mt-6 space-y-3 border-t border-line pt-5;
+  }
+  .step-up-outcome {
+    @apply mb-5 flex items-start gap-3 rounded-lg bg-success-soft p-4 text-success;
+  }
+  .step-up-outcome-cancelled {
+    @apply bg-warning-soft text-warning;
+  }
+  .step-up-outcome p {
+    @apply text-sm;
+  }
   .auth-decoration {
     @apply hidden overflow-hidden border-l border-line bg-surface;
   }

@@ -27,6 +27,7 @@ from app.api.mfa import router as mfa_router
 from app.api.oidc import router as oidc_router
 from app.api.privacy import router as privacy_router
 from app.api.reauthentication import router as reauthentication_router
+from app.api.step_up import router as step_up_router
 from app.build_info import get_build_info
 from app.config import get_settings
 from app.core.body_limit import BodyLimitMiddleware
@@ -38,6 +39,7 @@ from app.core.exceptions import (
     AuthorizationException,
     FeatureDisabledException,
     OAuthErrorException,
+    StepUpError,
 )
 from app.core.security import get_jwks, password_source
 from app.core.rate_limit import get_client_ip
@@ -100,6 +102,7 @@ app = TelemetryFastAPI(
 app.include_router(privacy_router)
 
 app.include_router(reauthentication_router)
+app.include_router(step_up_router)
 
 app.add_middleware(BodyLimitMiddleware)
 if settings.ENVIRONMENT == "production":
@@ -163,7 +166,7 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    if request.url.path.startswith("/oauth/"):
+    if request.url.path.startswith("/oauth/") or request.url.path.startswith("/api/v1/step-up/"):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response
@@ -232,6 +235,11 @@ async def authorization_exception_handler(request: Request, exc: AuthorizationEx
         status_code=exc.status_code,
         content=exc.detail,
     )
+
+
+@app.exception_handler(StepUpError)
+async def step_up_error_exception_handler(request: Request, exc: StepUpError):
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
 
 @app.exception_handler(OAuthErrorException)
@@ -346,13 +354,25 @@ async def oidc_configuration() -> dict[str, Any]:
             "aud",
             "exp",
             "iat",
+            "auth_time",
             "nonce",
+            "acr",
+            "amr",
             "preferred_username",
             "email",
             "email_verified",
             "roles",
         ],
+        "acr_values_supported": [
+            "reauth_basic",
+            "reauth_mfa",
+            "reauth_strict",
+            "reauth_password_mfa",
+        ],
         "code_challenge_methods_supported": ["S256"],
+        "external_step_up_enabled": settings.FEATURE_EXTERNAL_STEP_UP_ENABLED,
+        "external_step_up_request_endpoint": f"{base_url}/api/v1/step-up/requests",
+        "external_step_up_redemption_endpoint": f"{base_url}/api/v1/step-up/redeem",
     }
 
 

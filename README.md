@@ -1,13 +1,13 @@
 # ALXPRGS Single Sign-On (SSO)
 
-Актуализация: 18.10.2026. [Полный реестр и навигация](docs/index.md), [конфигурация](docs/configuration.md), [тестовый стенд](docs/testing/README.md), [повторная проверка исправлений безопасности](docs/acceptance.md). Сверка исходников не заменяет runtime-приёмку.
+Актуализация: 26.10.2026. [Полный реестр и навигация](docs/index.md), [конфигурация](docs/configuration.md), [тестовый стенд](docs/testing/README.md), [повторная проверка исправлений безопасности](docs/acceptance.md). Сверка исходников не заменяет runtime-приёмку.
 
 Закрытая программная система единого входа (Single Sign-On) и централизованной идентификации для экосистемы `alxprgs.tech`.
 
 - **Целевой домен**: `alxprgs.tech`
 - **Идентификатор поставщика (Issuer)**: `https://auth.alxprgs.tech`
-- **Версия продукта**: `0.2.0` (SemVer, единый источник истины — `VERSION`)
-- **Статус**: реализация 0.2.0 доступна; общая production-приёмка не закрыта. [Текущий статус](docs/status.md), [историческая приёмка](docs/acceptance.md).
+- **Версия продукта**: `0.3.0` (SemVer, единый источник истины — `VERSION`)
+- **Статус**: реализация 0.3.0 доступна; общая production-приёмка не закрыта. [Текущий статус](docs/status.md), [историческая приёмка](docs/acceptance.md).
 
 ---
 
@@ -123,13 +123,15 @@ FEATURE_TOTP_ENABLED=false
 FEATURE_PASSKEY_ENABLED=false
 FEATURE_RECOVERY_CODES_ENABLED=false
 FEATURE_EMAIL_VERIFICATION_ENABLED=true
+FEATURE_EXTERNAL_STEP_UP_ENABLED=false
 REQUIRE_VERIFIED_EMAIL=false
 ```
 
 - При выключенных MFA-флагах эндпоинты TOTP, Passkey и Recovery codes возвращают HTTP 404 (`feature_disabled`);
 - Обязательное подтверждение email при самостоятельной регистрации работает независимо от трёх MFA-флагов и отправляет письмо через настроенный транспорт;
 - Созданные администратором пользователи могут иметь `email_verified=False`; самостоятельная регистрация создаёт пользователя только после подтверждения адреса;
-- `REQUIRE_VERIFIED_EMAIL=true` дополнительно блокирует вход ранее созданных или созданных администратором пользователей с неподтверждённым адресом. Самостоятельная регистрация всегда подтверждает email до создания пользователя.
+- `REQUIRE_VERIFIED_EMAIL=true` дополнительно блокирует вход ранее созданных или созданных администратором пользователей с неподтверждённым адресом. Самостоятельная регистрация всегда подтверждает email до создания пользователя;
+- `FEATURE_EXTERNAL_STEP_UP_ENABLED=false` оставляет cross-application step-up выключенным. Даже после глобального включения каждый доверенный confidential-клиент требует отдельной per-client policy (assurance levels/actions/TTL); public clients и legacy clients не получают возможность автоматически. Recovery code в step-up не участвует. Подробности — [API](docs/api.md), [ADR0031](docs/adr/0031-external-transaction-step-up.md).
 
 ### Отправка писем подтверждения
 
@@ -165,6 +167,7 @@ python -m pytest tests/ -v
 - Отложенные возможности (`tests/test_mfa_features.py`): изоляция default-off и корректность enabled-профиля;
 - Административный API и RBAC (`tests/test_admin_api.py`);
 - Python SDK unit (`tests/test_python_sdk.py`, `tests/test_sso_cross_clients.py`); реальный двухклиентский SSO проверяется отдельно в Playwright;
+- Cross-application step-up (`tests/integration/test_external_step_up_pg.py`, `tests/test_step_up_policy.py`, `packages/python-sdk/tests/test_step_up_sdk.py`): password/TOTP/Passkey, strict, replay, cross-client, session/revision/expiry и concurrent redemption;
 - Негативные сценарии безопасности и гонки (`tests/test_security_and_negative_scenarios.py`).
 
 ### 4.2. Проверка фронтенда
@@ -240,9 +243,13 @@ Frontend использует React Router7, Tailwind4 и семантическ
 
 Локальная разработка по умолчанию остаётся SMTP; обычные Resend tests работают с fake HTTP и синтетическими ключами, без внешних писем. Перед реальным использованием владелец проверяет домен/его DNS и права sending key в Resend, HTTPS-доступ к `api.resend.com`, а также оставляет open/click tracking выключенным для authentication писем. Реальная отправка и DNS не выполнялись в этой задаче. [Официальная настройка доменов](https://resend.com/docs/dashboard/domains/introduction), [ADR](docs/adr/0020-resend-email-provider.md), [результаты проверок](https://github.com/alxprgstech/sso/blob/3603d5721938f594d7892c8c33ba33912906bcb4/docs/acceptance-resend.md).
 
+## Cross-application step-up (0.3.0)
+
+Доверенное внешнее приложение может запросить hosted подтверждение одной конкретной операции. RP backend создаёт challenge через confidential client authentication, браузер проходит password/TOTP/Passkey на стороне SSO, после чего backend погашает одноразовый code с PKCE и получает короткоживущий `external_step_up_proof` JWT. Proof привязан к client/subject/action/payload/redirect/session/security revision и не является Access/ID Token. Существующий OIDC login и внутренний `X-Reauthentication` не изменены; feature и per-client policy выключены по умолчанию. Требуется миграция `0015_external_step_up`. SDK 0.3.0 добавляет `create_step_up_request`, `build_step_up_url`, `consume_step_up_proof`; пример RP — [examples/step_up_rp.py](examples/step_up_rp.py). Порядок активации — [migration](docs/migration.md#0015_external_step_up--external-stepup-01).
+
 ## Исправления безопасности в Unreleased
 
-Gmail action требует секрет письма и Google bearer; Passkey lookup использует canonical ID. Просмотр сессий требует password/MFA подтверждение на пять минут, отзыв — отдельный одноразовый proof; обычный logout доступен как прежде. Требуются миграции до `0013_security_outbox`.
+Gmail action требует секрет письма и Google bearer; Passkey lookup использует canonical ID. Просмотр сессий требует password/MFA подтверждение на пять минут, отзыв — отдельный одноразовый proof; обычный logout доступен как прежде. Требуются миграции до `0015_external_step_up`.
 
 Установка выбранных Python dependencies: `python -m pip install --require-hashes -r requirements-lock-hashed.txt`; затем локальный backend/SDK отдельно с `--no-deps --no-build-isolation`. Docker использует соответствующие build/runtime hashed companions. Проверка согласованности: `python scripts/hashed_locks.py`.
 

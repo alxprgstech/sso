@@ -12,6 +12,7 @@ from app.models.mfa import EmailVerificationToken, TOTPCredential, WebAuthnChall
 from app.models.oidc import AuthorizationCode, RefreshToken
 from app.models.privacy import DeletionAuthorization
 from app.models.session import Session
+from app.models.step_up import ExternalStepUpRequest
 from app.models.user import User
 
 
@@ -88,6 +89,7 @@ async def invalidate_security_state(
     for model in (
         AuthenticationStep,
         SecurityAuthorization,
+        ExternalStepUpRequest,
         DeletionAuthorization,
         WebAuthnChallenge,
         EmailVerificationToken,

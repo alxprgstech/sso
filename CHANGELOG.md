@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-26
+
+### Добавлено
+- Cross-application transaction step-up: hosted подтверждение конкретной операции для доверенных confidential OIDC clients, password/TOTP/Passkey и комбинированные политики, transaction binding, одноразовый proof с server-side redemption, отдельный JWT `external_step_up_proof`, SDK API и reference RP (`examples/step_up_rp.py`). Новая возможность `FEATURE_EXTERNAL_STEP_UP_ENABLED=false` и per-client policy выключены по умолчанию; требуется миграция `0015_external_step_up`. Архитектура — ADR-0031.
+- Frontend: страница `/step-up/{token}` с отображением доверенного приложения, операции, assurance и TTL; последовательное подтверждение факторов, Passkey, отмена без выдачи proof, ошибки и доступность.
+- SDK 0.3.0: `create_step_up_request`, `build_step_up_url`, `consume_step_up_proof`, типизированные `StepUpRequest`/`StepUpProof`, проверка issuer/audience/sub/action/payload/acr/amr/nonce и отдельные step-up exceptions.
+- Admin API/UI: per-client `step_up_enabled`, assurance levels, actions и max TTL; миграция оставляет всех существующих клиентов выключенными.
+- Тесты: policy matrix, PostgreSQL lifecycle/replay/concurrency/cross-client/session/security-revision, SDK contract и StepUpPage component.
+
 ### Развёртывание EC2
 
 - По прямому запросу владельца добавлен ручной CD из main без успешного общего CI; автоматический CI gate и обязательные transport-проверки сохранены.
@@ -27,7 +36,7 @@
 - Hash-checked Python installations, release SBOM и неподписанная local build provenance; notifications через transactional PostgreSQL outbox.
 - Windows key generator удаляет сторонние explicit ACE до записи ключей; backup ACL validator не зависит от загрузки модулей PowerShell.
 - Runtime frontend image: исправленные Alpine `libexpat` 2.9.0-r0 и `tiff` 4.7.2-r0; порог Trivy High/Critical сохранён.
-- Cookie Origin/Referer allowlist, строгие redirect URI и owner-only backup files. Требуются миграции 0011…0013; VERSION остаётся 0.2.0 до отдельного выпуска.
+- Cookie Origin/Referer allowlist, строгие redirect URI и owner-only backup files. Требовались миграции 0011…0013; исправления вошли в 0.2.0.
 
 ### Конфиденциальность и доступность
 

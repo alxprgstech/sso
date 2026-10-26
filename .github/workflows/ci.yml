@@ -664,7 +664,7 @@ jobs:
           E2E_PASSWORD: SSOBrowserSynthetic2026! # pragma: allowlist secret -- isolated SSO fixture
           E2E_MAILBOX_PATH: /tmp/sso-e2e-mailbox.jsonl
         run: |
-          npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts e2e/protocol_lifecycle.spec.ts e2e/telemetry.spec.ts e2e/privacy.spec.ts e2e/appearance.spec.ts
+          npx playwright test e2e/sso.spec.ts e2e/multi_client_sso.spec.ts e2e/protocol_lifecycle.spec.ts e2e/telemetry.spec.ts e2e/privacy.spec.ts e2e/appearance.spec.ts e2e/step_up.spec.ts
 
       - name: Stop Default-off Backend Server
         run: |

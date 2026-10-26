@@ -4,7 +4,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from typing import TypeGuard
 
-from authlib.oauth2.rfc6749.util import extract_basic_authorization, scope_to_list
+from authlib.oauth2.rfc6749.util import scope_to_list
 from fastapi import APIRouter, Depends, Form, Header, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_cookie_name, get_current_session, limit_security_endpoint
 from app.config import Settings, get_settings
+from app.core.client_auth import extract_client_credentials
 from app.core.exceptions import AuthenticationException, OAuthErrorException
 from app.core.rate_limit import get_client_ip
 from app.core.security import create_jwt, decode_jwt, hash_token, valid_pkce_challenge
@@ -47,44 +48,6 @@ def redirect_parameters(uri: str, values: dict[str, str]) -> RedirectResponse:
     return RedirectResponse(
         urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(parameters))), 302
     )
-
-
-def _extract_client_credentials(
-    request: Request,
-    client_id: str | None = None,
-    client_secret: str | None = None,
-) -> tuple[str, str | None]:
-    """
-    Извлекает client_id и client_secret из HTTP Basic Auth или параметров формы (RFC 6749 Section 2.3).
-    Запрещает одновременное использование нескольких методов аутентификации.
-    """
-    auth_header = request.headers.get("Authorization")
-    if auth_header and (len(auth_header) > 4096 or not auth_header.lower().startswith("basic ")):
-        raise OAuthErrorException("invalid_client", "Неверный метод аутентификации клиента", 401)
-    if auth_header and auth_header.lower().startswith("basic "):
-        if client_id is not None or client_secret is not None:
-            raise OAuthErrorException(
-                "invalid_request",
-                "Использование более одного метода аутентификации клиента запрещено (RFC 6749 Section 2.3)",
-                400,
-            )
-        try:
-            creds = extract_basic_authorization(
-                {"Authorization": "Basic " + auth_header.split(" ", 1)[1]}
-            )
-            if not creds:
-                raise ValueError("Empty credentials")
-            cid, csec = creds
-            if not 1 <= len(cid) <= 64 or (csec is not None and len(csec) > 128):
-                raise ValueError("Invalid client credentials length")
-            return cid, csec
-        except Exception:
-            raise OAuthErrorException(
-                "invalid_client", "Некорректный заголовок Basic авторизации", 401
-            )
-    if not client_id:
-        raise OAuthErrorException("invalid_client", "Отсутствует client_id", 401)
-    return client_id, client_secret
 
 
 @router.get("/client-context", response_model=ClientContextResponse)
@@ -276,7 +239,7 @@ async def token(
       - grant_type=authorization_code (PKCE S256)
       - grant_type=refresh_token (Token Rotation & Replay Detection)
     """
-    cid, csec = _extract_client_credentials(request, client_id, client_secret)
+    cid, csec = extract_client_credentials(request, client_id, client_secret)
     ip = get_client_ip(request)
     ua = request.headers.get("User-Agent")
 
@@ -350,7 +313,7 @@ async def revoke(
     """
     RFC 7009 Token Revocation endpoint (SSO-07).
     """
-    cid, csec = _extract_client_credentials(request, client_id, client_secret)
+    cid, csec = extract_client_credentials(request, client_id, client_secret)
     await OIDCService.revoke_token(
         db=db,
         client_id=cid,

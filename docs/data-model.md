@@ -1,6 +1,6 @@
 # Модель данных ALXPRGS SSO
 
-Сверка документации: 06.10.2026, продукт 0.2.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
+Сверка документации: 26.10.2026, продукт 0.3.0. [Реестр и границы](index.md), [статус](status.md). Прежние измерения/PASS относятся к указанным датам и ревизиям.
 
 - Обозначение документа: ALXPRGS.SSO.DATA-01
 - Версия документа: 1.0.0
@@ -91,7 +91,37 @@ erDiagram
         varchar client_type
         varchar allowed_scopes
         boolean is_active
+        boolean step_up_enabled
+        varchar step_up_assurance_levels
+        varchar step_up_actions
+        integer step_up_max_ttl_seconds
         timestamp_tz created_at
+    }
+
+    OIDC_CLIENTS ||--o{ EXTERNAL_STEP_UP_REQUESTS : scopes
+    USERS ||--o{ EXTERNAL_STEP_UP_REQUESTS : confirms
+    SESSIONS ||--o{ EXTERNAL_STEP_UP_REQUESTS : binds
+
+    EXTERNAL_STEP_UP_REQUESTS {
+        uuid id PK
+        uuid client_id FK
+        uuid user_id FK
+        uuid session_id FK
+        integer security_revision
+        varchar request_token_hash UK
+        varchar proof_token_hash UK
+        varchar redirect_uri
+        varchar state
+        varchar code_challenge
+        varchar nonce
+        varchar action
+        varchar payload_hash
+        varchar assurance
+        varchar plan
+        varchar status
+        timestamp_tz expires_at
+        timestamp_tz proof_expires_at
+        timestamp_tz consumed_at
     }
 
     OIDC_REDIRECT_URIS {
@@ -231,6 +261,7 @@ erDiagram
 | `users.security_revision`; snapshots в sessions/codes/refresh/email/MFA-step/actions | Инкремент и отзыв под User row lock до дочерних rows. Offline access JWT у RP имеет остаточное окно до exp; сервер дополнительно проверяет текущую revision |
 | `authentication_steps` | Хеш одноразового MFA-step, user/revision, expires_at/consumed_at; consume+factor+session в одной транзакции |
 | `security_authorizations` | Хеш proof, user/session FK, revision, action/body hash, stage/failures/expiry, WebAuthn challenge. Короткое одноразовое подтверждение чувствительной операции |
+| `external_step_up_requests` | Хеш request/proof, client/user/session, revision, точные action/payload/redirect/PKCE/nonce, assurance/plan, фактические факторы, TTL, статус/consume. Одноразовое transaction proof для внешнего confidential client; request связывается с первой SSO-сессией |
 | `totp_credentials.pending_*` | Pending encrypted secret/expiry/session отдельно от активного encrypted_secret; подтверждение атомарно заменяет factor. `last_verified_step` предотвращает повтор текущего OTP |
 | `webauthn_challenges.session_id` | Registration challenge связан с текущей SSO-сессией; origin/RP/challenge/signature/UV проверяются реальной библиотекой |
 | `sessions.auth_time` и `purpose` | Время фактического login, API его не обновляет. Purpose full/deletion_management/password_change; ограниченная смена временного пароля10min, без обычных grants |
@@ -242,4 +273,4 @@ Email verification привязана к точному адресу и revision
 
 ## Полнота модели
 
-Диаграмма основных сущностей не заменяет DDL. Перечень — backend/app/models и десять Alembic migrations, head 0010_registration_session. pending_registrations предшествуют users; email_verification_tokens обслуживают существующие аккаунты. Дополнительные таблицы: authentication_steps, security_authorizations, webauthn_challenges, legal_acceptances, deletion_authorizations, deleted_subjects, privacy_rate_windows. DDL drift проверяется на PostgreSQL, не статической сверкой.
+Диаграмма основных сущностей не заменяет DDL. Перечень — backend/app/models и Alembic migrations, head 0015_external_step_up. pending_registrations предшествуют users; email_verification_tokens обслуживают существующие аккаунты. Дополнительные таблицы: authentication_steps, security_authorizations, external_step_up_requests, webauthn_challenges, legal_acceptances, deletion_authorizations, deleted_subjects, privacy_rate_windows. DDL drift проверяется на PostgreSQL, не статической сверкой.

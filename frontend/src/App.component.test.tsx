@@ -54,6 +54,7 @@ const disabled: Capabilities = {
   recovery_codes_enabled: false,
   email_verification_enabled: true,
   require_verified_email: false,
+  external_step_up_enabled: false,
   registration_mode: "closed",
 };
 

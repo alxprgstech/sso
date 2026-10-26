@@ -54,3 +54,19 @@ class OAuthErrorException(HTTPException):
             status_code=status_code,
             detail={"error": error, "error_description": error_description},
         )
+
+
+class StepUpError(HTTPException):
+    """Stable, non-reflective errors for the transaction step-up protocol."""
+
+    def __init__(
+        self,
+        error: str,
+        detail: str,
+        status_code: int = status.HTTP_400_BAD_REQUEST,
+    ) -> None:
+        self.error = error
+        super().__init__(
+            status_code=status_code,
+            detail={"error": error, "detail": detail},
+        )

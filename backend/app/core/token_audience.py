@@ -36,7 +36,7 @@ def _validate_audience(payload: dict[str, Any], audience: str | None) -> None:
         return
     values = _audience_values(raw)
     use = payload.get("token_use")
-    if use in {"access_token", "mfa_step"} and not isinstance(raw, str):
+    if use in {"access_token", "mfa_step", "external_step_up_proof"} and not isinstance(raw, str):
         raise ValueError("This profile requires one audience")
     if use == "id_token":
         _validate_authorized_party(payload, audience, values)
