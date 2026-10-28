@@ -84,14 +84,18 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await expect(page.getByText("Управление политикой самостоятельной регистрации")).toBeVisible();
     await expect(page.getByText("Закрыта (closed)")).toBeVisible();
 
-    // Выбираем открытый режим
+    // Выбираем открытый режим. The form must not ask for the administrator
+    // password a second time: one action-bound proof (password + configured
+    // factor) is collected by the confirmation dialog after the 401.
     await page.locator('input[value="open"]').check();
-
-    // Вводим пароль администратора для подтверждения (re-authentication)
-    await page.fill('input[placeholder*="Введите ваш пароль"]', "ComposeAdminPass2026!");
+    expect(await page.locator('form input[type="password"]').count()).toBe(0);
 
     // Сохраняем
     await page.click('button:has-text("Применить режим регистрации")');
+    await expect(
+      page.getByRole("dialog", { name: "Подтверждение чувствительной операции" })
+        .locator('input[type="password"]')
+    ).toHaveCount(1);
     await confirmSensitiveAction(page, "ComposeAdminPass2026!");
 
     // Проверяем сообщение об успешном изменении
@@ -187,9 +191,10 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     await expect(page.getByText("Управление политикой самостоятельной регистрации")).toBeVisible();
     await expect(page.getByText("Открыта (open)")).toBeVisible();
 
-    // Возвращаем режим closed
+    // Возвращаем режим closed. The password is requested once, by the
+    // action-bound confirmation dialog, not by the form body.
     await page.locator('input[value="closed"]').check();
-    await page.fill('input[placeholder*="Введите ваш пароль"]', "ComposeAdminPass2026!");
+    expect(await page.locator('form input[type="password"]').count()).toBe(0);
     await page.click('button:has-text("Применить режим регистрации")');
     await confirmSensitiveAction(page, "ComposeAdminPass2026!");
 
@@ -239,5 +244,38 @@ test.describe("ALXPRGS SSO End-to-End Suite", () => {
     } finally {
       await other.close();
     }
+  });
+  test("06. The five-minute sessions read grant survives a reload without a new prompt", async ({ page }) => {
+    await page.goto("/");
+    await page.fill('input[placeholder="user@alxprgs.tech"]', "e2e_sso_user");
+    await page.fill('input[type="password"]', "SSOBrowserSynthetic2026!");
+    await page.click('button[type="submit"]');
+    await acceptDocumentsAfterLogin(page);
+    await expect(page.getByText("Личный кабинет")).toBeVisible();
+    await page.goto("/account/sessions");
+    const viewed = page.waitForResponse(
+      response => response.url().endsWith("/api/v1/auth/sessions") && response.status() === 200
+    );
+    await confirmSensitiveAction(page, "SSOBrowserSynthetic2026!");
+    const request = (await viewed).request();
+    expect(request.headers()["x-reauthentication"]).toBeTruthy();
+    const stored = await page.evaluate(() =>
+      window.sessionStorage.getItem("alxprgs.sso.sessions-read-grant.v1")
+    );
+    expect(stored).toBeTruthy();
+    expect(JSON.parse(stored!).expiresAt).toBeGreaterThan(Date.now());
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Активные сессии", level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Подтверждение чувствительной операции" })
+    ).toHaveCount(0);
+    await expect(page.getByText("Активные сессии").first()).toBeVisible();
+    await page.getByRole("button", { name: "Выйти", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Вход в ALXPRGS" })).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        window.sessionStorage.getItem("alxprgs.sso.sessions-read-grant.v1")
+      )
+    ).toBeNull();
   });
 });

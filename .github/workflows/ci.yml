@@ -514,7 +514,10 @@ jobs:
   frontend-build:
     name: Frontend Build & Typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Includes the real SDK browser harness, whose Playwright OS dependency
+    # download can legitimately exceed the previous 10-minute allowance on a
+    # slow apt mirror. The gate itself is unchanged and must still pass.
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -559,7 +562,9 @@ jobs:
   playwright-e2e:
     name: Playwright E2E Browser Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Setup (PostgreSQL client, browser + OS dependencies) plus the full
+    # default-off/enabled suite took 13.5 minutes on a slow-mirror run.
+    timeout-minutes: 20
     env:
       REDIRECT_TRANSPORT_PROFILE: local
       SSO_TRANSPORT_PROFILE: local

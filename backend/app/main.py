@@ -223,9 +223,12 @@ async def feature_disabled_exception_handler(request: Request, exc: FeatureDisab
 
 @app.exception_handler(AuthenticationException)
 async def authentication_exception_handler(request: Request, exc: AuthenticationException):
+    # Keep protocol-relevant headers (for example Retry-After for a spent TOTP
+    # step) while never reflecting request payloads.
     return JSONResponse(
         status_code=exc.status_code,
         content=exc.detail,
+        headers=exc.headers,
     )
 
 

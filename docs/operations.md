@@ -20,7 +20,7 @@
    - Uvicorn ASGI сервер на порту 8000;
    - Эндпоинты проверки жизнеспособности: `/health/live` (Liveness) и `/health/ready` (Readiness с проверкой подключения к БД).
 3. **`frontend`** (`alxprgs-sso-frontend`):
-   - Nginx 1.30.5 + статический production-бандл React 18 SPA;
+   - Nginx 1.30.6 + статический production-бандл React 18 SPA;
    - Проксирование запросов к API, OIDC, Discovery и Healthcheck на сервис `backend:8000`;
    - Local HTTP8080 внутри контейнера, только127.0.0.1:3000 на хосте. Production требует явно настроенный единственный TLS gateway из `deploy/nginx.conf`; шаблон не является готовым публичным развёртыванием.
 

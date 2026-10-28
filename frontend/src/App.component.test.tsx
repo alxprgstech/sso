@@ -482,8 +482,15 @@ describe("server capabilities and account flows", () => {
     expect(screen.queryByText("Учётная запись")).toBeNull();
   });
 
-  it("limits admin navigation and requires reauthentication before mode changes", async () => {
+  it("requests a mode change once and leaves the password + MFA proof to the dialog", async () => {
     apiMock.getMe.mockResolvedValue(admin);
+    apiMock.updateRegistrationMode.mockResolvedValue({
+      bootstrap_completed: true,
+      bootstrap_completed_at: null,
+      registration_mode: "open",
+      total_users: 1,
+      total_active_admins: 1,
+    });
     render(<App />);
     fireEvent.click(
       await screen.findByRole("link", { name: "Администрирование" }),
@@ -496,14 +503,12 @@ describe("server capabilities and account flows", () => {
       name: "Применить режим регистрации",
     });
     fireEvent.submit(submit.closest("form")!);
-    expect(
-      await screen.findByText(
-        /Для смены режима регистрации введите пароль администратора/,
-      ),
-    ).toBeTruthy();
     await waitFor(() =>
-      expect(apiMock.updateRegistrationMode).not.toHaveBeenCalled(),
+      expect(apiMock.updateRegistrationMode).toHaveBeenCalledWith("open"),
     );
+    expect(
+      await screen.findByText(/Режим регистрации успешно изменён/),
+    ).toBeTruthy();
   });
 
   it("does not expose admin navigation to a normal account", async () => {
