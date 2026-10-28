@@ -1,51 +1,12 @@
 # Актуальный статус ALXPRGS SSO
 
-Обновлено 2026-10-26T16:22:14+03:00; продукт0.3.0. В ветке `new/default-on-mfa-admin-policy` локально завершён `MFA-DEFAULT-ADMIN-01` от clean main `b5bb8b4`: TOTP/Passkey/Recovery default-on без обязательных env, `REQUIRE_ADMIN_MFA=true`, серверный session assurance (`Session.mfa_verified`/`mfa_method`/`amr`), ограниченная admin onboarding-сессия и elevation, OIDC `amr`/`acr` с подавлением admin-роли для non-assured grants, recovery для TOTP/Passkey, миграция `0016_session_assurance`, EC2 `mfa-status`/`enable-mfa`/`recover-admin`, frontend `AdminMfaPage`, тесты и ADR-0032. Production, секреты, DNS, CD и существующий `runtime.env` не изменялись. Локальные проверки: полный backend 790PASS/5 environment-only failed, новые admin-MFA/OIDC-assurance/Passkey-recovery PG tests, frontend 14 unit/45 components/typecheck/lint/build PASS, Playwright default-on9PASS и explicit-disabled48PASS, SDK source19 + installed wheel18 PASS. Код `9dd90d1`, CI-профиль `008f658`; PR **#33** создан (head `c1af695`, base `main`). CI run 40340297694: backend, Playwright, CD policy/EC2, SDK, version и Windows PASS; Security/Frontend/Container audits и CodeScene FAIL — известные dependency/quality gates, код не ослаблялся. Детали — [acceptance](acceptance.md), [worklog](worklog.md). Это не production-приёмка.
+## Точка продолжения
 
-Обновлено 2026-10-26T14:21:34.5739392+03:00; продукт0.3.0. В ветке `new/external-step-up-authentication` локально завершён `EXT-STEPUP-01`: opt-in cross-application hosted step-up (password/TOTP/Passkey/комбинированные политики), transaction-bound PostgreSQL state, admin client policy, one-use redemption, frontend `/step-up/{token}`, SDK0.3.0, reference RP, миграция0015 и self-audit. Feature/per-client flags и production не включались/не затрагивались. Проверки: policy10, new PostgreSQL11 (включая Passkey-only MFA и real SDK→backend redemption), reauth/OIDC/migration13, passkey/features/OIDC-contract21, полный backend777PASS/5 environment-only failed, frontend unit13+components42, typecheck/lint/build PASS, Playwright step-up UI PASS, SDK step-up3, isolated wheel6PASS, Ruff/mypy/version/API-contract/secret-scan PASS. Existing OIDC и внутренний reauth сохранены. Локальные коммиты созданы; push/merge/release/deploy не выполнялись. Production-приёмка остаётся открытой; wheel/sdist — ignored local artifacts, не опубликованы.
+- AGENT-RULES-01 — done: введены выборочное чтение, исключение для консультаций и учёт по существенным этапам; история отделена. Проверки — [журнал](worklog.md). Следующий шаг: review локального коммита в `new/lean-agent-rules`; push/PR не выполнялись.
+- Продукт 0.3.0; общая production-приёмка не закрыта. Требования безопасности и default-on MFA сохранены. Исторические локальные/CI результаты — [acceptance](acceptance.md); они не доказывают текущий SHA.
+- Последняя запись передачи по CD-STAGES-01/CD-PUBLIC-CHECK-01: PR #34, код `07f871a`, локальные проверки и HTTPS успешны; remote CI, интеграция и selective rerun в этой сессии не проверялись. Дальнейшие действия требуют проверки текущего состояния PR/CI.
+- Открытые задачи и блокеры — [план](plan.md): версия lock, внешняя OIF/ops приёмка, FR-08; live SES/Gmail/Sentry, multi-replica и owner review остаются условиями общей приёмки. Архивирование не закрывает эти требования.
 
-Ранее в main интегрированы все шесть исправлений SSO-SEC-0001–0006: [PR21](https://github.com/alxprgstech/sso/pull/21), [PR22](https://github.com/alxprgstech/sso/pull/22), [PR23](https://github.com/alxprgstech/sso/pull/23), [PR24](https://github.com/alxprgstech/sso/pull/24), [PR25](https://github.com/alxprgstech/sso/pull/25), [PR26](https://github.com/alxprgstech/sso/pull/26). SEC-MERGE-20261020 done; issues15–20 закрылись автоматически после merge. Точные проверенные head/merge SHA, CI и локальные результаты — [приёмка](acceptance.md); история, включая исправленные ошибки проверок — [worklog](worklog.md).
+## Навигация по истории
 
-Конфликты разрешены с сохранением всех шести security-контрактов. Для совместимости нейтральной регистрации и browser proof добавлен regression resend; в cancellation unit-test ожидание завершения asyncio заменено корректным join реальных потоков перед final cleanup assertion. Production-код лимитов для исправления теста не менялся. Обязательный CI финальных PR heads успешен; CI последующего documentation-only checkpoint — отдельная ревизия.
-
-При обновлении требуется миграция `0014_registration_browser`; старые незавершённые регистрации должны начать flow заново. Существующие accounts/sessions миграция не изменяет. Logout/self-revoke отзывает все refresh/code grants, сохраняемые browser sessions могут начать новый flow; offline access JWT действует до exp, максимум300с.
-
-Локально проверены совместные security-сценарии на отдельной PostgreSQL16, Ruff/format/mypy, секреты и Markdown. Полный backend/PG, enabled/default-off browser, SDK, frontend и контейнерные проверки выполнены обязательным CI PR. Live SES job без AWS credentials пропущен по ранее согласованной политике; доставки он не подтверждает.
-
-Production-приёмка остаётся открыта: live SES/Gmail/Sentry и sender registration, public TLS/DNS/IAM/secret storage, внешние backup/storage ACL/alerts, OIF/multi-replica load и owner review исторических credentials. Deployment, release publication и активация CD не выполнялись. DOC-VERSION-LOCK-01 и остальные открытые требования — [план](plan.md).
-
-TOTP/Passkey/Recovery доступны по умолчанию; MFA администратора обязательна; email confirmation самостоятельной регистрации обязательно. Текущая схема и security-модель — [миграция](migration.md), [безопасность](security.md), [ADR-0032](adr/0032-default-on-mfa-and-admin-policy.md).
-
-## DEPLOY-EC2-01 — in_progress
-2026-10-25T16:16:15.9332703+03:00: согласован активный CD из main после CI того же SHA вместо прежнего запрета. Ветка new/ec2-deployment. AWS-команды выполняет владелец; live-приёмка пока не выполнена.
-
-2026-10-25T16:57:52.0663676+03:00: локальная реализация DEPLOY-EC2-01 готова к review: bootstrap/nginx/Let'sEncrypt timers/Resend alerts/backupchecksums/CD exactSHA и инструкция. Проверки43unit+9CIpolicy, реальный UbuntuTLS/flock/OpenSSL и PostgreSQLbundle/backuprestorePASS. Код приложения не менялся. AWS/remoteCI/liveemail/ACME не проверены; следующий шаг — первоначальный bootstrap владельцем по [инструкции](ec2-deployment.md). Общаяприёмка остаётся открыта.
-
-Локальный codecommit: 2855f77b26ef95ea2189a5b70a81ce150b8b50ed, new/ec2-deployment; push отсутствует. Точка продолжения — раздел2 инструкции EC2 и результаты владельческого запуска.
-
-2026-10-25T17:05:53.5624069+03:00: finalaudit выявил backup filename collision cleanup; исправлен с4regression,47targetedPASS. Выполняется повтор transport/actualPG для этой версии; ранее записанный handoff не закрывает новыйfix.
-
-2026-10-25T17:10:53.1873172+03:00: повтор после backupfix завершён: codecommit c358413253189c5880ceea4f5c5ca2f195f9a182 собран и проверен actualPG/backuprestore/checksum;47targetedPASS, UbuntuTLS/config/fsync/flockPASS, secrets126/0new. Локальная реализация готова; ожидается пользовательский запуск по docs/ec2-deployment.md. Общая AWS-приёмка пока in_progress, remote push отсутствует.
-
-2026-10-25T17:13:06.0638441+03:00: DEPLOY-EC2-01 blocked только на внешнем действии владельца: ожидается результат bootstrap EC2. Код и локальные проверки готовы, дерево до этой записи чистое; AWS/live-приёмка не выполнена. Продолжение после сообщения об успехе либо обезличенной ошибке установщика.
-
-2026-10-25T17:27:42.1509866+03:00: владелец запустил bootstrap EC2; пакеты установлены, конфигурация создана, nginx syntax PASS. Новый наблюдаемый blocker — Certbot HTTP-01 connection timeout на публичном TCP80. Сертификат и bootstrap не завершены; требуются сетевые проверки владельцем и повтор bootstrap. Прежнее ожидание первого запуска снято фактическим выводом.
-
-2026-10-25T18:03:29.4349911+03:00: по прямому запросу владельца подготовлен manualCD без общегоCI через workflow_dispatch только main. Автоматический success gate и обязательный transport test сохранены;47unit/contractPASS. Для появления Runworkflow изменение должно быть в main; фактический запуск не выполнялся.
-
-2026-10-25T18:14:46.1568259+03:00: устранён clean-runner failure Output parent must already exist в transport check. Parent artifacts создаётся автоматически;53tests и actualLinux permissionsPASS. Обновить main и запустить новый ручной CD; повтор старогоrun останется на старомSHA. EC2переустановка для этой ошибки не требуется.
-
-2026-10-25T19:41:38+0300: найдена первопричина падения CD run 6 на проверке image ID: раннер ubuntu-24.04 использует containerd image store (ID=digest манифеста, docker save=OCI), сервер — классический store (ID=config-digest); backend получил другой ID, PostgreSQL без тега не загрузился. Исправление: pin классического store на раннерах CD/CI, config-digest из парса images.tar, тег alxprgs-sso-postgres, репетиция серверной проверки после load, argv в ошибках ssoctl, ADR-0030; 42 targeted PASS. Пуш в main по прямому указанию владельца запускает CI→CD; live-деплой подтверждается новым CD run.
-
-2026-10-25T20:52:00+0300: первый успешный production-деплой — 69794fb, sequence 11, публичная HTTPS/discovery проверка PASS (auth.alxprgs.tech). Транспорт образов стабилизирован: классический image store закреплён на раннерах CD/CI и на сервере (bootstrap + инструкция). Автоматический CD из push заблокирован красными security-audit job до отдельного обновления зависимостей (undici npm; setuptools/filelock pip; trivy); ручной workflow_dispatch из main работает. Следующий шаг владельца: sudo ssoctl admin и live-приёмка.
-
-## CD-STAGES-01 — in_progress
-2026-10-26T19:06:39+03:00: разделение CD на повторяемые стадии; следующий шаг — workflow, regression tests, документация.
-
-CD-STAGES-01 — done (local), 2026-10-26T19:09:37+03:00: в new/cd-retry-stages подготовлены build → verify → deploy с повторным использованием immutable transport (7 дней). EC2/policy41PASS, Ruff/diffPASS. Push/deploy не выполнялись; live-повтор GitHub Actions ещё не проверен. Продолжение: review и интеграция, новый run использует разделённый workflow.
-
-CD-PUBLIC-CHECK-01 — in_progress, 2026-10-26T19:11:57+03:00: добавление внешнего HTTPS readiness последним job, затем проверка, push и PR.
-
-2026-10-26T19:14:23+03:00 — CD-PUBLIC-CHECK-01 локально done: build → verify → deploy → public-check. Последний job проверяет публичный /health/ready, повторяется без установки. Targeted60PASS/Ruff/diffPASS; реальный HTTPS с рабочей станции PASS. Готовится push/PR; remote CI и selective rerun пока не проверены.
-
-2026-10-26T19:15:37+03:00 — CD-STAGES-01/CD-PUBLIC-CHECK-01: изменения запушены, [PR #34](https://github.com/alxprgstech/sso/pull/34) открыт в main, конфликтов нет по GitHub metadata. Код07f871a;60 targeted PASS и live HTTPS PASS. Merge/deploy не выполнялись; remote CI не оценён.
+[Предыдущий срез](status-history.md) сохраняет подробности MFA/step-up/security/CD и границы прежних проверок. [Архив плана](plan-history.md) сохраняет старые ID и статусы. В [журнале](worklog.md) ищи нужный ID; читать всё при каждом старте не требуется. Не возобновляй старые задачи автоматически.
