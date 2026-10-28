@@ -66,27 +66,33 @@ def _is_tls_error(error: BaseException) -> bool:
     return isinstance(error, urllib.error.URLError) and isinstance(error.reason, ssl.SSLError)
 
 
-def _translate_fetch_error(error: BaseException) -> NoReturn:
+def _raise_redirect(error: BaseException) -> None:
     if isinstance(error, urllib.error.HTTPError) and 300 <= error.code < 400:
         raise SecurityError("trusted origin attempted an HTTP redirect") from None
+
+
+def _raise_tls(error: BaseException) -> None:
     if _is_tls_error(error):
         raise SecurityError("TLS certificate or hostname verification failed") from None
+
+
+def _raise_unavailable(error: BaseException) -> NoReturn:
     if isinstance(error, urllib.error.HTTPError):
         raise Unavailable(f"HTTP {error.code}") from None
     raise Unavailable("request timed out or connection failed") from None
 
 
-def fetch(opener: urllib.request.OpenerDirector, url: str) -> bytes:
-    request = urllib.request.Request(
-        url,
-        headers={"Accept": "application/json", "Cache-Control": "no-cache"},
-    )
+def _translate_fetch_error(error: BaseException) -> NoReturn:
+    _raise_redirect(error)
+    _raise_tls(error)
+    _raise_unavailable(error)
+
+
+def _open_response(
+    opener: urllib.request.OpenerDirector, request: urllib.request.Request
+) -> object:
     try:
-        with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-            status = response.status
-            final_url = response.geturl()
-            cache_control = response.headers.get("Cache-Control", "")
-            body = response.read(MAX_RESPONSE_BYTES + 1)
+        return opener.open(request, timeout=TIMEOUT_SECONDS)
     except (
         urllib.error.HTTPError,
         urllib.error.URLError,
@@ -95,15 +101,44 @@ def fetch(opener: urllib.request.OpenerDirector, url: str) -> bytes:
         OSError,
     ) as error:
         _translate_fetch_error(error)
+
+
+def _response_parts(response: object) -> tuple[int, str, str, bytes]:
+    return (
+        response.status,
+        response.geturl(),
+        response.headers.get("Cache-Control", ""),
+        response.read(MAX_RESPONSE_BYTES + 1),
+    )
+
+
+def _check_cache(cache_control: str) -> None:
+    tokens = {token.strip().lower() for token in cache_control.split(",")}
+    if "no-store" not in tokens:
+        raise Unavailable("identity response may be cached")
+
+
+def _validate_response(
+    url: str, status: int, final_url: str, body: bytes, cache_control: str
+) -> None:
     if final_url != url:
         raise SecurityError("trusted origin returned an unexpected response address")
     if status != 200:
         raise Unavailable(f"HTTP {status}")
     if len(body) > MAX_RESPONSE_BYTES:
         raise Unavailable("response exceeds the size limit")
-    cache_tokens = {token.strip().lower() for token in cache_control.split(",")}
-    if "no-store" not in cache_tokens:
-        raise Unavailable("identity response may be cached")
+    _check_cache(cache_control)
+
+
+def fetch(opener: urllib.request.OpenerDirector, url: str) -> bytes:
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "Cache-Control": "no-cache"},
+    )
+    response = _open_response(opener, request)
+    with response:
+        status, final_url, cache_control, body = _response_parts(response)
+    _validate_response(url, status, final_url, body, cache_control)
     return body
 
 
@@ -121,6 +156,16 @@ def _valid_sha(value: object) -> bool:
     return isinstance(value, str) and bool(SHA.fullmatch(value))
 
 
+def _check_identity_shape(payload: dict, expected_keys: set[str], label: str) -> None:
+    if set(payload) != expected_keys:
+        raise Unavailable(f"{label} identity has an unexpected payload")
+
+
+def _check_identity_sha(payload: dict, label: str) -> None:
+    if not _valid_sha(payload["commit_sha"]):
+        raise Unavailable(f"{label} identity does not contain a full commit SHA")
+
+
 def _read_identity(
     opener: urllib.request.OpenerDirector,
     url: str,
@@ -131,10 +176,8 @@ def _read_identity(
         payload = _json_object(fetch(opener, url))
     except Unavailable as error:
         raise Unavailable(f"{label} identity unavailable ({error})") from None
-    if set(payload) != expected_keys:
-        raise Unavailable(f"{label} identity has an unexpected payload")
-    if not _valid_sha(payload["commit_sha"]):
-        raise Unavailable(f"{label} identity does not contain a full commit SHA")
+    _check_identity_shape(payload, expected_keys, label)
+    _check_identity_sha(payload, label)
     return payload
 
 

@@ -1,21 +1,23 @@
 """CD workflow policy contracts; local YAML checks do not execute GitHub scheduler."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
+JOBS = WORKFLOW["jobs"]
 
 
-def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    assert workflow["on"] == {
+def test_cd_keeps_automatic_gate_and_concurrency():
+    assert WORKFLOW["on"] == {
         "workflow_dispatch": {},
         "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]},
     }
-    gate = workflow["jobs"]["preflight"]["if"]
+    gate = JOBS["preflight"]["if"]
     for condition in (
         "conclusion == 'success'",
         "event == 'push'",
@@ -23,29 +25,37 @@ def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
         "head_repository.full_name == github.repository",
     ):
         assert condition in gate
-    assert workflow["concurrency"]["cancel-in-progress"] == "false"
-    steps = workflow["jobs"]["preflight"]["steps"]
+    assert WORKFLOW["concurrency"]["cancel-in-progress"] == "false"
+
+
+def test_cd_preflight_checks_out_exact_sha_and_identity():
+    steps = JOBS["preflight"]["steps"]
     assert steps[0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
-    assert workflow["env"]["DEPLOY_SHA"] == (
+    assert WORKFLOW["env"]["DEPLOY_SHA"] == (
         "${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}"
     )
     decide = next(step for step in steps if step.get("id") == "decide")
     assert "check_deployed_revision.py" in decide["run"]
     assert '"$GITHUB_OUTPUT"' in decide["run"]
+
+
+def test_cd_verify_and_install_keep_transport_checks():
+    verify = JOBS["verify"]
     transport = next(
-        step
-        for step in workflow["jobs"]["verify"]["steps"]
-        if step["name"] == "Verify the transport to be installed"
+        step for step in verify["steps"] if step["name"] == "Verify the transport to be installed"
     )
     assert "scripts.check_ec2_runtime" in transport["run"]
-    assert workflow["jobs"]["verify"]["if"] == "needs.build.outputs.artifact_name != ''"
-    all_steps = [step for job in workflow["jobs"].values() for step in job["steps"]]
+    assert verify["if"] == "needs.build.outputs.artifact_name != ''"
+    install = JOBS["deploy"]["steps"][-1]["run"]
+    assert "latest" in install and "deploy/ec2/upload.sh" in install
+
+
+def test_cd_pins_actions_and_has_no_continue_on_error():
+    all_steps = [step for job in JOBS.values() for step in job["steps"]]
     assert all("continue-on-error" not in step for step in all_steps)
     for step in all_steps:
         if "uses" in step:
-            assert __import__("re").search(r"@[a-f0-9]{40}$", step["uses"])
-    install = workflow["jobs"]["deploy"]["steps"][-1]["run"]
-    assert "latest" in install and "deploy/ec2/upload.sh" in install
+            assert re.search(r"@[a-f0-9]{40}$", step["uses"])
 
 
 @pytest.mark.parametrize(
@@ -65,8 +75,7 @@ def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
 def test_cd_event_gate_matrix(event, ref, conclusion, origin, branch, same_repo, allowed):
     from types import SimpleNamespace as NS
 
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    expression = workflow["jobs"]["preflight"]["if"].replace("&&", "and").replace("||", "or")
+    expression = JOBS["preflight"]["if"].replace("&&", "and").replace("||", "or")
     github = NS(
         event_name=event,
         ref=ref,
@@ -104,51 +113,53 @@ def test_transport_pipeline_pins_classic_docker_image_store():
     assert bootstrap.index("containerd-snapshotter") < bootstrap.index("enable --now docker")
 
 
-def test_cd_retry_uses_same_immutable_bundle_and_requires_verification():
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    jobs = workflow["jobs"]
-    assert set(jobs) == {"preflight", "build", "verify", "deploy", "public-check", "report"}
-    assert jobs["build"]["needs"] == "preflight"
-    assert jobs["build"]["if"] == "needs.preflight.outputs.decision == 'deploy'"
-    assert jobs["verify"]["needs"] == "build"
-    assert jobs["deploy"]["needs"] == ["build", "verify"]
-    assert jobs["deploy"]["if"] == (
+def test_cd_retry_uses_same_immutable_bundle():
+    assert set(JOBS) == {"preflight", "build", "verify", "deploy", "public-check", "report"}
+    assert JOBS["build"]["needs"] == "preflight"
+    assert JOBS["build"]["if"] == "needs.preflight.outputs.decision == 'deploy'"
+    assert JOBS["verify"]["needs"] == "build"
+    assert JOBS["deploy"]["needs"] == ["build", "verify"]
+    assert JOBS["deploy"]["if"] == (
         "needs.build.outputs.artifact_name != '' && needs.verify.result == 'success'"
     )
-    assert jobs["deploy"]["environment"] == "production"
-    assert all(
-        "environment" not in jobs[name]
-        for name in ("preflight", "build", "verify", "public-check", "report")
-    )
-    upload = next(step for step in jobs["build"]["steps"] if step.get("id") == "bundle")
+    upload = next(step for step in JOBS["build"]["steps"] if step.get("id") == "bundle")
     assert upload["with"]["if-no-files-found"] == "error"
     assert upload["with"]["retention-days"] == "7"
     assert "github.run_attempt" in upload["with"]["name"]
     assert "overwrite" not in upload["with"]
-    assert jobs["build"]["outputs"]["artifact_id"] == "${{ steps.bundle.outputs.artifact-id }}"
-    assert jobs["build"]["outputs"]["artifact_name"] == upload["with"]["name"]
+    assert JOBS["build"]["outputs"]["artifact_id"] == "${{ steps.bundle.outputs.artifact-id }}"
+    assert JOBS["build"]["outputs"]["artifact_name"] == upload["with"]["name"]
+
+
+def test_cd_deploy_downloads_the_verified_bundle_without_rebuilding():
     for name in ("verify", "deploy"):
-        steps = jobs[name]["steps"]
+        steps = JOBS[name]["steps"]
         download = next(step for step in steps if "download-artifact@" in step.get("uses", ""))
         assert download["with"]["name"] == "${{ needs.build.outputs.artifact_name }}"
         assert "run-id" not in download["with"]  # Only artifacts of this workflow run.
         assert "pattern" not in download["with"]
         assert steps[0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
         assert not any("build_ec2_bundle.py" in step.get("run", "") for step in steps)
-    install = jobs["deploy"]["steps"][-1]
+    install = JOBS["deploy"]["steps"][-1]
     assert install["env"]["DEPLOY_SEQUENCE"] == "${{ github.run_number }}"
     assert 'latest" != "$DEPLOY_SHA' in install["run"]
-    assert "scripts.check_ec2_runtime" in jobs["verify"]["steps"][-1]["run"]
+
+
+def test_cd_confines_production_environment_to_deploy():
+    assert JOBS["deploy"]["environment"] == "production"
+    assert all(
+        "environment" not in JOBS[name]
+        for name in ("preflight", "build", "verify", "public-check", "report")
+    )
 
 
 def test_early_identity_noop_skips_build_verify_and_install():
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    jobs = workflow["jobs"]
-    assert jobs["build"]["if"] == "needs.preflight.outputs.decision == 'deploy'"
-    assert jobs["verify"]["if"] == "needs.build.outputs.artifact_name != ''"
-    assert "needs.deploy.outputs.result == 'already_deployed'" in jobs["public-check"]["if"]
-    assert "needs.preflight.outputs.decision == 'already_deployed'" in jobs["public-check"]["if"]
-    preflight_step = next(step for step in jobs["preflight"]["steps"] if step.get("id") == "decide")
+    assert JOBS["build"]["if"] == "needs.preflight.outputs.decision == 'deploy'"
+    assert JOBS["verify"]["if"] == "needs.build.outputs.artifact_name != ''"
+    public_if = JOBS["public-check"]["if"]
+    assert "needs.deploy.outputs.result == 'already_deployed'" in public_if
+    assert "needs.preflight.outputs.decision == 'already_deployed'" in public_if
+    preflight_step = next(step for step in JOBS["preflight"]["steps"] if step.get("id") == "decide")
     assert "decision=superseded" in preflight_step["run"]
     assert preflight_step["run"].index("latest") < preflight_step["run"].index(
         "check_deployed_revision.py"
@@ -156,8 +167,7 @@ def test_early_identity_noop_skips_build_verify_and_install():
 
 
 def test_deploy_consumes_server_protocol_and_never_claims_installed_from_upload_exit():
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    deploy = workflow["jobs"]["deploy"]
+    deploy = JOBS["deploy"]
     install = deploy["steps"][-1]
     assert install["id"] == "install"
     assert deploy["outputs"]["result"] == "${{ steps.install.outputs.result }}"
@@ -165,14 +175,12 @@ def test_deploy_consumes_server_protocol_and_never_claims_installed_from_upload_
     assert deploy["outputs"]["installed_sha"] == "${{ steps.install.outputs.installed_sha }}"
     assert install["run"].index("exit 0") < install["run"].index("bash deploy/ec2/upload.sh")
     assert "installed=true" not in install["run"]  # upload.sh writes the real outcome.
-    upload = (ROOT / "deploy/ec2/upload.sh").read_text()
-    assert "deploy_result.py" in upload
+    assert "deploy_result.py" in (ROOT / "deploy/ec2/upload.sh").read_text()
     assert "result=superseded" in install["run"]
 
 
-def test_public_check_runs_after_install_or_server_noop_and_can_retry_independently():
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    check = workflow["jobs"]["public-check"]
+def test_public_check_runs_after_install_or_noop_and_can_retry():
+    check = JOBS["public-check"]
     assert check["needs"] == ["preflight", "deploy"]
     assert check["if"].startswith("always()")
     assert "needs.deploy.outputs.result == 'deployed'" in check["if"]
@@ -182,7 +190,10 @@ def test_public_check_runs_after_install_or_server_noop_and_can_retry_independen
     assert check["steps"][-1]["run"] == "python3 scripts/check_public_readiness.py"
     assert "continue-on-error" not in check
     assert not any("upload.sh" in step.get("run", "") for step in check["steps"])
-    report = workflow["jobs"]["report"]
+
+
+def test_report_is_always_run_and_records_safe_result_fields():
+    report = JOBS["report"]
     assert report["if"] == "always()"
     assert set(report["needs"]) == {
         "preflight",
@@ -198,10 +209,8 @@ def test_public_check_runs_after_install_or_server_noop_and_can_retry_independen
 
 
 def test_production_secrets_are_confined_to_deploy_job():
-    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    jobs = workflow["jobs"]
-    deploy_step = jobs["deploy"]["steps"][-1]
+    deploy_step = JOBS["deploy"]["steps"][-1]
     assert deploy_step["env"]["SSH_PRIVATE_KEY"] == "${{ secrets.SSH_PRIVATE_KEY }}"
     assert deploy_step["env"]["SSH_KNOWN_HOSTS"] == "${{ secrets.SSH_KNOWN_HOSTS }}"
     for name in ("preflight", "build", "verify", "public-check", "report"):
-        assert "secrets." not in json.dumps(jobs[name])
+        assert "secrets." not in json.dumps(JOBS[name])

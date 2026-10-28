@@ -49,14 +49,16 @@ def _valid_sequence(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 1
 
 
-def _protocol_payload(raw: str) -> dict | None:
+def _protocol_line(raw: str) -> str | None:
     lines = [line for line in raw.splitlines() if line.startswith(PROTOCOL_PREFIX)]
     if len(lines) > 1:
         raise ProtocolError("server returned multiple deployment protocol lines")
-    if not lines:
-        return None
+    return lines[0] if lines else None
+
+
+def _decode_protocol(line: str) -> dict:
     try:
-        value = json.loads(lines[0][len(PROTOCOL_PREFIX) :])
+        value = json.loads(line[len(PROTOCOL_PREFIX) :])
     except (ValueError, TypeError):
         raise ProtocolError("server deployment protocol is not valid JSON") from None
     if not isinstance(value, dict) or set(value) != PROTOCOL_KEYS:
@@ -64,15 +66,35 @@ def _protocol_payload(raw: str) -> dict | None:
     return value
 
 
-def _validate_payload(value: dict, expected_sha: str, expected_sequence: int) -> None:
-    if value["version"] != PROTOCOL_VERSION or isinstance(value["version"], bool):
+def _check_version(value: dict) -> None:
+    version = value["version"]
+    if version != PROTOCOL_VERSION or isinstance(version, bool):
         raise ProtocolError("server deployment protocol version is unsupported")
-    if not isinstance(value["result"], str) or value["result"] not in RESULT_KEYS:
+
+
+def _check_result(value: dict) -> None:
+    result = value["result"]
+    if not isinstance(result, str) or result not in RESULT_KEYS:
         raise ProtocolError("server deployment result is unknown")
-    if not _valid_sha(value["sha"]) or value["sha"] != expected_sha:
+
+
+def _check_sha(value: dict, expected_sha: str) -> None:
+    sha = value["sha"]
+    if not _valid_sha(sha) or sha != expected_sha:
         raise ProtocolError("server deployment SHA does not match the target")
-    if not _valid_sequence(value["sequence"]) or value["sequence"] != expected_sequence:
+
+
+def _check_sequence(value: dict, expected_sequence: int) -> None:
+    sequence = value["sequence"]
+    if not _valid_sequence(sequence) or sequence != expected_sequence:
         raise ProtocolError("server deployment sequence does not match the run")
+
+
+def _validate_payload(value: dict, expected_sha: str, expected_sequence: int) -> None:
+    _check_version(value)
+    _check_result(value)
+    _check_sha(value, expected_sha)
+    _check_sequence(value, expected_sequence)
 
 
 def _decision(value: dict) -> DeployResult:
@@ -87,11 +109,12 @@ def _decision(value: dict) -> DeployResult:
 
 
 def parse_server_output(raw: str, expected_sha: str, expected_sequence: int) -> DeployResult:
-    value = _protocol_payload(raw)
-    if value is None:
+    line = _protocol_line(raw)
+    if line is None:
         # The pre-idempotency operator never had a no-op path: exit 0 means the
         # full verified installation completed. Mark it explicitly, never silently.
         return DeployResult("deployed_legacy", True, expected_sha, LEGACY_REASON, legacy=True)
+    value = _decode_protocol(line)
     _validate_payload(value, expected_sha, expected_sequence)
     return _decision(value)
 
