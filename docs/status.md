@@ -2,6 +2,7 @@
 
 ## Точка продолжения
 
+- MFA-RECOVERY-EXPORT-01 — done: TXT-скачивание набора резервных кодов, генерация при TOTP или Passkey, имя Passkey после создания; Authlib 1.9.1. Локальные frontend-проверки PASS, CI run [40767610691](https://github.com/alxprgstech/sso/actions/runs/40767610691) success, Playwright PASS; [PR #37](https://github.com/alxprgstech/sso/pull/37). Merge/release не выполнялись.
 - AGENT-RULES-01 — done: введены выборочное чтение, исключение для консультаций и учёт по существенным этапам; история отделена. Проверки — [журнал](worklog.md). Ветка запушена; [PR #36](https://github.com/alxprgstech/sso/pull/36) в main. Следующий шаг: review и CI текущего HEAD; merge PR не выполнялся.
 - Продукт 0.3.0; общая production-приёмка не закрыта. Требования безопасности и default-on MFA сохранены. Исторические локальные/CI результаты — [acceptance](acceptance.md); они не доказывают текущий SHA.
 - Последняя запись передачи по CD-STAGES-01/CD-PUBLIC-CHECK-01: PR #34, код `07f871a`, локальные проверки и HTTPS успешны; remote CI, интеграция и selective rerun в этой сессии не проверялись. Дальнейшие действия требуют проверки текущего состояния PR/CI.
