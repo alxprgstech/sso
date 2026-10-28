@@ -107,7 +107,7 @@ docker compose exec -it backend python -m app.cli.bootstrap_admin
 - Панель администратора: управление пользователями, регистрация OIDC-клиентов с однократным показом секрета (USR-09), журнал аудита в реальном времени, управление режимом регистрации.
 
 ### 2.4. Python SDK `alxprgs-sso` (`packages/python-sdk/`)
-- Полная изоляция от внутренних модулей сервера (раздел 3 AGENTS.md);
+- Полная изоляция от внутренних модулей сервера ([правила архитектуры и SDK](docs/agent-policies.md#1-архитектура-и-качество-кода));
 - Кэширование JWKS с TTL и криптографическая проверка RS256 токенов;
 - Интеграция с FastAPI (`SSOFastAPISecurity`, зависимости `get_current_user`, `require_role`);
 - Два демонстрационных клиента в `examples/client1` и `examples/client2`, демонстрирующих бесшовный SSO.
