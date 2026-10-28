@@ -59,7 +59,7 @@ def test_cd_pins_actions_and_has_no_continue_on_error():
 
 
 @pytest.mark.parametrize(
-    "event,ref,conclusion,origin,branch,same_repo,allowed",
+    "case",
     [
         ("workflow_dispatch", "refs/heads/main", "failure", "push", "main", True, True),
         ("workflow_dispatch", "refs/heads/new/test", "success", "push", "main", True, False),
@@ -72,9 +72,10 @@ def test_cd_pins_actions_and_has_no_continue_on_error():
         ("push", "refs/heads/main", "success", "push", "main", True, False),
     ],
 )
-def test_cd_event_gate_matrix(event, ref, conclusion, origin, branch, same_repo, allowed):
+def test_cd_event_gate_matrix(case):
     from types import SimpleNamespace as NS
 
+    event, ref, conclusion, origin, branch, same_repo, allowed = case
     expression = JOBS["preflight"]["if"].replace("&&", "and").replace("||", "or")
     github = NS(
         event_name=event,
