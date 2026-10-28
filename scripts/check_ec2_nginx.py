@@ -43,6 +43,9 @@ def main():
     release = Path("/opt/alxprgs-sso/current")
     (release / "public").mkdir(parents=True)
     (release / "public/index.html").write_text("synthetic frontend")
+    (release / "public/build-info.json").write_text(
+        json.dumps({"version": "0.0.0", "commit_sha": "a" * 40, "release": "synthetic"})
+    )
     (release / "csp.conf").write_text(
         "add_header Content-Security-Policy \"default-src 'self'\" always;"
     )
@@ -81,6 +84,12 @@ def main():
         assert response.read() == b"synthetic frontend"
         assert response.headers["Strict-Transport-Security"]
         assert response.headers["Content-Security-Policy"]
+    with opener.open("https://auth.alxprgs.tech/build-info.json") as response:
+        assert json.load(response)["commit_sha"] == "a" * 40
+        assert response.headers["Cache-Control"] == "no-store"
+        # The per-URI Cache-Control map must not drop the server security headers.
+        assert response.headers["Strict-Transport-Security"]
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
     request = urllib.request.Request(
         "https://auth.alxprgs.tech/api/check?secret=do-not-log",
         headers={
@@ -97,7 +106,7 @@ def main():
         assert headers["Host"] == "auth.alxprgs.tech"
         assert "Forwarded" not in headers and "X-ALX-Geo-City" not in headers
     (state / "maintenance").touch()
-    for path in ("/", "/api/check", "/health/ready"):
+    for path in ("/", "/api/check", "/health/ready", "/build-info.json"):
         try:
             opener.open("https://auth.alxprgs.tech" + path)
             raise AssertionError("maintenance bypass")

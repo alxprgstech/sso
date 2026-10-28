@@ -48,6 +48,8 @@ OIDC access/ID tokens содержат `amr` (`pwd`, `otp`, `hwk`, `mfa`) и `ac
 
 Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md), [observability.md](observability.md). Pending deletion допускает только ограниченное управление/выход; нет публичного API немедленного физического удаления. Body budget64KiB/10s; 413/408 при превышении. Quotas429 и инфраструктурные503 не означают успешной аутентификации.
 
+`GET /health/identity` — небольшой публичный runtime-контракт для CD: при готовой БД и известной встроенной build metadata возвращает `200` и ровно `{"status":"ready","database":"connected","commit_sha":"<40 lowercase hex>"}`; при недоступной БД или отсутствии/повреждении metadata — `503` с `status=unavailable` и тем же полем `commit_sha` (пустая строка, если SHA неизвестен). Ответ содержит только эти поля, не включает конфигурацию, пути сервера, запросные данные или секреты и всегда имеет `Cache-Control: no-store`/`Pragma: no-cache`. Endpoint не заменяет `/health/ready` для мониторинга и не доказывает корректность установки без опубликованного frontend `build-info.json`.
+
 Все зарегистрированные пути текущей ревизии:
 
 | Метод | Путь |
@@ -73,6 +75,7 @@ Privacy/legal/deletion и telemetry-контракты: [privacy.md](privacy.md)
 | GET | `/api/v1/auth/telemetry-config` |
 | GET | `/api/v1/legal/documents` |
 | GET | `/api/v1/mfa/passkey/credentials` |
+| GET | `/health/identity` |
 | GET | `/health/live` |
 | GET | `/health/ready` |
 | GET | `/oauth/authorize` |

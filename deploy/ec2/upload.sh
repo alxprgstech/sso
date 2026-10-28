@@ -10,6 +10,7 @@ umask 077
 test -s sso-ec2.tar.gz
 test -n "$SSH_PRIVATE_KEY"
 test -n "$SSH_KNOWN_HOSTS"
+: "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 private=$(mktemp -d)
 remote="/home/ssodeploy/incoming/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 target="$SSH_USER@$SSH_HOST"
@@ -26,5 +27,16 @@ cleanup() {
 trap cleanup EXIT
 ssh "${opts[@]}" -p "$SSH_PORT" "$target" "umask 077; mkdir '$remote'"
 scp "${opts[@]}" -P "$SSH_PORT" sso-ec2.tar.gz "$target:$remote/sso-ec2.tar.gz"
-ssh "${opts[@]}" -p "$SSH_PORT" "$target" \
-  "sudo -n /usr/local/sbin/ssoctl deploy '$remote/sso-ec2.tar.gz' '$DEPLOY_SEQUENCE' '$DEPLOY_SHA'"
+# Capture the operator's machine protocol instead of reprinting server output.
+set +e
+output=$(ssh "${opts[@]}" -p "$SSH_PORT" "$target" \
+  "sudo -n /usr/local/sbin/ssoctl deploy '$remote/sso-ec2.tar.gz' '$DEPLOY_SEQUENCE' '$DEPLOY_SHA'")
+status=$?
+set -e
+if [[ $status -ne 0 ]]; then
+  echo 'Server deployment command failed; inspect the sanitized operator error above.' >&2
+  exit "$status"
+fi
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+printf '%s\n' "$output" | python3 "$root/scripts/deploy_result.py" \
+  --sha "$DEPLOY_SHA" --sequence "$DEPLOY_SEQUENCE" --github-output "$GITHUB_OUTPUT"

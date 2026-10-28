@@ -31,6 +31,8 @@ DOMAIN = "auth.alxprgs.tech"
 SHA = re.compile(r"[a-f0-9]{40}")
 IMAGE = re.compile(r"sha256:[a-f0-9]{64}")
 EVENTS = {"backup", "renew", "deploy", "test"}
+RESULT_PREFIX = "ssoctl-result:"
+PROTOCOL_VERSION = 1
 
 
 class OperationError(Exception):
@@ -292,6 +294,93 @@ def current() -> Path:
     return value
 
 
+def _json_object(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def result_protocol(result: str, sha: str, sequence: int) -> str:
+    return RESULT_PREFIX + json.dumps(
+        {
+            "version": PROTOCOL_VERSION,
+            "result": result,
+            "sha": sha,
+            "sequence": sequence,
+        },
+        separators=(",", ":"),
+    )
+
+
+def backend_runtime_identity() -> dict:
+    request = urllib.request.Request(
+        "http://127.0.0.1:8000/health/identity", headers={"Host": DOMAIN}
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        if response.status != 200 or response.geturl() != request.full_url:
+            raise OperationError("Backend identity is unavailable")
+        value = json.loads(response.read(4096))
+    if not isinstance(value, dict):
+        raise OperationError("Backend identity is invalid")
+    return value
+
+
+def installation_matches(sha: str) -> bool:
+    """Read-only proof that this exact revision is installed and serving.
+
+    Any missing or inconsistent fact means "not proven" and falls through to the
+    normal verified installation. Must be called under the deployment lock; it
+    performs no unpacking, image load, backup, migration, restart or switch.
+    """
+    if not SHA.fullmatch(sha) or (STATE / "maintenance").exists():
+        return False
+    record = _json_object(STATE / "deployed.json")
+    if record.get("sha") != sha or not isinstance(record.get("sequence"), int):
+        return False
+    try:
+        release = current()
+        manifest = _json_object(release / "manifest.json")
+        frontend = _json_object(release / "public/build-info.json")
+        if manifest.get("sha") != sha or frontend.get("commit_sha") != sha:
+            return False
+        container = (
+            run(
+                "docker",
+                "ps",
+                "-q",
+                "--filter",
+                "label=com.docker.compose.project=alxprgs-sso",
+                "--filter",
+                "label=com.docker.compose.service=backend",
+            )
+            .decode()
+            .strip()
+        )
+        if not re.fullmatch(r"[a-f0-9]{12,64}", container):
+            return False
+        inspected = json.loads(run("docker", "inspect", container))[0]
+        labels = (inspected.get("Config") or {}).get("Labels") or {}
+        if not (inspected.get("State") or {}).get("Running"):
+            return False
+        if inspected.get("Image") != manifest.get("backend_image"):
+            return False
+        if labels.get("com.docker.compose.service") != "backend":
+            return False
+        config_files = labels.get("com.docker.compose.project.config_files", "")
+        if str(release / "compose.yml") not in {item.strip() for item in config_files.split(",")}:
+            return False
+        identity = backend_runtime_identity()
+        if identity.get("status") != "ready" or identity.get("database") != "connected":
+            return False
+        if identity.get("commit_sha") != sha:
+            return False
+    except (OperationError, OSError, ValueError, KeyError, IndexError, TypeError):
+        return False
+    return True
+
+
 def switch(release: Path) -> None:
     link = ROOT / "next"
     link.unlink(missing_ok=True)
@@ -449,7 +538,7 @@ def can_rollback(old: dict, new: dict, actual_schema: str) -> bool:
     )
 
 
-def deploy(bundle: Path, sequence: int, sha: str) -> None:
+def deploy(bundle: Path, sequence: int, sha: str) -> str:
     if not SHA.fullmatch(sha) or sequence < 1:
         raise OperationError("Invalid deployment identity")
     # No arbitrary root filesystem reads from the sudo entry point.
@@ -460,6 +549,10 @@ def deploy(bundle: Path, sequence: int, sha: str) -> None:
     record_path = STATE / "highwater.json"
     record = json.loads(record_path.read_text()) if record_path.exists() else {}
     validate_sequence(record, sequence, sha)
+    # Recheck under the operator lock before the first installation side effect.
+    # highwater.json only records an attempt and is deliberately not evidence.
+    if installation_matches(sha):
+        return "already_deployed"
     destination = ROOT / "releases" / f"{sequence}-{sha}"
     if destination.exists():
         # Retrying failed deployments starts with a fresh verified copy, not a partial tree.
@@ -547,11 +640,13 @@ def deploy(bundle: Path, sequence: int, sha: str) -> None:
                     maintenance.touch(mode=0o644)
                     raise
             raise
-        private_write(STATE / "deployed.json", json.dumps({"sequence": sequence, "sha": sha}))
+        # Keep the success record last: a cleanup or timer failure must not make a
+        # later retry mistake the installation for complete evidence.
         # Keep image in Docker; avoid retaining the large transport archive per release.
         (destination / "images.tar").unlink()
         run("systemctl", "enable", "--now", "alxprgs-sso-backup.timer")
-        print(f"Deployed {sha}; sequence {sequence}")
+        private_write(STATE / "deployed.json", json.dumps({"sequence": sequence, "sha": sha}))
+        return "deployed"
     except Exception:
         # Failed tree is retained for diagnosis. No volumes or old releases are removed.
         raise
@@ -626,7 +721,8 @@ def main() -> int:
             if args.command == "configure":
                 configure()
             elif args.command == "deploy":
-                deploy(args.bundle, args.sequence, args.sha)
+                result = deploy(args.bundle, args.sequence, args.sha)
+                print(result_protocol(result, args.sha, args.sequence))
             elif args.command == "backup":
                 backup(current())
             elif args.command == "verify-backup":

@@ -247,6 +247,212 @@ def operator(tmp_path, monkeypatch):
     return root, state, inbox, old, commands
 
 
+def installed_identity(old, state, *, sha=COMMIT, sequence=2):
+    """Build the consistent read-only facts a successful installation leaves."""
+    (old / "manifest.json").write_text(
+        json.dumps(
+            {
+                "sha": sha,
+                "backend_image": IMAGE,
+                "postgres_image": IMAGE,
+                "migrations": "unchanged",
+                "schema_revision": "revision",
+            }
+        )
+    )
+    (old / "public").mkdir(exist_ok=True)
+    (old / "public/build-info.json").write_text(
+        json.dumps({"version": "0.3.0", "commit_sha": sha, "release": f"sso@{sha}"})
+    )
+    (state / "deployed.json").write_text(json.dumps({"sequence": sequence, "sha": sha}))
+
+
+def healthy_run(old, commands, *, running=True, image=IMAGE, config_files=None):
+    def run(*args, **kwargs):
+        commands.append(args)
+        if args[:2] == ("docker", "ps"):
+            return b"a" * 64
+        if args[:2] == ("docker", "inspect"):
+            return json.dumps(
+                [
+                    {
+                        "State": {"Running": running},
+                        "Image": image,
+                        "Config": {
+                            "Labels": {
+                                "com.docker.compose.service": "backend",
+                                "com.docker.compose.project.config_files": config_files
+                                or str(old / "compose.yml"),
+                            }
+                        },
+                    }
+                ]
+            ).encode()
+        raise AssertionError(f"unexpected command in no-op check: {args}")
+
+    return run
+
+
+def test_same_sha_healthy_installation_is_noop_without_installation_side_effects(
+    operator, monkeypatch
+):
+    root, state, inbox, old, commands = operator
+    archive = inbox / "bundle.tar.gz"
+    bundle(archive)
+    installed_identity(old, state)
+    monkeypatch.setattr(ctl, "run", healthy_run(old, commands))
+    monkeypatch.setattr(
+        ctl,
+        "backend_runtime_identity",
+        lambda: {"status": "ready", "database": "connected", "commit_sha": COMMIT},
+    )
+    assert ctl.deploy(archive, 2, COMMIT) == "already_deployed"
+    assert not (root / "releases" / f"2-{COMMIT}").exists()
+    assert not (state / "highwater.json").exists()
+    assert json.loads((state / "deployed.json").read_text()) == {"sequence": 2, "sha": COMMIT}
+    assert all(cmd[:2] in {("docker", "ps"), ("docker", "inspect")} for cmd in commands)
+    # A second attempt of the same run/SHA stays a no-op with no extra effects.
+    commands.clear()
+    assert ctl.deploy(archive, 2, COMMIT) == "already_deployed"
+    assert all(cmd[:2] in {("docker", "ps"), ("docker", "inspect")} for cmd in commands)
+
+
+def test_highwater_alone_never_proves_a_successful_installation(operator):
+    root, state, inbox, old, commands = operator
+    archive = inbox / "bundle.tar.gz"
+    bundle(archive)
+    # A failed attempt writes highwater before changing the server.
+    (state / "highwater.json").write_text(json.dumps({"sequence": 2, "sha": COMMIT}))
+    assert ctl.deploy(archive, 2, COMMIT) == "deployed"
+    assert ("backup",) in commands
+    assert (root / "releases" / f"2-{COMMIT}").is_dir()
+    assert json.loads((state / "deployed.json").read_text())["sha"] == COMMIT
+
+
+def test_installed_other_sha_with_same_version_runs_the_normal_deploy(operator):
+    root, state, inbox, old, commands = operator
+    archive = inbox / "bundle.tar.gz"
+    bundle(archive)
+    other = "c" * 40
+    installed_identity(old, state, sha=other)
+    (state / "highwater.json").write_text(json.dumps({"sequence": 1, "sha": other}))
+    assert ctl.deploy(archive, 2, COMMIT) == "deployed"
+    assert ("backup",) in commands
+    assert json.loads((state / "deployed.json").read_text())["sha"] == COMMIT
+    assert (root / "releases" / f"2-{COMMIT}").is_dir()
+
+
+def test_noop_check_cannot_bypass_stale_sequence_protection(operator, monkeypatch):
+    root, state, inbox, old, commands = operator
+    archive = inbox / "bundle.tar.gz"
+    bundle(archive)
+    installed_identity(old, state, sequence=5)
+    (state / "highwater.json").write_text(json.dumps({"sequence": 5, "sha": COMMIT}))
+    monkeypatch.setattr(ctl, "run", healthy_run(old, commands))
+    with pytest.raises(ctl.OperationError, match="Stale"):
+        ctl.deploy(archive, 4, COMMIT)
+    assert not commands
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "deployed_missing",
+        "deployed_other_sha",
+        "maintenance",
+        "manifest_mismatch",
+        "frontend_mismatch",
+        "container_stopped",
+        "container_image_mismatch",
+        "container_config_files_mismatch",
+        "container_missing",
+        "identity_mismatch",
+        "identity_unavailable",
+        "current_invalid",
+    ],
+)
+def test_installation_matches_requires_consistent_healthy_state(operator, monkeypatch, mutation):
+    root, state, inbox, old, commands = operator
+    installed_identity(old, state)
+    monkeypatch.setattr(ctl, "run", healthy_run(old, commands))
+    monkeypatch.setattr(
+        ctl,
+        "backend_runtime_identity",
+        lambda: {"status": "ready", "database": "connected", "commit_sha": COMMIT},
+    )
+    assert ctl.installation_matches(COMMIT)
+    if mutation == "deployed_missing":
+        (state / "deployed.json").unlink()
+    elif mutation == "deployed_other_sha":
+        (state / "deployed.json").write_text(json.dumps({"sequence": 2, "sha": "c" * 40}))
+    elif mutation == "maintenance":
+        (state / "maintenance").touch()
+    elif mutation == "manifest_mismatch":
+        manifest = json.loads((old / "manifest.json").read_text())
+        manifest["sha"] = "c" * 40
+        (old / "manifest.json").write_text(json.dumps(manifest))
+    elif mutation == "frontend_mismatch":
+        (old / "public/build-info.json").write_text(json.dumps({"commit_sha": "c" * 40}))
+    elif mutation == "container_stopped":
+        monkeypatch.setattr(ctl, "run", healthy_run(old, commands, running=False))
+    elif mutation == "container_image_mismatch":
+        monkeypatch.setattr(ctl, "run", healthy_run(old, commands, image="sha256:" + "c" * 64))
+    elif mutation == "container_config_files_mismatch":
+
+        def config_files_run(*args, **kwargs):
+            commands.append(args)
+            if args[:2] == ("docker", "ps"):
+                return b"a" * 64
+            return json.dumps(
+                [
+                    {
+                        "State": {"Running": True},
+                        "Image": IMAGE,
+                        "Config": {
+                            "Labels": {
+                                "com.docker.compose.service": "backend",
+                                "com.docker.compose.project.config_files": "/elsewhere/compose.yml",
+                            }
+                        },
+                    }
+                ]
+            ).encode()
+
+        monkeypatch.setattr(ctl, "run", config_files_run)
+    elif mutation == "container_missing":
+        monkeypatch.setattr(ctl, "run", lambda *args: commands.append(args) or b"")
+    elif mutation == "identity_mismatch":
+        monkeypatch.setattr(
+            ctl,
+            "backend_runtime_identity",
+            lambda: {"status": "ready", "database": "connected", "commit_sha": "c" * 40},
+        )
+    elif mutation == "identity_unavailable":
+        monkeypatch.setattr(
+            ctl,
+            "backend_runtime_identity",
+            lambda: (_ for _ in ()).throw(ctl.OperationError("unavailable")),
+        )
+    elif mutation == "current_invalid":
+        monkeypatch.setattr(
+            ctl,
+            "current",
+            lambda: (_ for _ in ()).throw(ctl.OperationError("invalid current")),
+        )
+    assert not ctl.installation_matches(COMMIT)
+
+
+def test_deploy_protocol_is_exact_machine_json():
+    line = ctl.result_protocol("already_deployed", COMMIT, 7)
+    assert line.startswith(ctl.RESULT_PREFIX)
+    assert json.loads(line[len(ctl.RESULT_PREFIX) :]) == {
+        "version": 1,
+        "result": "already_deployed",
+        "sha": COMMIT,
+        "sequence": 7,
+    }
+
+
 def test_update_orders_stop_backup_migrate_and_ready(operator):
     root, state, inbox, old, commands = operator
     archive = inbox / "bundle.tar.gz"
@@ -336,7 +542,7 @@ def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
         "workflow_dispatch": {},
         "workflow_run": {"workflows": ["CI"], "types": ["completed"], "branches": ["main"]},
     }
-    gate = workflow["jobs"]["build"]["if"]
+    gate = workflow["jobs"]["preflight"]["if"]
     for condition in (
         "conclusion == 'success'",
         "event == 'push'",
@@ -345,18 +551,21 @@ def test_cd_preserves_automatic_gate_and_adds_explicit_manual_mode():
     ):
         assert condition in gate
     assert workflow["concurrency"]["cancel-in-progress"] == "false"
-    steps = workflow["jobs"]["build"]["steps"]
+    steps = workflow["jobs"]["preflight"]["steps"]
     assert steps[0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
     assert workflow["env"]["DEPLOY_SHA"] == (
         "${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}"
     )
+    decide = next(step for step in steps if step.get("id") == "decide")
+    assert "check_deployed_revision.py" in decide["run"]
+    assert '"$GITHUB_OUTPUT"' in decide["run"]
     transport = next(
         step
         for step in workflow["jobs"]["verify"]["steps"]
         if step["name"] == "Verify the transport to be installed"
     )
     assert "scripts.check_ec2_runtime" in transport["run"]
-    assert workflow["jobs"]["verify"]["if"] == "needs.build.outputs.current == 'true'"
+    assert workflow["jobs"]["verify"]["if"] == "needs.build.outputs.artifact_name != ''"
     all_steps = [step for job in workflow["jobs"].values() for step in job["steps"]]
     assert all("continue-on-error" not in step for step in all_steps)
     for step in all_steps:
@@ -384,7 +593,7 @@ def test_cd_event_gate_matrix(event, ref, conclusion, origin, branch, same_repo,
     from types import SimpleNamespace as NS
 
     workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
-    expression = workflow["jobs"]["build"]["if"].replace("&&", "and").replace("||", "or")
+    expression = workflow["jobs"]["preflight"]["if"].replace("&&", "and").replace("||", "or")
     github = NS(
         event_name=event,
         ref=ref,
@@ -423,6 +632,8 @@ def test_nginx_overwrites_client_forwarding_and_excludes_sensitive_logs():
     for field in ("$request_uri", "$args", "$remote_addr", "$http_authorization"):
         assert field not in log
     assert "ssl_reject_handshake on;" in source
+    assert '=/build-info.json "no-store";' in source
+    assert "location = /build-info.json {" in source
 
 
 def bundle_spec():
@@ -562,12 +773,19 @@ def test_transport_pipeline_pins_classic_docker_image_store():
 def test_cd_retry_uses_same_immutable_bundle_and_requires_verification():
     workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
     jobs = workflow["jobs"]
-    assert set(jobs) == {"build", "verify", "deploy", "public-check"}
+    assert set(jobs) == {"preflight", "build", "verify", "deploy", "public-check", "report"}
+    assert jobs["build"]["needs"] == "preflight"
+    assert jobs["build"]["if"] == "needs.preflight.outputs.decision == 'deploy'"
     assert jobs["verify"]["needs"] == "build"
     assert jobs["deploy"]["needs"] == ["build", "verify"]
-    assert "if" not in jobs["deploy"]  # Default success() keeps verification mandatory.
+    assert jobs["deploy"]["if"] == (
+        "needs.build.outputs.artifact_name != '' && needs.verify.result == 'success'"
+    )
     assert jobs["deploy"]["environment"] == "production"
-    assert all("environment" not in jobs[name] for name in ("build", "verify"))
+    assert all(
+        "environment" not in jobs[name]
+        for name in ("preflight", "build", "verify", "public-check", "report")
+    )
     upload = next(step for step in jobs["build"]["steps"] if step.get("id") == "bundle")
     assert upload["with"]["if-no-files-found"] == "error"
     assert upload["with"]["retention-days"] == "7"
@@ -589,21 +807,67 @@ def test_cd_retry_uses_same_immutable_bundle_and_requires_verification():
     assert "scripts.check_ec2_runtime" in jobs["verify"]["steps"][-1]["run"]
 
 
-def test_public_check_runs_only_after_actual_install_and_can_retry_independently():
+def test_early_identity_noop_skips_build_verify_and_install():
+    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
+    jobs = workflow["jobs"]
+    assert jobs["build"]["if"] == "needs.preflight.outputs.decision == 'deploy'"
+    assert jobs["verify"]["if"] == "needs.build.outputs.artifact_name != ''"
+    assert "needs.deploy.outputs.result == 'already_deployed'" in jobs["public-check"]["if"]
+    assert "needs.preflight.outputs.decision == 'already_deployed'" in jobs["public-check"]["if"]
+    preflight_step = next(step for step in jobs["preflight"]["steps"] if step.get("id") == "decide")
+    assert "decision=superseded" in preflight_step["run"]
+    assert preflight_step["run"].index("latest") < preflight_step["run"].index(
+        "check_deployed_revision.py"
+    )
+
+
+def test_deploy_consumes_server_protocol_and_never_claims_installed_from_upload_exit():
     workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
     deploy = workflow["jobs"]["deploy"]
     install = deploy["steps"][-1]
     assert install["id"] == "install"
+    assert deploy["outputs"]["result"] == "${{ steps.install.outputs.result }}"
     assert deploy["outputs"]["installed"] == "${{ steps.install.outputs.installed }}"
+    assert deploy["outputs"]["installed_sha"] == "${{ steps.install.outputs.installed_sha }}"
     assert install["run"].index("exit 0") < install["run"].index("bash deploy/ec2/upload.sh")
-    assert install["run"].index("bash deploy/ec2/upload.sh") < install["run"].index(
-        "installed=true"
-    )
+    assert "installed=true" not in install["run"]  # upload.sh writes the real outcome.
+    upload = (ROOT / "deploy/ec2/upload.sh").read_text()
+    assert "deploy_result.py" in upload
+    assert "result=superseded" in install["run"]
+
+
+def test_public_check_runs_after_install_or_server_noop_and_can_retry_independently():
+    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
     check = workflow["jobs"]["public-check"]
-    assert check["needs"] == "deploy"
-    assert check["if"] == "needs.deploy.outputs.installed == 'true'"
+    assert check["needs"] == ["preflight", "deploy"]
+    assert check["if"].startswith("always()")
+    assert "needs.deploy.outputs.result == 'deployed'" in check["if"]
+    assert "needs.deploy.outputs.result == 'already_deployed'" in check["if"]
     assert "environment" not in check
     assert check["steps"][0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
     assert check["steps"][-1]["run"] == "python3 scripts/check_public_readiness.py"
     assert "continue-on-error" not in check
     assert not any("upload.sh" in step.get("run", "") for step in check["steps"])
+    report = workflow["jobs"]["report"]
+    assert report["if"] == "always()"
+    assert set(report["needs"]) == {
+        "preflight",
+        "build",
+        "verify",
+        "deploy",
+        "public-check",
+    }
+    summary = report["steps"][-1]["run"]
+    for fragment in ("$DEPLOY_SHA", "$INSTALLED_SHA", "$RESULT", "$REASON", "deployed_legacy"):
+        assert fragment in summary
+    assert "RESULT='error'" in summary and "exit 1" in summary
+
+
+def test_production_secrets_are_confined_to_deploy_job():
+    workflow = yaml.load((ROOT / ".github/workflows/cd.yml").read_text(), Loader=yaml.BaseLoader)
+    jobs = workflow["jobs"]
+    deploy_step = jobs["deploy"]["steps"][-1]
+    assert deploy_step["env"]["SSH_PRIVATE_KEY"] == "${{ secrets.SSH_PRIVATE_KEY }}"
+    assert deploy_step["env"]["SSH_KNOWN_HOSTS"] == "${{ secrets.SSH_KNOWN_HOSTS }}"
+    for name in ("preflight", "build", "verify", "public-check", "report"):
+        assert "secrets." not in json.dumps(jobs[name])

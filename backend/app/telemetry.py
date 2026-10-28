@@ -25,7 +25,12 @@ from app.build_info import get_build_info
 from app.config import Settings
 
 _routes: list[tuple[str, re.Pattern[str]]] = []
-_EXCLUDED = {"/health/live", "/health/ready", "/api/v1/auth/telemetry-config"}
+_EXCLUDED = {
+    "/health/live",
+    "/health/ready",
+    "/health/identity",
+    "/api/v1/auth/telemetry-config",
+}
 _OPERATIONS = {"capabilities", "email_delivery", "send_email"}
 _HEX = re.compile(r"^[a-f0-9]+$")
 _CODE_FILES = {

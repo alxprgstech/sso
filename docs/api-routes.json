@@ -91,6 +91,10 @@
     ],
     [
       "GET",
+      "/health/identity"
+    ],
+    [
+      "GET",
       "/health/live"
     ],
     [
