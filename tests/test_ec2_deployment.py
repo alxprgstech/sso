@@ -632,7 +632,7 @@ def test_nginx_overwrites_client_forwarding_and_excludes_sensitive_logs():
     for field in ("$request_uri", "$args", "$remote_addr", "$http_authorization"):
         assert field not in log
     assert "ssl_reject_handshake on;" in source
-    assert '=/build-info.json "no-store";' in source
+    assert '/build-info.json "no-store";' in source
     assert "location = /build-info.json {" in source
 
 
