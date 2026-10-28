@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { confirmSensitiveAction } from "./helpers/reauthentication";
 import { prepareIndependentScenario } from "./helpers/prepare";
@@ -58,6 +59,21 @@ test("Real TOTP enrollment, factor reauthentication, recovery replay and passwor
   await expect(page.getByTestId("recovery-codes-display")).toBeVisible();
   const recovery = await page.getByTestId("recovery-codes-display").locator(".grid > div").first().innerText();
   expect(recovery.trim()).toMatch(/^[A-Z0-9]{8}(?:-[A-Z0-9]{8}){3}$/);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("download-recovery-codes-button").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(
+    /^alxprgs-sso-recovery-codes-\d{4}-\d{2}-\d{2}\.txt$/,
+  );
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const downloaded = readFileSync(downloadPath!, "utf8");
+  expect(downloaded.charCodeAt(0)).toBe(0xfeff);
+  expect(downloaded).toContain("Учётная запись: e2e_totp@example.test");
+  expect(downloaded).toContain("ИНСТРУКЦИЯ");
+  expect(downloaded).toContain(recovery.trim());
+
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await passwordLogin(page);
   await expect(page.getByLabel("Одноразовый код или код восстановления")).toBeVisible();

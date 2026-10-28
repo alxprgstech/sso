@@ -90,6 +90,40 @@ export function prepareRequestOptions(serverOptions: string | EncodedRequestOpti
   };
 }
 
+/**
+ * Название по умолчанию из стандартных WebAuthn-метаданных.
+ * Используются только attachment и transports, без User-Agent и fingerprinting.
+ * Если надёжно определить категорию нельзя, возвращается пустая строка.
+ */
+export type PasskeyNameSource = {
+  authenticatorAttachment?: string | null;
+  response: AuthenticatorResponse;
+};
+
+export function suggestPasskeyName(credential: PasskeyNameSource): string {
+  const response = credential.response as Partial<AuthenticatorAttestationResponse>;
+  const transports =
+    typeof response.getTransports === "function" ? response.getTransports() : [];
+  if (transports.some((transport) => ["usb", "nfc", "ble"].includes(transport))) {
+    return "Аппаратный ключ безопасности";
+  }
+  if (credential.authenticatorAttachment === "platform") {
+    return "Passkey на этом устройстве";
+  }
+  if (transports.includes("hybrid")) {
+    return "Passkey на телефоне";
+  }
+  return "";
+}
+
+/** Резервное название в локальном времени: Passkey_YYYY-MM-DD_HH-mm-ss. */
+export function formatPasskeyFallbackName(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const datePart = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const timePart = `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+  return `Passkey_${datePart}_${timePart}`;
+}
+
 export function serializeRequestResponse(assertion: Credential): object {
   const publicKey = assertion as PublicKeyCredential;
   const auth = publicKey.response as AuthenticatorAssertionResponse;

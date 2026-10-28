@@ -6,6 +6,7 @@
 
 | ID | Приоритет | Зависимости | Статус | Критерий и следующий шаг |
 | --- | --- | --- | --- | --- |
+| MFA-RECOVERY-EXPORT-01 | P2 | MFA-DEFAULT-ADMIN-01, frontend | in_progress | Скачивание текущего набора резервных кодов в UTF-8 TXT (email, инструкция, BOM), генерация при TOTP или Passkey; Passkey сначала создаётся, затем имя с автоподстановкой и подтверждением пустого. Начало 2026-10-28T23:35:15+03:00; критерий — lint/typecheck/unit/components/build, связанные Playwright, PR и CI. |
 | DOC-VERSION-LOCK-01 | P2 | DOC-REFRESH-01, DOC-DEF-01 | planned | Bump/check учитывают root package-lock version и packages[""].version; regression в отдельной копии без изменения dependency resolution. Начало реализации не назначено. |
 | AUDIT-FIX-03 | P1 | Локальное OIDC remediation, внешний стенд | blocked | Выполнить применимую OIF matrix на утверждённом публичном HTTPS issuer с отдельными клиентами; локальный retest не заменяет внешний результат. |
 | AUDIT-FIX-05 | P1 | Локальное ops remediation, утверждённая инфраструктура | blocked | Подтвердить public TLS/DNS/IAM/secret storage, внешние backup/storage ACL и alerts. Локальные Linux images/Trivy/Compose проверены 18.10; внешний production-контур остаётся условием разблокировки. |

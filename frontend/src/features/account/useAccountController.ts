@@ -6,8 +6,10 @@ import { api } from "../../api/client";
 import { errorMessage } from "../../utils/error";
 import type { SessionInfo, TOTPSetupResponse } from "../../types/api";
 import {
+  formatPasskeyFallbackName,
   prepareCreationOptions,
   serializeCreationResponse,
+  suggestPasskeyName,
 } from "../../utils/webauthn";
 export function useAccountController() {
   const { section = "profile" } = useParams();
@@ -49,9 +51,17 @@ export function useAccountController() {
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [passkeySuccess, setPasskeySuccess] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [passkeyWarning, setPasskeyWarning] = useState<string | null>(null);
+  const [passkeyNamingOpen, setPasskeyNamingOpen] = useState(false);
+  const [passkeyNoNameConfirmOpen, setPasskeyNoNameConfirmOpen] = useState(false);
   const [passkeysReadState, setPasskeysReadState] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
+  // Незавершённая регистрация хранится только в памяти компонента.
+  const pendingPasskeyRef = useRef<object | null>(null);
+  const passkeyBusyRef = useRef(false);
+  const passkeyNameRef = useRef<HTMLInputElement>(null);
+  const passkeyReturnRef = useRef<HTMLButtonElement>(null);
 
   // Состояние TOTP (SEC-FLAG-01)
   const [totpSetupData, setTotpSetupData] = useState<TOTPSetupResponse | null>(
@@ -230,31 +240,121 @@ export function useAccountController() {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+    setPasskeyNamingOpen(false);
+    setPasskeyNoNameConfirmOpen(false);
+    setPasskeyName("");
+    pendingPasskeyRef.current = null;
   }, [section, capabilities?.passkey_enabled]);
 
-  const handleRegisterPasskey = async () => {
+  const handleStartPasskeyRegistration = async () => {
+    if (passkeyBusyRef.current) return;
+    passkeyBusyRef.current = true;
     setPasskeyLoading(true);
     setPasskeyError(null);
+    setPasskeyWarning(null);
     setPasskeySuccess(null);
+    let credentialCreated = false;
     try {
       const serverOptions = await api.getPasskeyRegistrationOptions();
       const creationOptions = prepareCreationOptions(serverOptions);
       const credential = await navigator.credentials.create(creationOptions);
       if (!credential) {
-        throw new Error("Аутентификатор не вернул учетные данные");
+        throw new Error("Аутентификатор не вернул учётные данные");
       }
-      const serialized = serializeCreationResponse(credential);
-      const res = await api.verifyPasskeyRegistration(
-        serialized,
-        passkeyName.trim() || "Passkey",
-      );
-      setPasskeySuccess(res.message || "Passkey успешно зарегистрирован");
-      setPasskeyName("");
-      await fetchPasskeys();
+      credentialCreated = true;
+      const publicKeyCredential = credential as PublicKeyCredential;
+      pendingPasskeyRef.current = serializeCreationResponse(publicKeyCredential);
+      setPasskeyName(suggestPasskeyName(publicKeyCredential));
+      setPasskeyNamingOpen(true);
     } catch (err: unknown) {
-      setPasskeyError(errorMessage(err, "Ошибка при регистрации Passkey"));
+      if (
+        err instanceof DOMException &&
+        (err.name === "NotAllowedError" || err.name === "AbortError")
+      ) {
+        setPasskeyError("Создание ключа доступа отменено или не разрешено браузером.");
+      } else {
+        setPasskeyError(
+          errorMessage(err, "Не удалось создать ключ доступа"),
+        );
+      }
+      if (credentialCreated) {
+        setPasskeyWarning(
+          "Ключ мог остаться в менеджере паролей или на устройстве, но сервер его не подтвердил. Удалите неиспользуемый ключ вручную или повторите регистрацию.",
+        );
+      }
     } finally {
+      passkeyBusyRef.current = false;
       setPasskeyLoading(false);
+    }
+  };
+
+  const verifyPendingPasskey = async (name: string) => {
+    const credential = pendingPasskeyRef.current;
+    if (!credential || passkeyBusyRef.current) return;
+    passkeyBusyRef.current = true;
+    setPasskeyLoading(true);
+    setPasskeyError(null);
+    setPasskeyWarning(null);
+    setPasskeySuccess(null);
+    try {
+      const res = await api.verifyPasskeyRegistration(credential, name);
+      pendingPasskeyRef.current = null;
+      setPasskeyNamingOpen(false);
+      setPasskeyNoNameConfirmOpen(false);
+      setPasskeyName("");
+      setPasskeySuccess(res.message || "Passkey успешно зарегистрирован");
+      await Promise.all([fetchPasskeys(), refreshUser()]);
+    } catch (err: unknown) {
+      pendingPasskeyRef.current = null;
+      setPasskeyNamingOpen(false);
+      setPasskeyNoNameConfirmOpen(false);
+      setPasskeyName("");
+      setPasskeyError(errorMessage(err, "Ошибка при регистрации Passkey"));
+      setPasskeyWarning(
+        "Ключ мог остаться в менеджере паролей или на устройстве, но сервер его не подтвердил. Удалите неиспользуемый ключ вручную или повторите регистрацию.",
+      );
+    } finally {
+      passkeyBusyRef.current = false;
+      setPasskeyLoading(false);
+    }
+  };
+
+  const handlePasskeyNameSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (passkeyLoading || passkeyBusyRef.current) return;
+    const name = passkeyName.trim();
+    if (!name) {
+      setPasskeyNamingOpen(false);
+      setPasskeyNoNameConfirmOpen(true);
+      return;
+    }
+    await verifyPendingPasskey(name);
+  };
+
+  const handleReturnToPasskeyName = () => {
+    if (passkeyLoading) return;
+    setPasskeyNoNameConfirmOpen(false);
+    setPasskeyNamingOpen(true);
+  };
+
+  const handleConfirmEmptyPasskeyName = async () => {
+    if (passkeyLoading || passkeyBusyRef.current) return;
+    const name = formatPasskeyFallbackName(new Date());
+    setPasskeyName(name);
+    await verifyPendingPasskey(name);
+  };
+
+  const handleCancelPasskeyNaming = () => {
+    if (passkeyLoading) return;
+    const hadPendingCredential = pendingPasskeyRef.current !== null;
+    pendingPasskeyRef.current = null;
+    setPasskeyNamingOpen(false);
+    setPasskeyNoNameConfirmOpen(false);
+    setPasskeyName("");
+    if (hadPendingCredential) {
+      setPasskeyWarning(
+        "Регистрация ключа доступа не завершена. Ключ мог остаться в менеджере паролей или на устройстве и не используется в ALXPRGS SSO.",
+      );
     }
   };
 
@@ -272,7 +372,7 @@ export function useAccountController() {
     try {
       await api.deletePasskeyCredential(id);
       setPasskeySuccess("Passkey успешно удален");
-      await fetchPasskeys();
+      await Promise.all([fetchPasskeys(), refreshUser()]);
     } catch (err: unknown) {
       setPasskeyError(errorMessage(err, "Ошибка при удалении Passkey"));
     } finally {
@@ -364,6 +464,11 @@ export function useAccountController() {
     passkeyLoading,
     passkeySuccess,
     passkeyError,
+    passkeyWarning,
+    passkeyNamingOpen,
+    passkeyNoNameConfirmOpen,
+    passkeyNameRef,
+    passkeyReturnRef,
     passkeysReadState,
     fetchPasskeys,
     totpSetupData,
@@ -390,7 +495,11 @@ export function useAccountController() {
     handleGenerateRecoveryCodes,
     handleRequestEmailVerification,
     handleConfirmEmailVerification,
-    handleRegisterPasskey,
+    handleStartPasskeyRegistration,
+    handlePasskeyNameSubmit,
+    handleReturnToPasskeyName,
+    handleConfirmEmptyPasskeyName,
+    handleCancelPasskeyNaming,
     handleDeletePasskey,
     handleChangePassword,
     handleRevokeSession,

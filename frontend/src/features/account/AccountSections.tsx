@@ -13,6 +13,7 @@ import {
 } from "../../components/ui/controls";
 import { QRCodeSVG } from "qrcode.react";
 import { AccessibleDialog } from "../../components/AccessibleDialog";
+import { downloadRecoveryCodesTxt } from "../../utils/recoveryCodes";
 import type { useAccountController } from "./useAccountController";
 
 export type AccountViewModel = ReturnType<typeof useAccountController> & {
@@ -614,12 +615,13 @@ export function PasskeyControls({
   controller: AccountViewModel;
 }) {
   const {
-    passkeyName,
-    setPasskeyName,
     passkeyLoading,
     passkeySuccess,
     passkeyError,
-    handleRegisterPasskey,
+    passkeyWarning,
+    passkeyNamingOpen,
+    passkeyNoNameConfirmOpen,
+    handleStartPasskeyRegistration,
   } = controller;
   return (
     <div className="space-y-3 pt-2">
@@ -641,30 +643,155 @@ export function PasskeyControls({
           {passkeyError}
         </div>
       )}
-      <div className="flex gap-2">
-        <Input
-          type="text"
-          aria-label="Название ключа доступа"
-          maxLength={128}
-          placeholder="Название ключа (например, Ноутбук)"
-          value={passkeyName}
-          onChange={(e) => setPasskeyName(e.target.value)}
-          className="flex-1"
-          data-testid="passkey-name-input"
-        />
+      {passkeyWarning && (
+        <div
+          className="text-xs bg-warning-soft text-warning p-2 rounded border border-warning"
+          role="status"
+          data-testid="passkey-warning"
+        >
+          {passkeyWarning}
+        </div>
+      )}
+      <div>
         <Button
           type="button"
-          onClick={handleRegisterPasskey}
+          onClick={handleStartPasskeyRegistration}
           disabled={passkeyLoading}
           variant="primary"
           data-testid="register-passkey-button"
         >
-          {passkeyLoading ? "Регистрация..." : "Зарегистрировать Passkey"}
+          {passkeyLoading ? "Создание ключа..." : "Добавить Passkey"}
         </Button>
+        <p className="text-xs text-secondary mt-1">
+          Название ключа можно будет указать после создания.
+        </p>
       </div>
+
+      {passkeyNamingOpen && <PasskeyNameDialog controller={controller} />}
+      {passkeyNoNameConfirmOpen && (
+        <PasskeyNoNameConfirmDialog controller={controller} />
+      )}
 
       <PasskeyReadState controller={controller} />
     </div>
+  );
+}
+
+export function PasskeyNameDialog({
+  controller,
+}: {
+  controller: AccountViewModel;
+}) {
+  const {
+    passkeyName,
+    setPasskeyName,
+    passkeyLoading,
+    passkeyNameRef,
+    handlePasskeyNameSubmit,
+    handleCancelPasskeyNaming,
+  } = controller;
+  return (
+    <AccessibleDialog
+      label="Название нового ключа доступа"
+      onClose={handleCancelPasskeyNaming}
+      busy={passkeyLoading}
+      initialFocus={passkeyNameRef}
+      className="max-w-md"
+    >
+      <form onSubmit={handlePasskeyNameSubmit} className="space-y-4">
+        <h2 className="text-xl font-bold text-primary">
+          Название нового ключа доступа
+        </h2>
+        <div>
+          <label
+            htmlFor="passkey-name-dialog-input"
+            className="block text-sm font-medium text-primary"
+          >
+            Название Passkey
+          </label>
+          <Input
+            id="passkey-name-dialog-input"
+            ref={passkeyNameRef}
+            type="text"
+            autoComplete="off"
+            maxLength={128}
+            value={passkeyName}
+            onChange={(event) => setPasskeyName(event.target.value)}
+            className="mt-1 w-full"
+            data-testid="passkey-name-input"
+          />
+          <p className="text-xs text-secondary mt-1">
+            Название помогает отличить этот ключ от других. Его можно изменить.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Button
+            type="submit"
+            disabled={passkeyLoading}
+            variant="primary"
+            data-testid="passkey-name-continue-button"
+          >
+            {passkeyLoading ? "Проверка..." : "Продолжить"}
+          </Button>
+          <Button
+            type="button"
+            onClick={handleCancelPasskeyNaming}
+            disabled={passkeyLoading}
+          >
+            Отмена
+          </Button>
+        </div>
+      </form>
+    </AccessibleDialog>
+  );
+}
+
+export function PasskeyNoNameConfirmDialog({
+  controller,
+}: {
+  controller: AccountViewModel;
+}) {
+  const {
+    passkeyLoading,
+    passkeyReturnRef,
+    handleReturnToPasskeyName,
+    handleConfirmEmptyPasskeyName,
+  } = controller;
+  return (
+    <AccessibleDialog
+      label="Продолжить без названия?"
+      onClose={handleReturnToPasskeyName}
+      busy={passkeyLoading}
+      initialFocus={passkeyReturnRef}
+      className="max-w-md"
+    >
+      <h2 className="text-xl font-bold text-primary">
+        Продолжить без названия?
+      </h2>
+      <p className="mt-3 text-sm text-secondary">
+        Вы не указали название ключа доступа. Если продолжить, система
+        автоматически присвоит ему название по текущей дате и времени.
+      </p>
+      <div className="mt-4 flex gap-3">
+        <Button
+          type="button"
+          onClick={handleConfirmEmptyPasskeyName}
+          disabled={passkeyLoading}
+          variant="primary"
+          data-testid="passkey-empty-continue-button"
+        >
+          {passkeyLoading ? "Проверка..." : "Продолжить"}
+        </Button>
+        <Button
+          ref={passkeyReturnRef}
+          type="button"
+          onClick={handleReturnToPasskeyName}
+          disabled={passkeyLoading}
+        >
+          Вернуться
+        </Button>
+      </div>
+    </AccessibleDialog>
   );
 }
 
@@ -764,9 +891,9 @@ export function RecoveryControls({
           {recoveryError}
         </div>
       )}
-      {!user.has_totp ? (
+      {!(user.has_totp || user.has_passkey) ? (
         <div className="text-xs text-warning bg-warning-soft p-2 rounded border border-warning">
-          Резервные коды требуют предварительной активации TOTP аутентификатора.
+          Резервные коды требуют подтверждённого TOTP или Passkey.
         </div>
       ) : (
         <div>
@@ -792,7 +919,7 @@ export function RecoveryCodeDisplay({
 }: {
   controller: AccountViewModel;
 }) {
-  const { recoveryCodes } = controller;
+  const { recoveryCodes, user } = controller;
   if (!recoveryCodes) return null;
   return (
     <div
@@ -804,10 +931,24 @@ export function RecoveryCodeDisplay({
       <div className="text-xs font-semibold text-warning">
         Сохраните эти коды сейчас. Они отображаются только один раз:
       </div>
-      <CopyButton
-        value={recoveryCodes.join("\n")}
-        label="Копировать все коды"
-      />
+      <div className="flex flex-wrap items-start gap-2">
+        <CopyButton
+          value={recoveryCodes.join("\n")}
+          label="Копировать все коды"
+        />
+        <Button
+          type="button"
+          onClick={() =>
+            downloadRecoveryCodesTxt(user.email, recoveryCodes)
+          }
+          data-testid="download-recovery-codes-button"
+        >
+          Скачать коды (.txt)
+        </Button>
+      </div>
+      <p className="text-xs text-warning">
+        TXT-файл не зашифрован. Храните его в защищённом месте.
+      </p>
       <div className="grid grid-cols-2 gap-1.5 font-mono text-xs select-all text-primary">
         {recoveryCodes.map((code, idx) => (
           <div
