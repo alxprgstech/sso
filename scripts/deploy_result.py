@@ -49,21 +49,22 @@ def _valid_sequence(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 1
 
 
-def parse_server_output(raw: str, expected_sha: str, expected_sequence: int) -> DeployResult:
+def _protocol_payload(raw: str) -> dict | None:
     lines = [line for line in raw.splitlines() if line.startswith(PROTOCOL_PREFIX)]
     if len(lines) > 1:
         raise ProtocolError("server returned multiple deployment protocol lines")
     if not lines:
-        # The pre-idempotency operator never had a no-op path: exit 0 means the
-        # full verified installation completed. Mark it explicitly, never silently.
-        return DeployResult("deployed_legacy", True, expected_sha, LEGACY_REASON, legacy=True)
-    payload = lines[0][len(PROTOCOL_PREFIX) :]
+        return None
     try:
-        value = json.loads(payload)
+        value = json.loads(lines[0][len(PROTOCOL_PREFIX) :])
     except (ValueError, TypeError):
         raise ProtocolError("server deployment protocol is not valid JSON") from None
     if not isinstance(value, dict) or set(value) != PROTOCOL_KEYS:
         raise ProtocolError("server deployment protocol has an unexpected shape")
+    return value
+
+
+def _validate_payload(value: dict, expected_sha: str, expected_sequence: int) -> None:
     if value["version"] != PROTOCOL_VERSION or isinstance(value["version"], bool):
         raise ProtocolError("server deployment protocol version is unsupported")
     if not isinstance(value["result"], str) or value["result"] not in RESULT_KEYS:
@@ -72,6 +73,9 @@ def parse_server_output(raw: str, expected_sha: str, expected_sequence: int) -> 
         raise ProtocolError("server deployment SHA does not match the target")
     if not _valid_sequence(value["sequence"]) or value["sequence"] != expected_sequence:
         raise ProtocolError("server deployment sequence does not match the run")
+
+
+def _decision(value: dict) -> DeployResult:
     if value["result"] == "already_deployed":
         return DeployResult(
             "already_deployed",
@@ -80,6 +84,16 @@ def parse_server_output(raw: str, expected_sha: str, expected_sequence: int) -> 
             "server confirmed the same revision is installed",
         )
     return DeployResult("deployed", True, value["sha"], "new installation completed")
+
+
+def parse_server_output(raw: str, expected_sha: str, expected_sequence: int) -> DeployResult:
+    value = _protocol_payload(raw)
+    if value is None:
+        # The pre-idempotency operator never had a no-op path: exit 0 means the
+        # full verified installation completed. Mark it explicitly, never silently.
+        return DeployResult("deployed_legacy", True, expected_sha, LEGACY_REASON, legacy=True)
+    _validate_payload(value, expected_sha, expected_sequence)
+    return _decision(value)
 
 
 def write_github_output(path: Path, result: DeployResult) -> None:

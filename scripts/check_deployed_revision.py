@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 BASE_URL = "https://auth.alxprgs.tech"
 IDENTITY_URL = f"{BASE_URL}/health/identity"
@@ -59,6 +60,22 @@ def build_opener() -> urllib.request.OpenerDirector:
     )
 
 
+def _is_tls_error(error: BaseException) -> bool:
+    if isinstance(error, ssl.SSLError):
+        return True
+    return isinstance(error, urllib.error.URLError) and isinstance(error.reason, ssl.SSLError)
+
+
+def _translate_fetch_error(error: BaseException) -> NoReturn:
+    if isinstance(error, urllib.error.HTTPError) and 300 <= error.code < 400:
+        raise SecurityError("trusted origin attempted an HTTP redirect") from None
+    if _is_tls_error(error):
+        raise SecurityError("TLS certificate or hostname verification failed") from None
+    if isinstance(error, urllib.error.HTTPError):
+        raise Unavailable(f"HTTP {error.code}") from None
+    raise Unavailable("request timed out or connection failed") from None
+
+
 def fetch(opener: urllib.request.OpenerDirector, url: str) -> bytes:
     request = urllib.request.Request(
         url,
@@ -70,18 +87,14 @@ def fetch(opener: urllib.request.OpenerDirector, url: str) -> bytes:
             final_url = response.geturl()
             cache_control = response.headers.get("Cache-Control", "")
             body = response.read(MAX_RESPONSE_BYTES + 1)
-    except urllib.error.HTTPError as error:
-        if 300 <= error.code < 400:
-            raise SecurityError("trusted origin attempted an HTTP redirect") from None
-        raise Unavailable(f"HTTP {error.code}") from None
-    except urllib.error.URLError as error:
-        if isinstance(error.reason, ssl.SSLError):
-            raise SecurityError("TLS certificate or hostname verification failed") from None
-        raise Unavailable("service is unavailable") from None
-    except ssl.SSLError:
-        raise SecurityError("TLS certificate or hostname verification failed") from None
-    except (TimeoutError, OSError):
-        raise Unavailable("request timed out or connection failed") from None
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        ssl.SSLError,
+        TimeoutError,
+        OSError,
+    ) as error:
+        _translate_fetch_error(error)
     if final_url != url:
         raise SecurityError("trusted origin returned an unexpected response address")
     if status != 200:
@@ -104,32 +117,43 @@ def _json_object(body: bytes) -> dict:
     return value
 
 
+def _valid_sha(value: object) -> bool:
+    return isinstance(value, str) and bool(SHA.fullmatch(value))
+
+
+def _read_identity(
+    opener: urllib.request.OpenerDirector,
+    url: str,
+    expected_keys: set[str],
+    label: str,
+) -> dict:
+    try:
+        payload = _json_object(fetch(opener, url))
+    except Unavailable as error:
+        raise Unavailable(f"{label} identity unavailable ({error})") from None
+    if set(payload) != expected_keys:
+        raise Unavailable(f"{label} identity has an unexpected payload")
+    if not _valid_sha(payload["commit_sha"]):
+        raise Unavailable(f"{label} identity does not contain a full commit SHA")
+    return payload
+
+
 def backend_identity(opener: urllib.request.OpenerDirector) -> tuple[str | None, str]:
     try:
-        payload = _json_object(fetch(opener, IDENTITY_URL))
+        payload = _read_identity(opener, IDENTITY_URL, BACKEND_KEYS, "backend")
     except Unavailable as error:
-        return None, f"backend identity unavailable ({error})"
-    if set(payload) != BACKEND_KEYS:
-        return None, "backend identity has an unexpected payload"
+        return None, str(error)
     if payload["status"] != "ready" or payload["database"] != "connected":
         return None, "backend readiness is not confirmed"
-    installed = payload["commit_sha"]
-    if not isinstance(installed, str) or not SHA.fullmatch(installed):
-        return None, "backend identity does not contain a full commit SHA"
-    return installed, ""
+    return payload["commit_sha"], ""
 
 
 def frontend_identity(opener: urllib.request.OpenerDirector) -> tuple[str | None, str]:
     try:
-        payload = _json_object(fetch(opener, FRONTEND_IDENTITY_URL))
+        payload = _read_identity(opener, FRONTEND_IDENTITY_URL, FRONTEND_KEYS, "frontend")
     except Unavailable as error:
-        return None, f"frontend identity unavailable ({error})"
-    if set(payload) != FRONTEND_KEYS:
-        return None, "frontend identity has an unexpected payload"
-    installed = payload["commit_sha"]
-    if not isinstance(installed, str) or not SHA.fullmatch(installed):
-        return None, "frontend identity does not contain a full commit SHA"
-    return installed, ""
+        return None, str(error)
+    return payload["commit_sha"], ""
 
 
 def decide(sha: str, opener: urllib.request.OpenerDirector | None = None) -> Decision:
