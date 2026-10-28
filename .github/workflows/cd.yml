@@ -18,7 +18,7 @@ env:
   DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
 
 jobs:
-  build:
+  preflight:
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
@@ -27,11 +27,11 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 10
     outputs:
-      current: ${{ steps.freshness.outputs.current }}
-      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
-      artifact_name: sso-ec2-${{ github.run_id }}-${{ github.run_attempt }}
+      decision: ${{ steps.decide.outputs.decision }}
+      installed_sha: ${{ steps.decide.outputs.installed_sha }}
+      reason: ${{ steps.decide.outputs.reason }}
     steps:
       - name: Checkout exact deployment revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -41,20 +41,38 @@ jobs:
       - name: Record manual deployment mode
         if: github.event_name == 'workflow_dispatch'
         run: echo 'Manual main deployment; full CI is not required. Transport checks remain mandatory.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Skip superseded revision
-        id: freshness
+      - name: Check freshness and installed revision
+        id: decide
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
-          if [[ "$latest" == "$DEPLOY_SHA" ]]; then
-            echo 'current=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'current=false' >> "$GITHUB_OUTPUT"
-            echo 'Superseded commit; no deployment.' >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$latest" != "$DEPLOY_SHA" ]]; then
+            {
+              echo 'decision=superseded'
+              echo 'installed_sha='
+              echo 'reason=main advanced before the build'
+            } >> "$GITHUB_OUTPUT"
+            echo 'Superseded commit; no build or deployment.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          python3 scripts/check_deployed_revision.py --sha "$DEPLOY_SHA" --github-output "$GITHUB_OUTPUT"
+
+  build:
+    needs: preflight
+    if: needs.preflight.outputs.decision == 'deploy'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    outputs:
+      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
+      artifact_name: sso-ec2-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout exact deployment revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
       - name: Pin classic Docker image store to match the EC2 server
-        if: steps.freshness.outputs.current == 'true'
         run: |
           # Hosted runners default to the containerd image store, whose image IDs
           # and docker-save format differ from the EC2 server's classic store.
@@ -69,10 +87,8 @@ jobs:
           sudo systemctl restart docker
           sudo systemctl is-active docker
       - name: Build private transport bundle
-        if: steps.freshness.outputs.current == 'true'
         run: python3 scripts/build_ec2_bundle.py --sha "$DEPLOY_SHA" --output sso-ec2.tar.gz
       - name: Save immutable private transport
-        if: steps.freshness.outputs.current == 'true'
         id: bundle
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
         with:
@@ -84,7 +100,7 @@ jobs:
 
   verify:
     needs: build
-    if: needs.build.outputs.current == 'true'
+    if: needs.build.outputs.artifact_name != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -122,11 +138,15 @@ jobs:
 
   deploy:
     needs: [build, verify]
+    if: needs.build.outputs.artifact_name != '' && needs.verify.result == 'success'
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 40
     outputs:
+      result: ${{ steps.install.outputs.result }}
       installed: ${{ steps.install.outputs.installed }}
+      installed_sha: ${{ steps.install.outputs.installed_sha }}
+      reason: ${{ steps.install.outputs.reason }}
     steps:
       - name: Checkout exact deployment revision
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
@@ -151,14 +171,23 @@ jobs:
           latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
           if [[ "$latest" != "$DEPLOY_SHA" ]]; then
             echo 'Main advanced during build; no deployment.' >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo 'result=superseded'
+              echo 'installed=false'
+              echo 'installed_sha='
+              echo 'reason=main advanced before installation'
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           bash deploy/ec2/upload.sh
-          echo 'installed=true' >> "$GITHUB_OUTPUT"
 
   public-check:
-    needs: deploy
-    if: needs.deploy.outputs.installed == 'true'
+    needs: [preflight, deploy]
+    if: >-
+      always() &&
+      (needs.deploy.outputs.result == 'deployed' ||
+      needs.deploy.outputs.result == 'already_deployed' ||
+      needs.preflight.outputs.decision == 'already_deployed')
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -169,3 +198,71 @@ jobs:
           persist-credentials: false
       - name: Check public domain and backend readiness over HTTPS
         run: python3 scripts/check_public_readiness.py
+
+  report:
+    needs: [preflight, build, verify, deploy, public-check]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Publish deployment result
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          DECISION: ${{ needs.preflight.outputs.decision }}
+          PREFLIGHT_INSTALLED_SHA: ${{ needs.preflight.outputs.installed_sha }}
+          PREFLIGHT_REASON: ${{ needs.preflight.outputs.reason }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          DEPLOY_OUTCOME: ${{ needs.deploy.outputs.result }}
+          DEPLOY_INSTALLED_SHA: ${{ needs.deploy.outputs.installed_sha }}
+          DEPLOY_REASON: ${{ needs.deploy.outputs.reason }}
+          PUBLIC_RESULT: ${{ needs.public-check.result }}
+        run: |
+          INSTALLED_SHA="${DEPLOY_INSTALLED_SHA:-$PREFLIGHT_INSTALLED_SHA}"
+          REASON="${DEPLOY_REASON:-$PREFLIGHT_REASON}"
+          if [[ "$PREFLIGHT_RESULT" == 'skipped' ]]; then
+            RESULT='not_run'
+            REASON='event gate not satisfied'
+            INSTALLED_SHA=''
+          elif [[ "$PREFLIGHT_RESULT" != 'success' ]]; then
+            RESULT='error'
+            REASON="${REASON:-preflight failed}"
+          elif [[ "$PUBLIC_RESULT" == 'failure' ]]; then
+            RESULT='error'
+            REASON='public readiness check failed'
+          elif [[ "$DECISION" == 'superseded' ]]; then
+            RESULT='superseded'
+          elif [[ "$DECISION" == 'already_deployed' ]]; then
+            RESULT='already_deployed'
+          elif [[ "$DEPLOY_OUTCOME" == 'deployed' || "$DEPLOY_OUTCOME" == 'deployed_legacy' ]]; then
+            RESULT='deployed'
+          elif [[ "$DEPLOY_OUTCOME" == 'already_deployed' ]]; then
+            RESULT='already_deployed'
+          elif [[ "$DEPLOY_OUTCOME" == 'superseded' ]]; then
+            RESULT='superseded'
+          else
+            RESULT='error'
+            REASON="${REASON:-build, verification or deployment did not complete}"
+          fi
+          if [[ -z "$INSTALLED_SHA" ]]; then
+            INSTALLED_SHA='unknown'
+          fi
+          {
+            echo '### EC2 CD result'
+            echo
+            echo '| Поле | Значение |'
+            echo '| --- | --- |'
+            echo "| Целевой SHA | \`$DEPLOY_SHA\` |"
+            echo "| Установленный SHA | \`$INSTALLED_SHA\` |"
+            echo "| Результат | \`$RESULT\` |"
+            echo "| Причина | $REASON |"
+            echo "| preflight / build / verify / deploy / public-check | \`$PREFLIGHT_RESULT\` / \`$BUILD_RESULT\` / \`$VERIFY_RESULT\` / \`$DEPLOY_RESULT\` / \`$PUBLIC_RESULT\` |"
+            if [[ "$DEPLOY_OUTCOME" == 'deployed_legacy' ]]; then
+              echo
+              echo '> Оператор на сервере старой версии: серверная защита от повторной установки не активна. Требуется обновление `ssoctl` по инструкции `docs/ec2-deployment.md`.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$RESULT" == 'error' ]]; then
+            exit 1
+          fi

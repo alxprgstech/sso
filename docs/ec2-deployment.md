@@ -149,27 +149,62 @@ sudo ssoctl admin
 
 TOTP, Passkey, Recovery codes остаются false. Подтверждение email новой регистрации обязательно.
 
+### Идемпотентный повтор CD
+
+Workflow различает `deployed`, `already_deployed`, `superseded` и ошибку. Перед тяжёлой
+сборкой job `preflight` сверяет актуальность main и состояние установленного приложения.
+Проверка идёт только на фиксированный `https://auth.alxprgs.tech` с доверенным TLS,
+запретом redirects/proxy, timeout 15 секунд и лимитом ответа 4096 байт. Backend
+`/health/identity` должен вернуть HTTP 200, готовую БД и полный commit SHA; frontend
+`/build-info.json` — тот же SHA. Оба ответа обязаны иметь `Cache-Control: no-store`.
+При совпадении build, verify, transport, SSH и install не выполняются, итог —
+`already_deployed`. Если identity отсутствует (старая установка), SHA другой, ответ
+повреждён, сервис/БД недоступны или ответ кэшируемый, выполняется обычный защищённый
+deploy с конкретной безопасной причиной. Неверный TLS-сертификат, redirect или чужой
+origin — ошибка безопасности, а не повод считать приложение отсутствующим.
+
+Независимо от preflight `ssoctl deploy` под существующей flock-блокировкой повторно
+проверяет установку перед первым побочным эффектом: `deployed.json`,
+`current/manifest.json`, published frontend `build-info.json`, отсутствие maintenance,
+running backend container с ожидаемым image ID/config_files и локальный
+`/health/identity`. Только согласованное состояние даёт no-op без распаковки,
+`docker load`, backup, миграций, перезапуска, переключения `current`, reload nginx и
+уведомления. `highwater.json` по-прежнему защищает sequence, но не считается
+доказательством успешной установки.
+
+Результат серверной команды передаётся в workflow строгой строкой
+`ssoctl-result:{"version":1,...}` через `scripts/deploy_result.py`; человекочитаемый
+вывод не парсится. `installed=true` допустим только для фактической установки.
+Если на сервере ещё старый `ssoctl` без протокола, workflow помечает результат
+`deployed_legacy` и предупреждает, что серверная no-op защита не активна; установка
+при этом выполняется прежним проверенным путём. Первый переход описан в разделе 5.
+
 ### Повтор отдельных стадий CD
 
-Workflow состоит из последовательных jobs `build` → `verify` → `deploy` → `public-check`.
+Workflow состоит из jobs `preflight` → `build` → `verify` → `deploy` → `public-check`
+и финального `report`. `preflight` проверяет freshness main и, если SHA уже установлен
+и исправен, завершает run как `already_deployed`, пропуская остальные стадии.
 `build` собирает transport и сохраняет его как приватный Actions artifact на 7 дней.
 `verify` проверяет этот архив на PostgreSQL; `deploy` скачивает тот же неизменяемый
 artifact текущего run. Имя содержит run ID и номер попытки build, передаётся через
 outputs; повтор deploy использует сохранённое имя успешного build. Секреты production
 доступны только job `deploy`.
 
-Последний job `public-check` выполняет внешний запрос с GitHub runner к
+Последний внешний job `public-check` выполняет запрос с GitHub runner к
 `https://auth.alxprgs.tech/health/ready`: проверяет DNS/соединение, доверенный TLS,
 HTTP 200 и JSON `{"status":"ready","database":"connected"}`. Таймаут запроса — 15 секунд;
 редиректы и повторные попытки не допускаются. Недоступность домена, ошибка сертификата,
-maintenance, HTML вместо JSON или неготовая БД делают workflow красным. Проверка запускается
-только после фактической установки: при пропуске устаревшего SHA она также пропускается.
+maintenance, HTML вместо JSON или неготовая БД делают workflow красным. Проверка
+запускается после фактической установки, после серверного `already_deployed`, а также
+после раннего `already_deployed`; при пропуске устаревшего SHA она пропускается.
 Она дополняет проверки на EC2 и не выполняет rollback уже установленного приложения.
 
 При внешней ошибке откройте исходный запуск → **Re-run jobs → Re-run failed jobs**.
 Если упал `deploy`, повторятся доставка и серверная установка без сборки и проверки
 успешного transport. Если упал `verify`, повторятся проверка и зависимый `deploy`.
 Если упал только `public-check`, повторится только внешний запрос, без сборки и установки.
+Если повторный preflight подтвердит тот же исправно установленный SHA, серверная
+установка не выполняется; ранний no-op не пересобирает и не отправляет transport.
 Серверная установка повторяется целиком: проверки, backup, миграции и readiness;
 продолжения с произвольной команды внутри миграции нет. Номер run/SHA остаётся прежним.
 
@@ -228,8 +263,36 @@ sudo systemctl list-timers 'alxprgs-sso-*'
 контейнера выводится оператором; смотрите его `docker logs` приватно. Успешный migration-контейнер
 удаляется. Не присылайте необработанные `docker inspect`,
 `docker compose config`, environment или журналы с персональными данными.
-Установленный root-оператор обновляйте повторным запуском **проверенного** bootstrap при изменениях
-самого `ssoctl.py`/bootstrap; обычный push обновляет приложение и production Compose/nginx.
+Установленный root-оператор обновляйте только точечной заменой проверенного
+`/opt/alxprgs-sso/tools/ssoctl.py` по процедуре ниже. Полный bootstrap ради одного
+скрипта не запускайте: он затрагивает пакеты, сертификаты и сервисы.
+
+### Обновление установленного ssoctl (первый переход)
+
+Новый workflow безопасно работает со старым оператором: установка идёт прежним путём,
+а Step Summary показывает `deployed_legacy` и предупреждение, что серверная проверка
+no-op не активна. Для её активации владельцу нужен отдельный шаг с проверенным SHA main:
+
+1. На рабочей станции получите точный merged SHA и проверьте файл:
+   `git fetch origin main && git checkout <MERGED_SHA>`; сверьте `sha256sum deploy/ec2/ssoctl.py`
+   с ожидаемым значением из review. Не используйте ветку/локальные незакоммиченные файлы.
+2. Скопируйте **только** оператор в домашний каталог администратора:
+   `scp -i <key> deploy/ec2/ssoctl.py ubuntu@54.152.17.1:~/ssoctl-IDEMPOTENCY.py`.
+3. В административной SSH-сессии сохраните текущий файл и замените его атомарно:
+   ```bash
+   sudo cp -p /opt/alxprgs-sso/tools/ssoctl.py /opt/alxprgs-sso/tools/ssoctl.py.pre-idempotency
+   sudo install -o root -g root -m 0755 ~/ssoctl-IDEMPOTENCY.py /opt/alxprgs-sso/tools/ssoctl.py
+   sudo /usr/bin/python3 /opt/alxprgs-sso/tools/ssoctl.py --help >/dev/null
+   sudo /usr/local/sbin/ssoctl status
+   ```
+4. Конфигурация, ключи, `/etc/sudoers.d/alxprgs-sso`, wrapper `/usr/local/sbin/ssoctl`,
+   Docker volumes, releases и GitHub secrets не меняются. Сервисы не перезапускаются.
+5. При ошибке верните прежний файл:
+   `sudo cp -p /opt/alxprgs-sso/tools/ssoctl.py.pre-idempotency /opt/alxprgs-sso/tools/ssoctl.py`
+   и повторите `sudo /usr/local/sbin/ssoctl status`.
+6. После обновления следующий повторный CD для уже установленного SHA должен дать
+   `already_deployed` без серверных побочных эффектов. Проверка выполняется владельцем
+   в отдельном окне; этот репозиторий production не изменяет.
 
 ## 6. Backup, сертификаты и секреты
 

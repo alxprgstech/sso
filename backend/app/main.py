@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 
 if sys.platform == "win32":
@@ -166,7 +167,7 @@ async def correlation_id_and_security_headers_middleware(request: Request, call_
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    if request.url.path.startswith("/oauth/") or request.url.path.startswith("/api/v1/step-up/"):
+    if request.url.path.startswith(("/oauth/", "/api/v1/step-up/", "/health/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response
@@ -304,6 +305,48 @@ async def safe_http_error(request: Request, exc: StarletteHTTPException):
 @app.get("/health/live", tags=["Health"])
 async def health_live() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/identity", tags=["Health"])
+async def health_identity(db: AsyncSession = Depends(get_db)) -> JSONResponse:
+    """Readiness plus the exact installed build revision.
+
+    The response is deliberately minimal: no configuration, server paths or
+    request data. A missing build artifact leaves the identity unknown so callers
+    can never mistake a local/source run for a confirmed installed revision.
+    """
+    try:
+        commit_sha = get_build_info().get("commit_sha", "")
+    except Exception:
+        commit_sha = ""
+    if not isinstance(commit_sha, str) or not re.fullmatch(r"[a-f0-9]{40}", commit_sha):
+        commit_sha = ""
+    headers = {"Cache-Control": "no-store"}
+    try:
+        async with asyncio.timeout(READINESS_DATABASE_TIMEOUT_SECONDS):
+            await db.execute(text("SELECT 1"))
+    except Exception:
+        diagnostic("database_readiness", "database_unavailable", failed=True)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unavailable",
+                "database": "disconnected",
+                "commit_sha": commit_sha,
+            },
+            headers=headers,
+        )
+    if not commit_sha:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unavailable", "database": "connected", "commit_sha": ""},
+            headers=headers,
+        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"status": "ready", "database": "connected", "commit_sha": commit_sha},
+        headers=headers,
+    )
 
 
 @app.get("/health/ready", tags=["Health"])

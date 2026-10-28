@@ -27,4 +27,4 @@
 
 Исторические аудиты и разовые отчёты убраны из рабочего комплекта; ссылки на точные исходные ревизии сохранены в [приёмке](acceptance.md) и [безопасности](security.md). Хронология очистки — [журнал](worklog.md).
 
-EC2: [установка и обновление](ec2-deployment.md), [ADR-0029](adr/0029-ec2-continuous-deployment.md).
+EC2: [установка и обновление](ec2-deployment.md), [ADR-0029](adr/0029-ec2-continuous-deployment.md), [ADR-0035](adr/0035-cd-idempotent-already-deployed.md).
