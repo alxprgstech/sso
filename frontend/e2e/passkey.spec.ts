@@ -3,7 +3,7 @@ import { confirmSensitiveAction } from "./helpers/reauthentication";
 import { prepareIndependentScenario } from "./helpers/prepare";
 import { test, expect, type Page } from "@playwright/test";
 
-const passkeyPassword = "PasskeyE2E2026!";
+const passkeyPassword = "PasskeyE2E2026!"; // pragma: allowlist secret -- synthetic E2E fixture
 
 async function registerPasskey(page: Page, name: string) {
   await page.click('[data-testid="register-passkey-button"]');
