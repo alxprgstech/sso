@@ -103,12 +103,12 @@ def _open_response(
         _translate_fetch_error(error)
 
 
-def _response_parts(response: object) -> tuple[int, str, str, bytes]:
+def _response_parts(response: object) -> tuple[int, str, bytes, str]:
     return (
         response.status,
         response.geturl(),
-        response.headers.get("Cache-Control", ""),
         response.read(MAX_RESPONSE_BYTES + 1),
+        response.headers.get("Cache-Control", ""),
     )
 
 
@@ -118,9 +118,8 @@ def _check_cache(cache_control: str) -> None:
         raise Unavailable("identity response may be cached")
 
 
-def _validate_response(
-    url: str, status: int, final_url: str, body: bytes, cache_control: str
-) -> None:
+def _validate_response(url: str, parts: tuple[int, str, bytes, str]) -> None:
+    status, final_url, body, cache_control = parts
     if final_url != url:
         raise SecurityError("trusted origin returned an unexpected response address")
     if status != 200:
@@ -137,9 +136,9 @@ def fetch(opener: urllib.request.OpenerDirector, url: str) -> bytes:
     )
     response = _open_response(opener, request)
     with response:
-        status, final_url, cache_control, body = _response_parts(response)
-    _validate_response(url, status, final_url, body, cache_control)
-    return body
+        parts = _response_parts(response)
+    _validate_response(url, parts)
+    return parts[2]
 
 
 def _json_object(body: bytes) -> dict:
