@@ -6,6 +6,7 @@
 
 | ID | Приоритет | Зависимости | Статус | Критерий и следующий шаг |
 | --- | --- | --- | --- | --- |
+| MFA-RECOVERY-EXPORT-01 | P2 | MFA-DEFAULT-ADMIN-01, frontend | done | Скачивание текущего набора резервных кодов в UTF-8 TXT (email, инструкция, BOM), генерация при TOTP или Passkey; Passkey сначала создаётся, затем имя с автоподстановкой и подтверждением пустого. Authlib 1.8.0→1.9.1 по CVE. Начало 2026-10-28T23:35:15+03:00. Проверки: frontend lint/typecheck/typecheck:tests/unit 20/components 79/build, pip_audit 0, secret scan 0 new. CI run `40767610691` — success, Playwright PASS. [PR #37](https://github.com/alxprgstech/sso/pull/37); merge/release не выполнялись. |
 | DOC-VERSION-LOCK-01 | P2 | DOC-REFRESH-01, DOC-DEF-01 | planned | Bump/check учитывают root package-lock version и packages[""].version; regression в отдельной копии без изменения dependency resolution. Начало реализации не назначено. |
 | AUDIT-FIX-03 | P1 | Локальное OIDC remediation, внешний стенд | blocked | Выполнить применимую OIF matrix на утверждённом публичном HTTPS issuer с отдельными клиентами; локальный retest не заменяет внешний результат. |
 | AUDIT-FIX-05 | P1 | Локальное ops remediation, утверждённая инфраструктура | blocked | Подтвердить public TLS/DNS/IAM/secret storage, внешние backup/storage ACL и alerts. Локальные Linux images/Trivy/Compose проверены 18.10; внешний production-контур остаётся условием разблокировки. |

@@ -1,7 +1,21 @@
 import { acceptDocumentsAfterLogin } from "./helpers/legal";
 import { confirmSensitiveAction } from "./helpers/reauthentication";
 import { prepareIndependentScenario } from "./helpers/prepare";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+const passkeyPassword = "PasskeyE2E2026!"; // pragma: allowlist secret -- synthetic E2E fixture
+
+async function registerPasskey(page: Page, name: string) {
+  await page.click('[data-testid="register-passkey-button"]');
+  await confirmSensitiveAction(page, passkeyPassword, 1);
+  const dialog = page.getByRole("dialog", {
+    name: "Название нового ключа доступа",
+  });
+  await expect(dialog).toBeVisible({ timeout: 10000 });
+  await dialog.getByTestId("passkey-name-input").fill(name);
+  await dialog.getByTestId("passkey-name-continue-button").click();
+  await confirmSensitiveAction(page, passkeyPassword, 1);
+}
 
 test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", () => {
   test.use({
@@ -83,10 +97,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     ).toBeVisible();
 
     // 3. Регистрируем первый Passkey: "MacBook TouchID" на первом аутентификаторе
-    await page.fill('[data-testid="passkey-name-input"]', "MacBook TouchID");
-    await page.click('[data-testid="register-passkey-button"]');
-
-    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
+    await registerPasskey(page, "MacBook TouchID");
 
     // Проверяем сообщение об успехе и появление ключа в списке
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({
@@ -95,6 +106,14 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     await expect(page.locator('[data-testid="passkeys-list"]')).toContainText(
       "MacBook TouchID",
     );
+
+    // Резервные коды доступны при подтверждённом Passkey без TOTP.
+    await expect(
+      page.getByTestId("generate-recovery-codes-button"),
+    ).toBeVisible();
+    await page.getByTestId("generate-recovery-codes-button").click();
+    await confirmSensitiveAction(page, passkeyPassword, 1);
+    await expect(page.getByTestId("recovery-codes-display")).toBeVisible();
 
     // 4. Симулируем подключение второго физического аутентификатора (YubiKey 5C / usb)
     // Plug in the second device only AFTER a real assertion from the enrolled
@@ -162,10 +181,7 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     });
 
     // Регистрируем второй Passkey: "Yubikey 5C" (множественные credentials)
-    await page.fill('[data-testid="passkey-name-input"]', "Yubikey 5C");
-    await page.click('[data-testid="register-passkey-button"]');
-
-    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
+    await registerPasskey(page, "Yubikey 5C");
 
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({
       timeout: 10000,
@@ -230,13 +246,34 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
       timeout: 10000,
     });
 
-    await page.fill('[data-testid="passkey-name-input"]', "Resident Login Key");
+    // Сначала создаём credential, затем проверяем подтверждение пустого имени.
     await page.click('[data-testid="register-passkey-button"]');
-
-    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
+    await confirmSensitiveAction(page, passkeyPassword, 1);
+    const namingDialog = page.getByRole("dialog", {
+      name: "Название нового ключа доступа",
+    });
+    await expect(namingDialog).toBeVisible({ timeout: 10000 });
+    await namingDialog.getByTestId("passkey-name-input").fill("");
+    await namingDialog.getByTestId("passkey-name-continue-button").click();
+    const emptyNameDialog = page.getByRole("dialog", {
+      name: "Продолжить без названия?",
+    });
+    await expect(emptyNameDialog).toBeVisible();
+    await emptyNameDialog
+      .getByRole("button", { name: "Вернуться", exact: true })
+      .click();
+    await expect(namingDialog).toBeVisible();
+    await namingDialog.getByTestId("passkey-name-continue-button").click();
+    await emptyNameDialog
+      .getByRole("button", { name: "Продолжить", exact: true })
+      .click();
+    await confirmSensitiveAction(page, passkeyPassword, 1);
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({
       timeout: 10000,
     });
+    await expect(page.locator('[data-testid="passkeys-list"]')).toContainText(
+      /Passkey_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/,
+    );
 
     // Выходим из системы
     await page.click('button:has-text("Выйти")');
@@ -290,10 +327,8 @@ test.describe("WebAuthn / Passkey Real Browser Lifecycle (G4-PASSKEY, QA-11)", (
     });
 
     // Регистрируем временный ключ для последующего удаления
-    await page.fill('[data-testid="passkey-name-input"]', "Key To Delete");
-    await page.click('[data-testid="register-passkey-button"]');
+    await registerPasskey(page, "Key To Delete");
 
-    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible({
       timeout: 10000,
     });

@@ -184,16 +184,26 @@ test("account deletion: real default/enabled policy, limited access and keyboard
         .getByRole("navigation", { name: "Разделы учётной записи" })
         .getByRole("link", { name: "Безопасность", exact: true }),
     );
-    await type(
-      page,
-      page.locator('[data-testid="passkey-name-input"]'),
-      "Synthetic privacy key",
-    );
     await activate(
       page,
       page.locator('[data-testid="register-passkey-button"]'),
     );
-    await confirmSensitiveAction(page, "PasskeyE2E2026!", 2);
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 1);
+    const namingDialog = page.getByRole("dialog", {
+      name: "Название нового ключа доступа",
+    });
+    await expect(namingDialog).toBeVisible();
+    await namingDialog.getByTestId("passkey-name-input").fill("");
+    await type(
+      page,
+      namingDialog.getByTestId("passkey-name-input"),
+      "Synthetic privacy key",
+    );
+    await activate(
+      page,
+      namingDialog.getByTestId("passkey-name-continue-button"),
+    );
+    await confirmSensitiveAction(page, "PasskeyE2E2026!", 1);
     await expect(page.locator('[data-testid="passkey-success"]')).toBeVisible();
   }
   const verifier = randomBytes(32).toString("base64url");
