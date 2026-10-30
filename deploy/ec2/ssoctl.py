@@ -8,16 +8,20 @@ import base64
 import contextlib
 import getpass
 import hashlib
+import http.client
 import json
 import os
 import re
 import secrets
 import shutil
+import ssl
+import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -33,6 +37,39 @@ IMAGE = re.compile(r"sha256:[a-f0-9]{64}")
 EVENTS = {"backup", "renew", "deploy", "test"}
 RESULT_PREFIX = "ssoctl-result:"
 PROTOCOL_VERSION = 1
+
+# Self-update reads one fixed path from one fixed branch of the trusted private
+# repository. The token is a separate read-only credential, never runtime.env.
+GITHUB_API = "https://api.github.com"
+GITHUB_REPO = "alxprgstech/sso"
+GITHUB_BRANCH = "main"
+GITHUB_OPERATOR = "deploy/ec2/ssoctl.py"
+GITHUB_TOKEN = Path("/etc/alxprgs-sso/github-read.token")
+CA_BUNDLE = Path("/etc/ssl/certs/ca-certificates.crt")
+SYSTEM_PYTHON = Path("/usr/bin/python3")
+HTTP_TIMEOUT = 20
+HELP_TIMEOUT = 20
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_OPERATOR_BYTES = 1024 * 1024
+ROOT_UID = 0
+ROOT_GID = 0
+REQUIRED_COMMANDS = (
+    "configure",
+    "backup",
+    "renew",
+    "test-alert",
+    "admin",
+    "status",
+    "maintenance",
+    "resume",
+    "mfa-status",
+    "enable-mfa",
+    "recover-admin",
+    "admin-status",
+    "deploy",
+    "verify-backup",
+    "self-update",
+)
 
 
 class OperationError(Exception):
@@ -486,6 +523,489 @@ def public_ready() -> None:
         raise OperationError("Public HTTPS / discovery check failed") from None
 
 
+def operator_path() -> Path:
+    return ROOT / "tools" / "ssoctl.py"
+
+
+def commit_sha(value: str) -> str:
+    if not SHA.fullmatch(value):
+        raise argparse.ArgumentTypeError(
+            "expected a full 40-character lowercase hexadecimal commit SHA"
+        )
+    return value
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _tls_context():
+    # Fixed Ubuntu CA bundle: SSL_CERT_FILE/SSL_CERT_DIR cannot replace trust.
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.check_hostname = True
+        context.load_verify_locations(cafile=str(CA_BUNDLE))
+    except (OSError, ssl.SSLError):
+        raise OperationError("System CA bundle is unavailable; refusing GitHub access") from None
+    return context
+
+
+def _github_opener():
+    # Fixed trusted origin, fixed TLS trust, no environment proxy, no redirect.
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        urllib.request.HTTPSHandler(context=_tls_context()),
+        _NoRedirect,
+    )
+
+
+def github_token() -> str:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(GITHUB_TOKEN, flags)
+    except FileNotFoundError:
+        raise OperationError(
+            f"GitHub read token is missing at {GITHUB_TOKEN}; configure read-only access first"
+        ) from None
+    except OSError:
+        raise OperationError("GitHub read token must be a regular root-owned file") from None
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise OperationError("GitHub read token must be a regular root-owned file")
+        if info.st_uid != ROOT_UID:
+            raise OperationError("GitHub read token must be owned by root")
+        if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
+            raise OperationError("GitHub read token must have mode 0600")
+        if not 20 <= info.st_size <= 1024:
+            raise OperationError("GitHub read token has an invalid size")
+        raw = os.read(descriptor, 1025)
+    except OSError:
+        raise OperationError("GitHub read token cannot be read") from None
+    finally:
+        os.close(descriptor)
+    if len(raw) > 1024:
+        raise OperationError("GitHub read token has an invalid size")
+    try:
+        token = raw.decode("ascii").strip()
+    except UnicodeDecodeError:
+        raise OperationError("GitHub read token has an invalid format") from None
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,1024}", token):
+        raise OperationError("GitHub read token has an invalid format")
+    return token
+
+
+def _github_failure(code: int) -> OperationError:
+    if code in {401, 403}:
+        return OperationError(
+            f"GitHub rejected the read token (HTTP {code}); rotate the read-only token"
+        )
+    if code == 404:
+        return OperationError(
+            "GitHub repository, commit, or operator file was not found (HTTP 404)"
+        )
+    if 300 <= code < 400:
+        return OperationError("GitHub API returned an unexpected redirect")
+    return OperationError(f"GitHub API returned HTTP {code}; installed operator unchanged")
+
+
+def github_api(path: str) -> dict:
+    token = github_token()
+    url = GITHUB_API + path
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "alxprgs-sso-ssoctl-self-update",
+        },
+    )
+    try:
+        with _github_opener().open(request, timeout=HTTP_TIMEOUT) as response:
+            status = response.status
+            final_url = response.geturl()
+            payload = response.read(MAX_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        raise _github_failure(error.code) from None
+    except (urllib.error.URLError, http.client.HTTPException, OSError):
+        raise OperationError(
+            "GitHub is unreachable (network or TLS failure); installed operator unchanged"
+        ) from None
+    if status != 200:
+        raise _github_failure(status)
+    if final_url != url:
+        raise OperationError("GitHub API redirected to an untrusted origin")
+    if len(payload) > MAX_RESPONSE_BYTES:
+        raise OperationError("GitHub API response exceeds the size limit")
+    try:
+        value = json.loads(payload)
+    except ValueError:
+        raise OperationError("GitHub API returned invalid metadata") from None
+    if not isinstance(value, dict):
+        raise OperationError("GitHub API returned invalid metadata")
+    return value
+
+
+def _full_sha(value: object) -> bool:
+    return isinstance(value, str) and SHA.fullmatch(value) is not None
+
+
+def _commit_identity(document: dict) -> str:
+    commit = document.get("commit")
+    tree = commit.get("tree") if isinstance(commit, dict) else None
+    revision = document.get("sha")
+    if not _full_sha(revision) or not isinstance(tree, dict) or not _full_sha(tree.get("sha")):
+        raise OperationError("GitHub returned an invalid commit identity")
+    return revision
+
+
+def resolve_revision(requested: str | None) -> str:
+    if requested is not None:
+        if not _full_sha(requested):
+            raise OperationError("--sha must be a full 40-character lowercase commit SHA")
+        document = github_api(f"/repos/{GITHUB_REPO}/commits/{requested}")
+        if _commit_identity(document) != requested:
+            raise OperationError("GitHub commit identity does not match the requested SHA")
+        comparison = github_api(f"/repos/{GITHUB_REPO}/compare/{requested}...{GITHUB_BRANCH}")
+        base = comparison.get("base_commit")
+        merge_base = comparison.get("merge_base_commit")
+        ahead_by = comparison.get("ahead_by")
+        if (
+            comparison.get("status") not in {"ahead", "identical"}
+            or not isinstance(base, dict)
+            or base.get("sha") != requested
+            or not isinstance(merge_base, dict)
+            or merge_base.get("sha") != requested
+            or comparison.get("behind_by") != 0
+            or not isinstance(ahead_by, int)
+            or ahead_by < 0
+        ):
+            raise OperationError("Requested commit is not in main history; refusing to install it")
+        return requested
+    document = github_api(f"/repos/{GITHUB_REPO}/commits/{GITHUB_BRANCH}")
+    return _commit_identity(document)
+
+
+def download_operator(revision: str) -> bytes:
+    if not _full_sha(revision):
+        raise OperationError("Invalid operator revision")
+    document = github_api(f"/repos/{GITHUB_REPO}/contents/{GITHUB_OPERATOR}?ref={revision}")
+    content = document.get("content")
+    size = document.get("size")
+    blob = document.get("sha")
+    if (
+        document.get("type") != "file"
+        or document.get("path") != GITHUB_OPERATOR
+        or document.get("encoding") != "base64"
+        or not isinstance(content, str)
+        or not isinstance(size, int)
+        or not 0 < size <= MAX_OPERATOR_BYTES
+        or not _full_sha(blob)
+    ):
+        raise OperationError("GitHub returned invalid operator file metadata")
+    try:
+        data = base64.b64decode("".join(content.split()), validate=True)
+    except (ValueError, TypeError):
+        raise OperationError("GitHub returned an undecodable operator file") from None
+    if len(data) != size or not data or len(data) > MAX_OPERATOR_BYTES:
+        raise OperationError("Operator file size does not match GitHub metadata")
+    # Git blob identity is a content integrity check, not a local trust anchor:
+    # provenance comes from the fixed authenticated repository and pinned commit.
+    digest = hashlib.sha1(b"blob %d\0" % len(data) + data, usedforsecurity=False).hexdigest()
+    if digest != blob:
+        raise OperationError("Operator file content does not match GitHub metadata")
+    return data
+
+
+def _lstat(path: Path, label: str) -> os.stat_result:
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        raise OperationError(f"{label} is missing") from None
+    except OSError:
+        raise OperationError(f"{label} cannot be inspected") from None
+
+
+def _require_operator_directory(path: Path) -> Path:
+    directory = path.parent
+    info = _lstat(directory, "Operator tools directory")
+    if not stat.S_ISDIR(info.st_mode):
+        raise OperationError("Operator tools directory must be a real directory")
+    if info.st_uid != ROOT_UID:
+        raise OperationError("Operator tools directory must be owned by root")
+    if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o022:
+        raise OperationError("Operator tools directory has unsafe permissions")
+    return directory
+
+
+def read_installed_operator(path: Path) -> bytes:
+    _require_operator_directory(path)
+    info = _lstat(path, "Installed operator")
+    if not stat.S_ISREG(info.st_mode):
+        raise OperationError("Installed operator must be a regular file, not a symlink")
+    if info.st_uid != ROOT_UID:
+        raise OperationError("Installed operator must be owned by root")
+    if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o022:
+        raise OperationError("Installed operator has unsafe permissions")
+    if not 0 < info.st_size <= MAX_OPERATOR_BYTES:
+        raise OperationError("Installed operator has an invalid size")
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise OperationError("Installed operator cannot be read") from None
+    if len(data) != info.st_size or not data:
+        raise OperationError("Installed operator changed while it was read")
+    return data
+
+
+def _write_candidate(directory: Path, data: bytes) -> Path:
+    temp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=directory, prefix=".ssoctl-candidate-", delete=False
+        ) as handle:
+            temp = Path(handle.name)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp, 0o600)
+    except OSError:
+        if temp is not None:
+            with contextlib.suppress(OSError):
+                temp.unlink()
+        raise OperationError("Operator candidate could not be stored securely") from None
+    return temp
+
+
+def _help_environment() -> dict[str, str]:
+    environment = {
+        "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+    }
+    if os.name == "nt":
+        for key in ("SYSTEMROOT", "TEMP", "TMP"):
+            if key in os.environ:
+                environment[key] = os.environ[key]
+    return environment
+
+
+def _operator_help(path: Path, command: str | None = None) -> str:
+    argv = [str(SYSTEM_PYTHON), "-I", str(path)]
+    if command is not None:
+        argv.append(command)
+    argv.append("--help")
+    try:
+        result = subprocess.run(
+            argv,
+            check=False,
+            capture_output=True,
+            timeout=HELP_TIMEOUT,
+            env=_help_environment(),
+        )
+    except (subprocess.SubprocessError, OSError):
+        raise OperationError("Operator help check could not run") from None
+    if result.returncode != 0:
+        label = f"{command} --help" if command is not None else "--help"
+        raise OperationError(f"Operator {label} failed; candidate rejected")
+    return result.stdout.decode("utf-8", "replace")
+
+
+def _check_candidate(data: bytes) -> None:
+    if not data or len(data) > MAX_OPERATOR_BYTES:
+        raise OperationError("Operator candidate is empty or exceeds the size limit")
+    try:
+        compile(data, "<operator-candidate>", "exec")
+    except (SyntaxError, ValueError, TypeError):
+        raise OperationError("Operator candidate has invalid Python syntax") from None
+
+
+def _check_candidate_interface(path: Path) -> None:
+    listing = _operator_help(path)
+    missing = [
+        name
+        for name in REQUIRED_COMMANDS
+        if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", listing) is None
+    ]
+    if missing:
+        raise OperationError(
+            "Operator candidate is missing required commands: " + ", ".join(missing)
+        )
+    # argparse conflicts surface here, before anything is installed.
+    _operator_help(path, "recover-admin")
+    if "--sha" not in _operator_help(path, "self-update"):
+        raise OperationError("Operator candidate lacks the self-update --sha interface")
+
+
+def _sync_directory(directory: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
+
+
+def _backup_directory() -> Path:
+    directory = STATE / "operator-backups"
+    try:
+        directory.mkdir(mode=0o700, exist_ok=True)
+    except OSError:
+        raise OperationError("Operator backup directory cannot be created") from None
+    info = _lstat(directory, "Operator backup directory")
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != ROOT_UID:
+        raise OperationError("Operator backup directory is not a safe root-owned directory")
+    if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
+        try:
+            directory.chmod(0o700)
+        except OSError:
+            raise OperationError("Operator backup directory permissions cannot be fixed") from None
+    return directory
+
+
+def _write_backup(data: bytes) -> Path:
+    directory = _backup_directory()
+    digest = hashlib.sha256(data).hexdigest()[:12]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    for attempt in range(8):
+        suffix = f"-{attempt}" if attempt else ""
+        path = directory / f"ssoctl.py.{stamp}.{digest}{suffix}.bak"
+        try:
+            descriptor = os.open(path, flags, 0o600)
+        except FileExistsError:
+            continue
+        except OSError:
+            raise OperationError(
+                "Operator backup cannot be written; installed operator unchanged"
+            ) from None
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(path, 0o600)
+        except OSError:
+            with contextlib.suppress(OSError):
+                path.unlink()
+            raise OperationError(
+                "Operator backup cannot be written; installed operator unchanged"
+            ) from None
+        _sync_directory(directory)
+        return path
+    raise OperationError("Operator backup name collision; installed operator unchanged")
+
+
+def _replace_operator(temp: Path, path: Path, previous: bytes) -> None:
+    _require_operator_directory(path)
+    info = _lstat(path, "Installed operator")
+    if not stat.S_ISREG(info.st_mode):
+        raise OperationError("Installed operator path is not a regular file")
+    if read_installed_operator(path) != previous:
+        raise OperationError("Installed operator changed during self-update; nothing was replaced")
+    try:
+        os.chmod(temp, 0o755)
+        os.chown(temp, ROOT_UID, ROOT_GID)
+    except OSError:
+        raise OperationError("Operator candidate ownership or mode could not be set") from None
+    try:
+        os.replace(temp, path)
+    except OSError:
+        raise OperationError("Installed operator could not be replaced") from None
+    _sync_directory(path.parent)
+
+
+def _verify_operator_file(path: Path, expected: bytes) -> None:
+    _require_operator_directory(path)
+    info = _lstat(path, "Installed operator")
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != ROOT_UID:
+        raise OperationError("Installed operator owner or type is unexpected")
+    if os.name != "nt" and stat.S_IMODE(info.st_mode) != 0o755:
+        raise OperationError("Installed operator mode is unexpected")
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise OperationError("Installed operator cannot be read after replacement") from None
+    if data != expected:
+        raise OperationError(
+            "Installed operator content does not match the expected verified content"
+        )
+
+
+def _verify_installed(path: Path, expected: bytes) -> None:
+    _verify_operator_file(path, expected)
+    _operator_help(path)
+    _operator_help(path, "self-update")
+
+
+def _restore_operator(path: Path, previous: bytes) -> None:
+    temp = _write_candidate(path.parent, previous)
+    try:
+        os.chmod(temp, 0o755)
+        os.chown(temp, ROOT_UID, ROOT_GID)
+        os.replace(temp, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            temp.unlink()
+        raise OperationError("Automatic restore of the previous operator failed") from None
+    _sync_directory(path.parent)
+    # The previous operator may itself be the broken revision being replaced,
+    # so restore verifies bytes and mode rather than its --help output.
+    _verify_operator_file(path, previous)
+
+
+def self_update(requested: str | None) -> None:
+    path = operator_path()
+    _require_operator_directory(path)
+    installed = read_installed_operator(path)
+    revision = resolve_revision(requested)
+    data = download_operator(revision)
+    _check_candidate(data)
+    temp = _write_candidate(path.parent, data)
+    backup: Path | None = None
+    try:
+        _check_candidate_interface(temp)
+        if data == installed:
+            print(f"Operator source: {GITHUB_REPO} {GITHUB_BRANCH} {GITHUB_OPERATOR}")
+            print(f"Commit SHA: {revision}")
+            print("Installed operator: already current; no backup or replacement was made")
+            print("Application and configuration were not changed.")
+            return
+        backup = _write_backup(installed)
+        _replace_operator(temp, path, installed)
+        try:
+            _verify_installed(path, data)
+        except Exception:
+            try:
+                _restore_operator(path, installed)
+            except OperationError as restore_error:
+                raise OperationError(
+                    "Installed operator failed verification and automatic restore failed "
+                    f"({restore_error}); restore manually from {backup}"
+                ) from None
+            raise OperationError(
+                "Installed operator failed verification; "
+                f"the previous file was restored from {backup}"
+            ) from None
+    finally:
+        with contextlib.suppress(OSError):
+            temp.unlink()
+    print(f"Operator source: {GITHUB_REPO} {GITHUB_BRANCH} {GITHUB_OPERATOR}")
+    print(f"Commit SHA: {revision}")
+    print("Installed operator: updated")
+    print(f"Backup: {backup}")
+    print("Application and configuration were not changed.")
+
+
 def validate_sequence(record: dict, sequence: int, sha: str) -> None:
     if sequence < record.get("sequence", 0):
         raise OperationError("Stale deployment rejected")
@@ -676,7 +1196,7 @@ def renew() -> None:
     )
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     for name in (
@@ -690,7 +1210,6 @@ def main() -> int:
         "resume",
         "mfa-status",
         "enable-mfa",
-        "recover-admin",
         "admin-status",
     ):
         sub.add_parser(name)
@@ -700,6 +1219,7 @@ def main() -> int:
     deploy_parser.add_argument("sha")
     verify_parser = sub.add_parser("verify-backup")
     verify_parser.add_argument("name")
+    # Registered once, with its required arguments, outside the plain loop.
     recover_parser = sub.add_parser("recover-admin")
     recover_parser.add_argument("--username", required=True)
     recover_parser.add_argument(
@@ -712,6 +1232,17 @@ def main() -> int:
         required=True,
         help="Repeat the exact administrator username",
     )
+    update_parser = sub.add_parser("self-update")
+    update_parser.add_argument(
+        "--sha",
+        type=commit_sha,
+        help="full 40-character commit SHA from main history (default: current main)",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     if os.geteuid() != 0:
         parser.error("Run with sudo")
@@ -720,6 +1251,8 @@ def main() -> int:
         with locked():
             if args.command == "configure":
                 configure()
+            elif args.command == "self-update":
+                self_update(args.sha)
             elif args.command == "deploy":
                 result = deploy(args.bundle, args.sequence, args.sha)
                 print(result_protocol(result, args.sha, args.sequence))

@@ -263,36 +263,133 @@ sudo systemctl list-timers 'alxprgs-sso-*'
 контейнера выводится оператором; смотрите его `docker logs` приватно. Успешный migration-контейнер
 удаляется. Не присылайте необработанные `docker inspect`,
 `docker compose config`, environment или журналы с персональными данными.
-Установленный root-оператор обновляйте только точечной заменой проверенного
-`/opt/alxprgs-sso/tools/ssoctl.py` по процедуре ниже. Полный bootstrap ради одного
-скрипта не запускайте: он затрагивает пакеты, сертификаты и сервисы.
+Установленный root-оператор обновляйте командой `ssoctl self-update`; полный bootstrap
+ради одного скрипта не запускайте: он затрагивает пакеты, сертификаты и сервисы.
+Self-update меняет только `/opt/alxprgs-sso/tools/ssoctl.py` и не обновляет приложение.
 
-### Обновление установленного ssoctl (первый переход)
+### Обновление установленного ssoctl
 
-Новый workflow безопасно работает со старым оператором: установка идёт прежним путём,
-а Step Summary показывает `deployed_legacy` и предупреждение, что серверная проверка
-no-op не активна. Для её активации владельцу нужен отдельный шаг с проверенным SHA main:
+Оператор и приложение обновляются независимо. `ssoctl self-update` не требует
+работающего приложения, текущего release, доступного backend или `runtime.env` и не
+выполняет bootstrap, deploy, миграции, перезапуск сервисов и отправку писем.
 
-1. На рабочей станции получите точный merged SHA и проверьте файл:
-   `git fetch origin main && git checkout <MERGED_SHA>`; сверьте `sha256sum deploy/ec2/ssoctl.py`
-   с ожидаемым значением из review. Не используйте ветку/локальные незакоммиченные файлы.
-2. Скопируйте **только** оператор в домашний каталог администратора:
-   `scp -i <key> deploy/ec2/ssoctl.py ubuntu@54.152.17.1:~/ssoctl-IDEMPOTENCY.py`.
-3. В административной SSH-сессии сохраните текущий файл и замените его атомарно:
+#### Первый переход (один раз, вручную)
+
+Установленная версия может не содержать self-update и содержать дефект argparse,
+поэтому первый файл заменяется вручную; после этого доступны обе формы команды.
+
+1. После merge выберите полный SHA main, прошедший review и обязательный CI. На рабочей
+   станции получите файл именно этой ревизии, а не из ветки или рабочего дерева:
    ```bash
-   sudo cp -p /opt/alxprgs-sso/tools/ssoctl.py /opt/alxprgs-sso/tools/ssoctl.py.pre-idempotency
-   sudo install -o root -g root -m 0755 ~/ssoctl-IDEMPOTENCY.py /opt/alxprgs-sso/tools/ssoctl.py
-   sudo /usr/bin/python3 /opt/alxprgs-sso/tools/ssoctl.py --help >/dev/null
-   sudo /usr/local/sbin/ssoctl status
+   git fetch origin main
+   git cat-file -e <MERGED_SHA>:deploy/ec2/ssoctl.py
+   git show <MERGED_SHA>:deploy/ec2/ssoctl.py > ssoctl-first-transition.py
+   sha256sum ssoctl-first-transition.py
    ```
-4. Конфигурация, ключи, `/etc/sudoers.d/alxprgs-sso`, wrapper `/usr/local/sbin/ssoctl`,
-   Docker volumes, releases и GitHub secrets не меняются. Сервисы не перезапускаются.
-5. При ошибке верните прежний файл:
-   `sudo cp -p /opt/alxprgs-sso/tools/ssoctl.py.pre-idempotency /opt/alxprgs-sso/tools/ssoctl.py`
-   и повторите `sudo /usr/local/sbin/ssoctl status`.
-6. После обновления следующий повторный CD для уже установленного SHA должен дать
-   `already_deployed` без серверных побочных эффектов. Проверка выполняется владельцем
-   в отдельном окне; этот репозиторий production не изменяет.
+   Сверьте SHA-256 с review/CI. Не используйте сокращённый SHA, тег или локальные
+   незакоммиченные изменения.
+2. Скопируйте **только** оператор в домашний каталог администратора:
+   `scp -i <key> ssoctl-first-transition.py ubuntu@54.152.17.1:~/`.
+3. В административной SSH-сессии сохраните текущий файл и проверьте кандидата до
+   установки (от обычного пользователя, без sudo, конфигурации, сети и Docker):
+   ```bash
+   sudo cp -p /opt/alxprgs-sso/tools/ssoctl.py /opt/alxprgs-sso/tools/ssoctl.py.pre-self-update
+   /usr/bin/python3 ~/ssoctl-first-transition.py --help >/dev/null
+   /usr/bin/python3 ~/ssoctl-first-transition.py recover-admin --help >/dev/null
+   /usr/bin/python3 ~/ssoctl-first-transition.py self-update --help >/dev/null
+   ```
+4. Установите файл с ожидаемыми owner/mode и проверьте установленную копию:
+   ```bash
+   sudo install -o root -g root -m 0755 ~/ssoctl-first-transition.py /opt/alxprgs-sso/tools/ssoctl.py
+   sudo /usr/local/sbin/ssoctl --help >/dev/null
+   sudo /usr/local/sbin/ssoctl self-update --help >/dev/null
+   sudo ssoctl status
+   ```
+5. `runtime.env`, ключи, `/etc/sudoers.d/alxprgs-sso`, wrapper `/usr/local/sbin/ssoctl`,
+   Docker volumes, releases, `deployed.json`, `highwater.json`, `current`, maintenance,
+   GitHub secrets и сервисы не меняются. Полный bootstrap не запускается.
+6. При ошибке верните прежний файл и проверьте его:
+   ```bash
+   sudo install -o root -g root -m 0755 /opt/alxprgs-sso/tools/ssoctl.py.pre-self-update /opt/alxprgs-sso/tools/ssoctl.py
+   sudo ssoctl status
+   ```
+7. После успешной замены настройте read-only GitHub-доступ и проверьте переход:
+   ```bash
+   sudo ssoctl self-update --sha <MERGED_SHA>
+   ```
+   Ожидается `already current` для установленного SHA. Затем `sudo ssoctl self-update`
+   обновляет до актуального main. Сохранение прежнего CD-поведения проверяется отдельным
+   повторным CD run: для уже установленного SHA ожидается `already_deployed` без
+   серверных побочных эффектов.
+
+#### Первоначальная настройка read-only GitHub-доступа
+
+GitHub-токен — отдельный read-only credential, не Resend/application credential и не
+deploy SSH key. Создайте fine-grained personal access token: GitHub → Settings →
+Developer settings → Personal access tokens → Fine-grained tokens. Resource owner —
+`alxprgstech`, Repository access — **Only select repositories** → `sso`, Repository
+permissions — **Contents: Read-only** (обязательный `Metadata: Read-only` добавляется
+автоматически). Другие permissions не нужны. Срок действия — не более 90 дней.
+
+На сервере сохраните токен скрытым вводом в root-owned файл вне репозитория и
+`runtime.env`:
+```bash
+sudo bash -c 'umask 077; read -rsp "GitHub read-only token: " T; printf "%s" "$T" > /etc/alxprgs-sso/github-read.token; unset T; echo'
+sudo chown root:root /etc/alxprgs-sso/github-read.token
+sudo chmod 0600 /etc/alxprgs-sso/github-read.token
+```
+Оператор отказывается работать, если файл является symlink, не root-owned или доступен
+группе/другим. Токен не передаётся в argv/URL, не выводится и не логируется. Для
+ротации замените файл той же командой; перезапуск сервисов не нужен. Проверка
+доступа — `sudo ssoctl self-update` (при совпадении содержимого это безопасный no-op).
+
+#### Регулярные обновления
+
+```bash
+sudo ssoctl self-update
+sudo ssoctl self-update --sha <FULL_40_HEX_MAIN_SHA>
+```
+
+Без `--sha` main один раз разрешается в полный commit SHA, и файл загружается именно
+этой ревизии; последующее продвижение main не смешивает metadata и содержимое. С `--sha`
+принимается только полный 40-символьный lowercase hex, принадлежащий истории main;
+ветки, теги, сокращённые SHA и коммиты PR-веток отклоняются.
+
+Обе формы печатают выбранный commit SHA, результат `updated`/`already current` и путь
+backup при замене. Если содержимое уже совпадает, команда успешно завершается без
+замены и без лишней резервной копии. Перед заменой кандидат проверяется на синтаксис,
+`--help` целевым `/usr/bin/python3` с timeout и наличие обязательных команд, включая
+`recover-admin` и `self-update`; один `compile` не считается достаточной проверкой.
+Резервная копия действующего файла создаётся в `/var/lib/alxprgs-sso/operator-backups`
+(root-only, `0600`, уникальное имя без перезаписи), затем файл атомарно заменяется под
+общей flock-блокировкой и проверяется. При ошибке проверки прежний файл восстанавливается
+автоматически, backup сохраняется. Одновременно выполняется не более одной операции
+оператора; другой self-update/deploy/backup/renew ждёт блокировку.
+
+#### Ошибки и ручной откат
+
+- Нет токена или неверные owner/mode — отказ до сети, установленный файл не меняется.
+- HTTP 401/403 — токен истёк, отозван или не имеет `Contents: Read-only`; замените его,
+  файл не меняется.
+- HTTP 404, неверный TLS, redirect, timeout, обрыв или превышение лимитов — отказ,
+  файл не меняется.
+- SHA отсутствует в истории main или имеет неверный формат — отказ до загрузки файла.
+- Пустой файл, синтаксическая ошибка, конфликт argparse или отсутствие обязательного
+  интерфейса — отказ до backup и замены.
+- Приложение остановлено, БД недоступна или release отсутствует — обновление оператора
+  всё равно выполняется.
+
+Ручной откат не зависит от работающей команды self-update. Выберите backup и установите
+его с теми же owner/mode:
+```bash
+sudo ls -l /var/lib/alxprgs-sso/operator-backups
+sudo install -o root -g root -m 0755 /var/lib/alxprgs-sso/operator-backups/<FILE>.bak /opt/alxprgs-sso/tools/ssoctl.py
+sudo /usr/local/sbin/ssoctl --help >/dev/null
+sudo ssoctl status
+```
+Обновление оператора не обновляет приложение, его версию, контейнеры, БД или nginx и
+не является заменой CD. Для отката приложения используйте существующие release/backup
+процедуры; полный bootstrap ради отката одного скрипта не нужен.
 
 ## 6. Backup, сертификаты и секреты
 
