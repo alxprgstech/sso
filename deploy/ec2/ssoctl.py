@@ -964,6 +964,7 @@ def _restore_operator(path: Path, previous: bytes) -> None:
 
 
 def self_update(requested: str | None) -> None:
+    """Install one verified operator revision; main calls this under the operator lock."""
     path = operator_path()
     _require_operator_directory(path)
     installed = read_installed_operator(path)
@@ -976,7 +977,7 @@ def self_update(requested: str | None) -> None:
         _check_candidate_interface(temp)
         if data == installed:
             print(f"Operator source: {GITHUB_REPO} {GITHUB_BRANCH} {GITHUB_OPERATOR}")
-            print(f"Commit SHA: {revision}")
+            print(f"Operator commit SHA: {revision}")
             print("Installed operator: already current; no backup or replacement was made")
             print("Application and configuration were not changed.")
             return
@@ -1000,7 +1001,7 @@ def self_update(requested: str | None) -> None:
         with contextlib.suppress(OSError):
             temp.unlink()
     print(f"Operator source: {GITHUB_REPO} {GITHUB_BRANCH} {GITHUB_OPERATOR}")
-    print(f"Commit SHA: {revision}")
+    print(f"Operator commit SHA: {revision}")
     print("Installed operator: updated")
     print(f"Backup: {backup}")
     print("Application and configuration were not changed.")
