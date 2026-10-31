@@ -95,3 +95,5 @@ DEP-SOURCEMAP-01: транзитивный source-map-js закреплён в p
 ## Текущая интерпретация проверок
 
 Appearance/brand/CSP/production UI counts выше — исторические прогоны. DOC-REFRESH-01 сверил routes, package scripts, footer/theme и capability contracts; браузер/HTTP/Lighthouse не запускался. Commands и профиль из testing/README актуальны, прежние testing plans по Git используются только как история.
+
+UI-BRAND-TRANSPARENT-01: у брендового artwork убрана белая подложка. Полная версия на desktop auth использует локальный `logo-adaptive.svg` через SVG use; только цвет надписи наследует `--text-primary`, исходные пути и цветные градиенты сохранены. На mobile auth, в навигации и infrastructure используется прозрачный `logo-mark.svg`. Переключение Light/Dark работает без перезагрузки; QR сохраняет собственную белую поверхность.
