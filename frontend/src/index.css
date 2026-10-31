@@ -339,10 +339,12 @@
     @apply inline-flex items-center gap-3;
   }
   .brand-art {
-    @apply block shrink-0 rounded-lg;
-    /* Canonical navy wordmark needs its original light backing in both themes. */
-    background: #fff;
+    @apply block shrink-0;
+    color: var(--text-primary);
     object-fit: contain;
+  }
+  .brand-auth .brand-compact {
+    display: none;
   }
   .brand-navigation .brand-art {
     width: var(--brand-mark-size);
@@ -495,6 +497,12 @@
   }
 }
 @media (max-width: 639px) {
+  .brand-auth .brand-full {
+    display: none;
+  }
+  .brand-auth .brand-compact {
+    display: block;
+  }
   .brand-auth .brand-art {
     width: var(--brand-compact-size);
     height: var(--brand-compact-size);

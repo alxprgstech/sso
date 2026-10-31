@@ -505,21 +505,31 @@ for (const theme of ["light", "dark"] as const) {
     ]) {
       await page.setViewportSize(viewport);
       await page.goto("/login");
-      const artwork = page.locator(".brand-auth img");
+      const artwork = page.locator(".brand-auth .brand-art:visible");
       await expect(artwork).toBeVisible();
-      const name = viewport.width < 640 ? "logo-mark.svg" : "logo.svg";
-      await expect
-        .poll(() =>
-          artwork.evaluate(
-            (img: HTMLImageElement, expectedName) =>
-              img.complete &&
-              img.naturalWidth > 0 &&
-              new URL(img.currentSrc).pathname === `/brand/${expectedName}`,
-            name,
-          ),
-        )
-        .toBe(true);
-      await expect(artwork).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      await expect(artwork).toHaveCount(1);
+      if (viewport.width < 640) {
+        await expect
+          .poll(() =>
+            artwork.evaluate(
+              (img: HTMLImageElement) =>
+                img.complete &&
+                img.naturalWidth > 0 &&
+                new URL(img.currentSrc).pathname === "/brand/logo-mark.svg",
+            ),
+          )
+          .toBe(true);
+      } else {
+        await expect(artwork.locator("use")).toHaveAttribute(
+          "href",
+          "/brand/logo-adaptive.svg#logo",
+        );
+        await expect(artwork).toHaveCSS(
+          "color",
+          theme === "dark" ? "rgb(245, 247, 250)" : "rgb(17, 19, 24)",
+        );
+      }
+      await expect(artwork).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
       await expect(page.locator(".auth-form h1").locator("..")).toHaveCSS(
         "opacity",
         "1",
@@ -533,7 +543,31 @@ for (const theme of ["light", "dark"] as const) {
       await page.screenshot({
         path: `../artifacts/frontend-redesign/brand-${theme}-${viewport.width}.png`,
       });
+      if (viewport.width === 1440) {
+        await page.locator(".auth-form").screenshot({
+          path: `../artifacts/frontend-redesign/brand-${theme}-auth.png`,
+        });
+      }
     }
+    // Only the navy wordmark becomes theme-aware; all source paths/gradients remain exact.
+    const canonical = await (await page.request.get("/brand/logo.svg")).text();
+    const adaptive = await (
+      await page.request.get("/brand/logo-adaptive.svg")
+    ).text();
+    expect(adaptive).toBe(
+      canonical
+        .replace("<svg ", '<svg id="logo" ')
+        .replace('fill="#031d3b"', 'fill="currentColor"'),
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const themeControl = page.getByRole("combobox", {
+      name: "Тема оформления",
+    });
+    await themeControl.selectOption(theme === "dark" ? "light" : "dark");
+    await expect(page.locator(".brand-auth .brand-full")).toHaveCSS(
+      "color",
+      theme === "dark" ? "rgb(17, 19, 24)" : "rgb(245, 247, 250)",
+    );
     for (const [name, expected] of Object.entries(brandManifest.files)) {
       const response = await page.request.get(`/brand/${name}`);
       expect(response.status()).toBe(200);
@@ -556,6 +590,10 @@ for (const theme of ["light", "dark"] as const) {
       "/brand/logo-mark.svg",
     );
     expect((await brandLink.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await expect(brandLink.locator("img")).toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
     const origin = new URL(page.url()).origin;
     expect(imageRequests.length).toBeGreaterThan(0);
     expect(
