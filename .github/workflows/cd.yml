@@ -64,7 +64,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     outputs:
-      artifact_id: ${{ steps.bundle.outputs.artifact-id }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      bundle_sha256: ${{ steps.bundle.outputs.sha256 }}
       artifact_name: sso-ec2-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout exact deployment revision
@@ -87,9 +88,10 @@ jobs:
           sudo systemctl restart docker
           sudo systemctl is-active docker
       - name: Build private transport bundle
-        run: python3 scripts/build_ec2_bundle.py --sha "$DEPLOY_SHA" --output sso-ec2.tar.gz
-      - name: Save immutable private transport
         id: bundle
+        run: python3 deploy/ec2/deploy.py build
+      - name: Save immutable private transport
+        id: artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
         with:
           name: sso-ec2-${{ github.run_id }}-${{ github.run_attempt }}
@@ -131,10 +133,12 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
+      - name: Install locked transport-check dependencies
+        run: python3 -m pip install --require-hashes -r requirements-lock-hashed.txt
       - name: Verify the transport to be installed
-        run: |
-          python3 -m pip install --require-hashes -r requirements-lock-hashed.txt
-          python3 -m scripts.check_ec2_runtime --bundle sso-ec2.tar.gz --sha "$DEPLOY_SHA"
+        env:
+          BUNDLE_SHA256: ${{ needs.build.outputs.bundle_sha256 }}
+        run: python3 deploy/ec2/deploy.py verify
 
   deploy:
     needs: [build, verify]
@@ -162,24 +166,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEPLOY_SEQUENCE: ${{ github.run_number }}
+          BUNDLE_SHA256: ${{ needs.build.outputs.bundle_sha256 }}
           SSH_HOST: ${{ vars.SSH_HOST }}
           SSH_USER: ssodeploy
           SSH_PORT: ${{ vars.SSH_PORT || '22' }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
-        run: |
-          latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
-          if [[ "$latest" != "$DEPLOY_SHA" ]]; then
-            echo 'Main advanced during build; no deployment.' >> "$GITHUB_STEP_SUMMARY"
-            {
-              echo 'result=superseded'
-              echo 'installed=false'
-              echo 'installed_sha='
-              echo 'reason=main advanced before installation'
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          bash deploy/ec2/upload.sh
+        run: bash deploy/ec2/upload.sh
 
   public-check:
     needs: [preflight, deploy]
@@ -197,72 +190,28 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
       - name: Check public domain and backend readiness over HTTPS
-        run: python3 scripts/check_public_readiness.py
+        run: python3 deploy/ec2/deploy.py public-check
 
   report:
     needs: [preflight, build, verify, deploy, public-check]
     if: always()
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
+      - name: Checkout exact deployment revision
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
       - name: Publish deployment result
         env:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           DECISION: ${{ needs.preflight.outputs.decision }}
           PREFLIGHT_INSTALLED_SHA: ${{ needs.preflight.outputs.installed_sha }}
-          PREFLIGHT_REASON: ${{ needs.preflight.outputs.reason }}
           BUILD_RESULT: ${{ needs.build.result }}
           VERIFY_RESULT: ${{ needs.verify.result }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
           DEPLOY_OUTCOME: ${{ needs.deploy.outputs.result }}
           DEPLOY_INSTALLED_SHA: ${{ needs.deploy.outputs.installed_sha }}
-          DEPLOY_REASON: ${{ needs.deploy.outputs.reason }}
           PUBLIC_RESULT: ${{ needs.public-check.result }}
-        run: |
-          INSTALLED_SHA="${DEPLOY_INSTALLED_SHA:-$PREFLIGHT_INSTALLED_SHA}"
-          REASON="${DEPLOY_REASON:-$PREFLIGHT_REASON}"
-          if [[ "$PREFLIGHT_RESULT" == 'skipped' ]]; then
-            RESULT='not_run'
-            REASON='event gate not satisfied'
-            INSTALLED_SHA=''
-          elif [[ "$PREFLIGHT_RESULT" != 'success' ]]; then
-            RESULT='error'
-            REASON="${REASON:-preflight failed}"
-          elif [[ "$PUBLIC_RESULT" == 'failure' ]]; then
-            RESULT='error'
-            REASON='public readiness check failed'
-          elif [[ "$DECISION" == 'superseded' ]]; then
-            RESULT='superseded'
-          elif [[ "$DECISION" == 'already_deployed' ]]; then
-            RESULT='already_deployed'
-          elif [[ "$DEPLOY_OUTCOME" == 'deployed' || "$DEPLOY_OUTCOME" == 'deployed_legacy' ]]; then
-            RESULT='deployed'
-          elif [[ "$DEPLOY_OUTCOME" == 'already_deployed' ]]; then
-            RESULT='already_deployed'
-          elif [[ "$DEPLOY_OUTCOME" == 'superseded' ]]; then
-            RESULT='superseded'
-          else
-            RESULT='error'
-            REASON="${REASON:-build, verification or deployment did not complete}"
-          fi
-          if [[ -z "$INSTALLED_SHA" ]]; then
-            INSTALLED_SHA='unknown'
-          fi
-          {
-            echo '### EC2 CD result'
-            echo
-            echo '| Поле | Значение |'
-            echo '| --- | --- |'
-            echo "| Целевой SHA | \`$DEPLOY_SHA\` |"
-            echo "| Установленный SHA | \`$INSTALLED_SHA\` |"
-            echo "| Результат | \`$RESULT\` |"
-            echo "| Причина | $REASON |"
-            echo "| preflight / build / verify / deploy / public-check | \`$PREFLIGHT_RESULT\` / \`$BUILD_RESULT\` / \`$VERIFY_RESULT\` / \`$DEPLOY_RESULT\` / \`$PUBLIC_RESULT\` |"
-            if [[ "$DEPLOY_OUTCOME" == 'deployed_legacy' ]]; then
-              echo
-              echo '> Оператор на сервере старой версии: серверная защита от повторной установки не активна. Требуется обновление `ssoctl` по инструкции `docs/ec2-deployment.md`.'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$RESULT" == 'error' ]]; then
-            exit 1
-          fi
+        run: python3 deploy/ec2/deploy.py report

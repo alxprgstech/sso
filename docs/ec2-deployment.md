@@ -530,3 +530,36 @@ dry-run сертификата, уведомление и отрицательн
 родительскую папку сама, затем защищённый одноразовый каталог с проверкой прав.
 На EC2 ничего создавать вручную не требуется. Перенесите исправление в main и запустите
 новый **Run workflow**: **Re-run** старого запуска использует прежний SHA и не подхватит новый код.
+
+
+## Общий deploy driver (DEPLOY-SHARED-01)
+
+Workflow `cd.yml` использует одинаковый с MP `deploy/ec2/deploy.py` из
+`alxprgstech/.github`: `build` → `verify` → `upload` → `public-check` → `report`.
+`upload.sh` — совместимая тонкая оболочка; `project.json` содержит профиль SSO.
+`shared-deploy.json` фиксирует SHA-256 общих файлов, профиля и regression tests.
+Обновление из проверенного checkout `.github`:
+`python deploy/ec2/sync.py sso /path/to/sso`, затем та же команда с `--check`.
+Самостоятельно править вендорную копию не следует.
+
+Сборка выдаёт независимый `bundle_sha256` в outputs job. Verify и upload
+сверяют скачанный архив с этим значением до использования; вычислять ожидаемый
+хеш заново из скачанного файла нельзя. Архив обязан быть обычным файлом без
+symlink размером 1 байт–3 GiB. Перед SSH общий driver повторно сверяет main;
+устаревший run возвращает `superseded`. Сохраняются preflight no-op, inbox/scp,
+права `ssodeploy`, последовательность, серверная блокировка и протокол ssoctl.
+Итоговый report общий с MP; cancelled/failure и отсутствие успешного публичного
+подтверждения не превращаются в успешный результат.
+
+Public-check теперь дополнительно запускает
+`python3 scripts/check_deployed_revision.py --sha "$DEPLOY_SHA" --require-installed`:
+healthy backend и frontend обязаны подтвердить точный SHA. В этом режиме
+недоступная/другая identity завершает проверку ошибкой; preflight по-прежнему
+использует недоступную identity как сигнал обычного deploy. TLS/redirect
+нарушения всегда остаются ошибкой. `deployed_legacy` и предупреждение о старом
+операторе сохранены; `scripts/deploy_result.py` делегирует parser общему driver.
+
+Новые разрешения, bootstrap или установка ctl не требуются. Обновление
+root-owned оператора остаётся отдельным действием. После интеграции в main
+нужно проверить настоящий GitHub CD и Linux SSH/scp; локальные mocked tests не
+подтверждают production. Решение и альтернативы: [ADR-0037](adr/0037-shared-deployment-driver.md).

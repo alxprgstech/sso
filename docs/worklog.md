@@ -3841,3 +3841,9 @@ CodeScene на `5cf9c68`: check success, 3/3 gates passed, аннотаций н
 2026-11-03T01:00:03+03:00 — Codex — APK-FLOORS-01 start: проверены lock/digest требования и происхождение apk-пинов; исправление конфликта libexpat в CD 41532857794.
 
 2026-11-03T01:01:05+03:00 — Codex — APK-FLOORS-01 done: frontend/Dockerfile и Dockerfile.release используют quoted >= security floors вместо точных apk patch-пинов. Lock/hash зависимостей, image/action digests сохранены. Проверки: 19 tests/test_ci_security_policy.py PASS (.venv); реальные apk-команды на обоих digest-pinned nginx образах PASS, libexpat 2.10.0-r0. Полные image builds/Trivy локально не запускались; следующий шаг — push main и CI.
+
+
+2026-11-03T01:19:38+03:00 — Codex — DEPLOY-SHARED-01 — in_progress. Начат общий deploy driver из .github; существующие server ctl, production permissions, CI gates и project transport contracts сохраняются. Проверки и итог будут записаны после реализации.
+
+
+2026-11-03T01:28:46+03:00 — Codex — DEPLOY-SHARED-01 — done локально. Общий `.github` driver в deploy/ec2/deploy.py, профиль project.json, hash pin shared-deploy.json, upload wrapper; cd.yml/ci.yml используют общий код и regressions. SSO verify/upload проверяют build digest, public-check требует SHA backend/frontend; совместимый deploy_result.py делегирует parser. Документация/ADR-0037/CHANGELOG актуализированы. Финальный SSO pytest (ec2_deployment, cd_workflow, cd_identity, deploy_result, public_readiness, shared_deploy, ci_security_policy): 164 PASS + 14 subtests; MP targeted 123 PASS, canonical 16 PASS; Ruff/format/Bash/YAML/dependencies/pins/diff/sync PASS. Driver SHA-256 9386bc92cee0db63419e54a55fea04b9f880d5df45a2a77e18990197c1be4d08. Реальный SSH/scp/build/runtime/GitHub CD/production не запускались; новых прав и установки ctl не требуется. Ветка main, base a6cbbb4220a174bb882c626c83e5957f4491fd8f, изменения не закоммичены. Следующий шаг: review и обычная интеграция, затем наблюдение CD точного SHA.

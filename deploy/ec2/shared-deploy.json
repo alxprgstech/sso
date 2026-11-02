@@ -1,0 +1,9 @@
+{
+  "source": "alxprgstech/.github",
+  "files": {
+    "deploy/ec2/deploy.py": "9386bc92cee0db63419e54a55fea04b9f880d5df45a2a77e18990197c1be4d08",
+    "deploy/ec2/upload.sh": "676a7d6fef167bcaf08bf94cb8fa5184babb89ec43c345b5ad7586a270e4e1e8",
+    "deploy/ec2/project.json": "f9a911d877da5b82cd6f1c413e7338fbf35f8fdc725fbb067a00c7ab81fbc7b4",
+    "tests/test_shared_deploy.py": "9ff1254e92133097f6aa956c53ebe6454ec93d0fc063d9344bfcc2879844a4ea"
+  }
+}

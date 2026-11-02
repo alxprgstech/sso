@@ -2,6 +2,8 @@
 
 ## Точка продолжения
 
+- DEPLOY-SHARED-01 — done локально: единый deploy driver из `.github` внедрён в MP/SSO, настройки проектов отделены; итоговые проверки и ограничения — [журнал](worklog.md), решение — [ADR-0037](adr/0037-shared-deployment-driver.md). Изменения без commit/push; следующий шаг — review/интеграция. Production не запускался.
+
 - APK-FLOORS-01 — done: точные Alpine patch-пины в обоих frontend Dockerfile заменены минимальными безопасными версиями; 19 policy tests и реальные apk installs на обоих образах PASS. Полная сборка/Trivy — в CI после push main; [журнал](worklog.md).
 
 - CTL-SHARED-OPERATOR-01 — done локально: `ssoctl` переведён на закреплённую поставку общего оператора `alxprgstech/ctl` (ctl commit `93c85a4`): тонкая точка входа `deploy/ec2/ssoctl.py`, артефакт `deploy/ec2/operator/ssoctl.py` + `deploy/ec2/operator-provenance.json`, установленный путь и sudoers прежние. `self-update` берёт `dist/ssoctl` + `dist/ctl-manifest.json` из ctl main по одному commit; `--version` и `operator_*` строки в `status` доступны до первого деплоя. Targeted локальные проверки PASS; GitHub CI/CD не запускался, production не изменялся. Первый переход на сервере — вручную по [инструкции](ec2-deployment.md#обновление-установленного-ssoctl). Ветка `new/shared-ctl-operator`; [план](plan.md), [журнал](worklog.md).

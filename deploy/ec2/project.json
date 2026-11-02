@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "repository": "alxprgstech/sso",
+  "bundle": "sso-ec2.tar.gz",
+  "transport": "inbox",
+  "user": "ssodeploy",
+  "verify": [["-m", "scripts.check_ec2_runtime", "--bundle", "{bundle}", "--sha", "{sha}"]],
+  "public_check": [
+    ["scripts/check_public_readiness.py"],
+    ["scripts/check_deployed_revision.py", "--sha", "{sha}", "--require-installed"]
+  ]
+}

@@ -10,3 +10,6 @@ deploy/ec2/*.json text eol=lf
 # The vendored shared operator is a byte-exact artifact pinned by SHA-256. Git
 # must never convert its line endings, in either direction.
 deploy/ec2/operator/* -text
+
+# Keep the shared deployment regression delivery byte-identical.
+tests/test_shared_deploy.py text eol=lf

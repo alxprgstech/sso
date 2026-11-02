@@ -249,6 +249,13 @@ def test_main_fails_on_security_errors(monkeypatch, tmp_path, capsys):
     assert not output.exists()
 
 
+def test_require_installed_checks_exact_healthy_backend_and_frontend(monkeypatch):
+    monkeypatch.setattr(identity, "build_opener", matched_opener)
+    assert identity.main(["--sha", COMMIT, "--require-installed"]) == 0
+    monkeypatch.setattr(identity, "decide", lambda _: identity.Decision("deploy", "mismatch"))
+    assert identity.main(["--sha", COMMIT, "--require-installed"]) == 1
+
+
 def test_default_opener_verifies_tls_and_disables_redirects_proxy(monkeypatch):
     captured = {}
 

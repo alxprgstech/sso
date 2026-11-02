@@ -40,3 +40,8 @@ CD-PUBLIC-CHECK-01 — done (local), 2026-10-26T19:14:23+03:00. Реализов
 
 ## AGENT-RULES-01 — done
 Приоритет P2; зависимости: действующие правила проекта. Начало 2026-10-28T23:17:59.7544429+03:00. Критерий: выборочное чтение, исключение для консультаций, учёт по существенным этапам, отдельная история, сохранение требований безопасности; проверка локальных ссылок и diff. Завершение 2026-10-28T23:19:59+03:00. Выборочное чтение и учёт по этапам введены; история сохранена отдельно. Проверки: 119 локальных ссылок/UTF-8, дословная сохранность security/MFA и архивов, git diff --check PASS. Следующий шаг: локальный commit; runtime-проверки для редакторской правки не требуются.
+
+
+## DEPLOY-SHARED-01 — done (local)
+
+Приоритет P1; зависимости: существующие EC2 transport и ctl. Начало 2026-11-03T01:18:02+03:00; завершение 2026-11-03T01:28:46+03:00; Codex. Общий driver build/verify/upload/public-check/report из `.github` и профиль проекта внедрены в MP/SSO; runner/storage/gates/server privileges сохранены. Критерий выполнен: общий driver/wrapper/tests побайтово совпадают; digest/protocol/failure regressions, runbooks и ADR обновлены. SSO 164, MP 123 и canonical 16 tests PASS; Ruff/format/Bash/YAML/diff/sync PASS. Production, настоящий Linux SSH/scp, image runtime и GitHub scheduler не проверялись. Локальные изменения без commit/push; следующий шаг — review и обычная интеграция. [Решение](adr/0037-shared-deployment-driver.md).

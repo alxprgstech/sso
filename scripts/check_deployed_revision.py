@@ -237,8 +237,15 @@ def write_outputs(path: Path, decision: Decision) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sha", required=True)
-    parser.add_argument("--github-output", type=Path, required=True)
+    parser.add_argument("--github-output", type=Path)
+    parser.add_argument(
+        "--require-installed",
+        action="store_true",
+        help="Fail unless both healthy production identities match this SHA",
+    )
     args = parser.parse_args(argv)
+    if not args.require_installed and args.github_output is None:
+        parser.error("--github-output is required unless --require-installed is used")
     try:
         decision = decide(args.sha)
     except SecurityError as error:
@@ -247,8 +254,11 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as error:
         print(f"::error::EC2 CD identity check rejected: {error}", file=sys.stderr)
         return 2
-    write_outputs(args.github_output, decision)
+    if args.github_output is not None:
+        write_outputs(args.github_output, decision)
     print(f"EC2 CD identity decision: {decision.result} ({decision.reason})")
+    if args.require_installed and decision.result != "already_deployed":
+        return 1
     return 0
 
 

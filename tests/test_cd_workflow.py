@@ -44,10 +44,15 @@ def test_cd_verify_and_install_keep_transport_checks():
     transport = next(
         step for step in verify["steps"] if step["name"] == "Verify the transport to be installed"
     )
-    assert "scripts.check_ec2_runtime" in transport["run"]
+    assert transport["run"] == "python3 deploy/ec2/deploy.py verify"
+    profile = json.loads((ROOT / "deploy/ec2/project.json").read_text())
+    assert profile["verify"] == [
+        ["-m", "scripts.check_ec2_runtime", "--bundle", "{bundle}", "--sha", "{sha}"]
+    ]
+    assert transport["env"]["BUNDLE_SHA256"] == "${{ needs.build.outputs.bundle_sha256 }}"
     assert verify["if"] == "needs.build.outputs.artifact_name != ''"
     install = JOBS["deploy"]["steps"][-1]["run"]
-    assert "latest" in install and "deploy/ec2/upload.sh" in install
+    assert install == "bash deploy/ec2/upload.sh"
 
 
 def test_cd_pins_actions_and_has_no_continue_on_error():
@@ -123,12 +128,13 @@ def test_cd_retry_uses_same_immutable_bundle():
     assert JOBS["deploy"]["if"] == (
         "needs.build.outputs.artifact_name != '' && needs.verify.result == 'success'"
     )
-    upload = next(step for step in JOBS["build"]["steps"] if step.get("id") == "bundle")
+    upload = next(step for step in JOBS["build"]["steps"] if step.get("id") == "artifact")
     assert upload["with"]["if-no-files-found"] == "error"
     assert upload["with"]["retention-days"] == "7"
     assert "github.run_attempt" in upload["with"]["name"]
     assert "overwrite" not in upload["with"]
-    assert JOBS["build"]["outputs"]["artifact_id"] == "${{ steps.bundle.outputs.artifact-id }}"
+    assert JOBS["build"]["outputs"]["artifact_id"] == "${{ steps.artifact.outputs.artifact-id }}"
+    assert JOBS["build"]["outputs"]["bundle_sha256"] == "${{ steps.bundle.outputs.sha256 }}"
     assert JOBS["build"]["outputs"]["artifact_name"] == upload["with"]["name"]
 
 
@@ -143,7 +149,8 @@ def test_cd_deploy_downloads_the_verified_bundle_without_rebuilding():
         assert not any("build_ec2_bundle.py" in step.get("run", "") for step in steps)
     install = JOBS["deploy"]["steps"][-1]
     assert install["env"]["DEPLOY_SEQUENCE"] == "${{ github.run_number }}"
-    assert 'latest" != "$DEPLOY_SHA' in install["run"]
+    assert install["env"]["BUNDLE_SHA256"] == "${{ needs.build.outputs.bundle_sha256 }}"
+    assert install["run"] == "bash deploy/ec2/upload.sh"
 
 
 def test_cd_confines_production_environment_to_deploy():
@@ -174,10 +181,10 @@ def test_deploy_consumes_server_protocol_and_never_claims_installed_from_upload_
     assert deploy["outputs"]["result"] == "${{ steps.install.outputs.result }}"
     assert deploy["outputs"]["installed"] == "${{ steps.install.outputs.installed }}"
     assert deploy["outputs"]["installed_sha"] == "${{ steps.install.outputs.installed_sha }}"
-    assert install["run"].index("exit 0") < install["run"].index("bash deploy/ec2/upload.sh")
+    assert install["run"] == "bash deploy/ec2/upload.sh"
     assert "installed=true" not in install["run"]  # upload.sh writes the real outcome.
-    assert "deploy_result.py" in (ROOT / "deploy/ec2/upload.sh").read_text()
-    assert "result=superseded" in install["run"]
+    assert 'deploy/ec2/deploy.py" upload' in (ROOT / "deploy/ec2/upload.sh").read_text()
+    # Freshness and strict server protocol are exercised by test_shared_deploy.py.
 
 
 def test_public_check_runs_after_install_or_noop_and_can_retry():
@@ -188,7 +195,12 @@ def test_public_check_runs_after_install_or_noop_and_can_retry():
     assert "needs.deploy.outputs.result == 'already_deployed'" in check["if"]
     assert "environment" not in check
     assert check["steps"][0]["with"]["ref"] == "${{ env.DEPLOY_SHA }}"
-    assert check["steps"][-1]["run"] == "python3 scripts/check_public_readiness.py"
+    assert check["steps"][-1]["run"] == "python3 deploy/ec2/deploy.py public-check"
+    profile = json.loads((ROOT / "deploy/ec2/project.json").read_text())
+    assert profile["public_check"] == [
+        ["scripts/check_public_readiness.py"],
+        ["scripts/check_deployed_revision.py", "--sha", "{sha}", "--require-installed"],
+    ]
     assert "continue-on-error" not in check
     assert not any("upload.sh" in step.get("run", "") for step in check["steps"])
 
@@ -204,9 +216,10 @@ def test_report_is_always_run_and_records_safe_result_fields():
         "public-check",
     }
     summary = report["steps"][-1]["run"]
-    for fragment in ("$DEPLOY_SHA", "$INSTALLED_SHA", "$RESULT", "$REASON", "deployed_legacy"):
-        assert fragment in summary
-    assert "RESULT='error'" in summary and "exit 1" in summary
+    assert summary == "python3 deploy/ec2/deploy.py report"
+    env = report["steps"][-1]["env"]
+    assert env["PUBLIC_RESULT"] == "${{ needs.public-check.result }}"
+    assert env["DEPLOY_INSTALLED_SHA"] == "${{ needs.deploy.outputs.installed_sha }}"
 
 
 def test_production_secrets_are_confined_to_deploy_job():
