@@ -2,7 +2,7 @@
 
 ## Точка продолжения
 
-- DEPLOY-SHARED-01 — done локально: единый deploy driver из `.github` внедрён в MP/SSO, настройки проектов отделены; итоговые проверки и ограничения — [журнал](worklog.md), решение — [ADR-0037](adr/0037-shared-deployment-driver.md). Изменения без commit/push; следующий шаг — review/интеграция. Production не запускался.
+- DEPLOY-SHARED-01 — done локально: единый deploy driver из `.github` внедрён в MP/SSO, настройки проектов отделены; итоговые проверки и ограничения — [журнал](worklog.md), решение — [ADR-0037](adr/0037-shared-deployment-driver.md). Реализация: [b46532a](https://github.com/alxprgstech/sso/commit/b46532a81319daf890f3ec4195fe3ddf00349b06). Владелец поручил commit/push без серверного CI; коммиты содержат `[skip ci]`. Production не запускался.
 
 - APK-FLOORS-01 — done: точные Alpine patch-пины в обоих frontend Dockerfile заменены минимальными безопасными версиями; 19 policy tests и реальные apk installs на обоих образах PASS. Полная сборка/Trivy — в CI после push main; [журнал](worklog.md).
 
