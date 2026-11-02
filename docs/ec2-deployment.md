@@ -293,13 +293,13 @@ content hash. Версия оператора — это `VERSION` из `ctl`, �
 `dist/ssoctl` и `dist/ctl-manifest.json` через `https://api.github.com`. Манифест и
 артефакт берутся из одного закреплённого commit; размер, SHA-256, Git blob identity и
 встроенный `CTL_PROVENANCE` артефакта должны совпасть. Полная цепочка доверия —
-[ctl trust model](https://github.com/alxprgstech/ctl/blob/main/docs/trust-model.md).
+[ctl trust model](https://github.com/alxprgstech/ctl/blob/93c85a48853b71f88380035058838620ee456ab9/docs/trust-model.md).
 
 #### Первый переход (один раз, вручную)
 
 Установленная версия может не содержать self-update, поэтому первый файл заменяется
 вручную; после этого доступны обе формы команды. Точный порядок для обеих ситуаций —
-[ctl migration](https://github.com/alxprgstech/ctl/blob/main/docs/migration.md).
+[ctl migration](https://github.com/alxprgstech/ctl/blob/93c85a48853b71f88380035058838620ee456ab9/docs/migration.md).
 
 1. Выберите commit поставки `alxprgstech/ctl`, прошедший review. На рабочей станции
    получите файл именно этой ревизии, а не из ветки или рабочего дерева:
@@ -419,7 +419,7 @@ sudo ssoctl status
 ```
 Если backup недоступен, используйте reviewed `dist/ssoctl` из ctl и сверьте размер и
 SHA-256 с `dist/ctl-manifest.json` того же commit. Подробнее —
-[ctl recovery](https://github.com/alxprgstech/ctl/blob/main/docs/recovery.md).
+[ctl recovery](https://github.com/alxprgstech/ctl/blob/93c85a48853b71f88380035058838620ee456ab9/docs/recovery.md).
 Обновление оператора не обновляет приложение, его версию, контейнеры, БД или nginx и
 не является заменой CD. Для отката приложения используйте существующие release/backup
 процедуры; полный bootstrap ради отката одного скрипта не нужен.
