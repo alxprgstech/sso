@@ -6,3 +6,7 @@ frontend/public/brand/*.svg -text whitespace=blank-at-eol,blank-at-eof,space-bef
 deploy/ec2/*.py text eol=lf
 deploy/ec2/*.yml text eol=lf
 deploy/ec2/*.conf text eol=lf
+deploy/ec2/*.json text eol=lf
+# The vendored shared operator is a byte-exact artifact pinned by SHA-256. Git
+# must never convert its line endings, in either direction.
+deploy/ec2/operator/* -text

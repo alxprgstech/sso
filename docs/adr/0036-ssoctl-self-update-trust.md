@@ -1,6 +1,6 @@
 # ADR-0036: Доверие при самообновлении root-оператора ssoctl
 
-Дата: 30.10.2026. Статус: принято; SSOCTL-SELF-UPDATE-01.
+Дата: 30.10.2026. Статус: принято; SSOCTL-SELF-UPDATE-01. Обновление 2026-11-02: реализация и канал обновления перенесены в общий оператор `alxprgstech/ctl` (CTL-SHARED-OPERATOR-01); доверительная модель дополнена манифестом поставки и встроенным provenance артефакта, см. [ctl ADR-0001](https://github.com/alxprgstech/ctl/blob/93c85a48853b71f88380035058838620ee456ab9/docs/adr/0001-shared-operator-delivery.md).
 
 ## Причина
 

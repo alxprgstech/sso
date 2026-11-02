@@ -49,7 +49,10 @@ install -d -m 0755 /opt/alxprgs-sso /opt/alxprgs-sso/tools /opt/alxprgs-sso/rele
 install -d -m 0700 /etc/alxprgs-sso /var/lib/alxprgs-sso /var/lib/alxprgs-sso/backups
 # nginx must traverse the state directory for the maintenance flag, but not list it.
 chmod 0711 /var/lib/alxprgs-sso
-install -m 0755 "$here/ssoctl.py" /opt/alxprgs-sso/tools/ssoctl.py
+# The installed operator is the vendored shared ctl delivery, not the thin
+# repository entry point; operator-provenance.json pins its exact bytes.
+install -m 0755 "$here/operator/ssoctl.py" /opt/alxprgs-sso/tools/ssoctl.py
+install -m 0644 "$here/operator-provenance.json" /opt/alxprgs-sso/tools/operator-provenance.json
 printf '#!/bin/sh\nexec /usr/bin/python3 /opt/alxprgs-sso/tools/ssoctl.py "$@"\n' > /usr/local/sbin/ssoctl
 chmod 0755 /usr/local/sbin/ssoctl
 printf 'ssodeploy ALL=(root) NOPASSWD: /usr/local/sbin/ssoctl deploy *\n' > /etc/sudoers.d/alxprgs-sso
