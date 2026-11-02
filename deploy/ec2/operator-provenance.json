@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "target": "sso",
+  "tool": "ssoctl.py",
+  "project": "sso",
+  "ctl_repository": "alxprgstech/ctl",
+  "ctl_delivery_commit": "93c85a48853b71f88380035058838620ee456ab9",
+  "ctl_source_commit": "c8f78efd065218524d8a77e3433b9ec9cb28d6f5",
+  "ctl_version": "1.0.0",
+  "artifact_path": "dist/ssoctl",
+  "sha256": "f66c7a77c1505361fc8c6eeaa231df12a497b06e5e94347dd0334f319375a11d",
+  "content_sha256": "61a0843618957e09ecb45fcca3a1229d02274c3d86afc895aa50db1343a6691e",
+  "installed_path": "/opt/alxprgs-sso/tools/ssoctl.py",
+  "notes": [
+    "Generated artifact: never edit deploy/ec2/operator/ssoctl.py by hand.",
+    "Re-pin with the procedure in the ctl repository (docs/integration.md).",
+    "ctl_delivery_commit must be re-checked before merge after any ctl squash or rebase."
+  ]
+}
