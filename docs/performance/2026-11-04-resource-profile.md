@@ -1,7 +1,8 @@
 # Профилирование и оптимизация ресурсов ALXPRGS SSO
 
 Дата: 04.11.2026. Ревизия до оптимизации: `ef94585` (`main`). Исполнитель: DeepSeek Harness.
-Задача: [PERF-PROFILE-01](../plan.md). Сырые результаты: `artifacts/performance/` (локально, каталог
+Задача: [PERF-PROFILE-01](../plan.md). Изменения: [PR #42](https://github.com/alxprgstech/sso/pull/42)
+(ветка `new/perf-profiling`). Сырые результаты: `artifacts/performance/` (локально, каталог
 исключён из Git). Сводные таблицы для ревью: [data/](data/).
 
 ## 1. Краткий итог

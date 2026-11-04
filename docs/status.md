@@ -2,7 +2,7 @@
 
 ## Точка продолжения
 
-- PERF-PROFILE-01 — done локально: измерены RAM/CPU SSO в Docker-стенде, выполнены безопасные оптимизации (healthcheck без импорта приложения, ленивые boto3/Sentry, переиспользование пользователя сессии) и повторные замеры; простой backend 24,59 % → 0,63 % ядра, RAM 100,4 → 83,4 МиБ, `/me` 14 → 9 SQL-запросов. Отчёт — [профиль ресурсов](performance/2026-11-04-resource-profile.md), данные — `docs/performance/data/`. GitHub CI/CD не запускался, production не изменялся; следующий шаг — review PR и подтверждение latency на EC2-подобном диске.
+- PERF-PROFILE-01 — done локально: измерены RAM/CPU SSO в Docker-стенде, выполнены безопасные оптимизации (healthcheck без импорта приложения, ленивые boto3/Sentry, переиспользование пользователя сессии) и повторные замеры; простой backend 24,59 % → 0,63 % ядра, RAM 100,4 → 83,4 МиБ, `/me` 14 → 9 SQL-запросов. Отчёт — [профиль ресурсов](performance/2026-11-04-resource-profile.md), данные — `docs/performance/data/`, [PR #42](https://github.com/alxprgstech/sso/pull/42). GitHub CI/CD не запускался, production не изменялся; следующий шаг — review PR и подтверждение latency на EC2-подобном диске.
 
 - DEPLOY-SHARED-01 — done локально: единый deploy driver из `.github` внедрён в MP/SSO, настройки проектов отделены; итоговые проверки и ограничения — [журнал](worklog.md), решение — [ADR-0037](adr/0037-shared-deployment-driver.md). Реализация: [b46532a](https://github.com/alxprgstech/sso/commit/b46532a81319daf890f3ec4195fe3ddf00349b06). Владелец поручил commit/push без серверного CI; коммиты содержат `[skip ci]`. Production не запускался.
 
