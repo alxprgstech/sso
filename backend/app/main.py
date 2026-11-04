@@ -46,7 +46,13 @@ from app.core.security import get_jwks, password_source
 from app.core.rate_limit import get_client_ip
 from app.database import get_db
 from app.logging_config import configure_logging
-from app.telemetry import TelemetryFastAPI, initialize_sentry, register_routes
+from app.telemetry import (
+    TelemetryFastAPI,
+    initialize_sentry,
+    register_routes,
+    sentry_active,
+    shutdown_sentry,
+)
 
 settings = get_settings()
 READINESS_DATABASE_TIMEOUT_SECONDS = 2
@@ -87,9 +93,7 @@ async def lifespan(app: FastAPI):
                 await anonymous_denials.flush(db)
         except Exception:
             diagnostic("privacy_maintenance", "database_unavailable", failed=True)
-    import sentry_sdk
-
-    sentry_sdk.get_client().close(timeout=2)
+    shutdown_sentry(timeout=2)
 
 
 app = TelemetryFastAPI(
@@ -432,4 +436,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(mfa_router)
 app.include_router(oidc_router)
-register_routes(app)
+if sentry_active():
+    # The route table is only used by Sentry event/transaction sanitization; building
+    # the OpenAPI schema at startup is wasted work when telemetry is disabled.
+    register_routes(app)

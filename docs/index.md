@@ -15,6 +15,7 @@
 | Проверить систему | [Подготовка тестирования](testing/README.md), [методика](03-test-procedure.md), [чек-лист](testing/manual-checklist.md) |
 | Разобраться в требованиях | [ТЗ](01-technical-specification.md), [описание программы](02-program-description.md), [архитектура](architecture.md), [модель данных](data-model.md) |
 | Проверить ограничения | [Безопасность](security.md), [privacy](privacy.md), [наблюдаемость](observability.md), [дефекты](testing/defects.md) |
+| Оценить ресурсы | [Профиль RAM/CPU и оптимизации](performance/2026-11-04-resource-profile.md) |
 | Выпустить версию | [Релизы](releases.md), [системное руководство](05-system-programmer-guide.md) |
 | Понять историю | [ADR](adr/0001-stack-selection.md), [приёмка](acceptance.md), [журнал](worklog.md), [план](plan.md) |
 
