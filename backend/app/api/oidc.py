@@ -110,7 +110,11 @@ async def authorize(
     session = None
     try:
         session = await get_current_session(request, db, settings)
-        user = await db.scalar(select(User).where(User.id == session.user_id))
+        # get_current_session already loaded and locked this account in the request
+        # transaction; reuse it instead of repeating four selectin loads.
+        user = getattr(request.state, "validated_user", None)
+        if user is None or user.id != session.user_id:
+            user = await db.scalar(select(User).where(User.id == session.user_id))
         if user is None or (settings.REQUIRE_VERIFIED_EMAIL and not user.email_verified):
             user = None
     except AuthenticationException:

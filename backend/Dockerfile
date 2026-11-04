@@ -36,7 +36,10 @@ USER 10001:10001
 
 EXPOSE 8000
 
+# BusyBox wget exists in the pinned Alpine base. The previous probe started a
+# fresh interpreter and imported app.config, which cost seconds of CPU per
+# minute; a native HTTP probe keeps the same Host/readiness contract.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c 'import urllib.request; from urllib.parse import urlsplit; from app.config import get_settings; r=urllib.request.Request("http://127.0.0.1:8000/health/live", headers={"Host":urlsplit(get_settings().BASE_URL).netloc}); urllib.request.urlopen(r,timeout=3).close()' || exit 1
+    CMD wget -q -O /dev/null -T 3 --header="Host: ${BASE_URL#*://}" http://127.0.0.1:8000/health/live || exit 1
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

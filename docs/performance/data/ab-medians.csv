@@ -1,0 +1,16 @@
+scenario,metric,baseline,opt,change_percent
+me,rps,36.69,41.27,+12.5
+me,p50,127.35,109.66,-13.9
+me,p95,190.58,196.82,+3.3
+login,rps,3.42,4.4,+28.4
+login,p50,1523.85,1119.91,-26.5
+login,p95,2009.92,1503.32,-25.2
+oidc_flow,rps,9.33,8.01,-14.2
+oidc_flow,p50,45.55,67.0,+47.1
+oidc_flow,p95,98.69,160.44,+62.6
+userinfo,rps,55.72,52.75,-5.3
+userinfo,p50,79.14,86.16,+8.9
+userinfo,p95,150.52,145.75,-3.2
+token_confidential,rps,3.64,2.76,-24.1
+token_confidential,p50,178.21,279.19,+56.7
+token_confidential,p95,392.65,429.06,+9.3
