@@ -235,9 +235,9 @@ def _send_smtp(message: EmailMessage, settings: Settings) -> None:
 
 
 async def deliver_message(message: EmailMessage, settings: Settings) -> None:
-    import sentry_sdk
+    from app.telemetry import telemetry_span
 
-    with sentry_sdk.start_span(op="email.send", name="email.send") as span:
+    with telemetry_span("email.send", "email.send") as span:
         span.set_data("provider", settings.EMAIL_PROVIDER)
         span.set_data("operation", "send_email")
         span.set_data("template", "email_verification")

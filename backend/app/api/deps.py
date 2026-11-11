@@ -153,6 +153,9 @@ async def get_current_session(
     request.state.session_id = session.id
     request.state.audit_actor_id = session.user_id
     request.state.validated_session = session
+    # The account row is already loaded FOR UPDATE in this transaction; handlers and
+    # the profile dependency may reuse it instead of selecting the same row again.
+    request.state.validated_user = current
     request.state.session_db_id = id(db)
     return session
 
@@ -163,9 +166,15 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> User:
-    stmt = select(User).where(User.id == session.user_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    # get_current_session already selected this account FOR UPDATE in the same
+    # transaction, so an extra SELECT would only duplicate four selectin loads.
+    user = None
+    if getattr(request.state, "session_db_id", None) == id(db):
+        cached = getattr(request.state, "validated_user", None)
+        if cached is not None and cached.id == session.user_id:
+            user = cached
+    if user is None:
+        user = await db.scalar(select(User).where(User.id == session.user_id))
 
     if not user:
         raise AuthenticationException("Пользователь не найден")

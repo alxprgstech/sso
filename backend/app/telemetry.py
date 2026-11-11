@@ -7,22 +7,54 @@ import logging
 import math
 import re
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from sentry_sdk._types import DataCollectionUserOptions, Event
+    from sentry_sdk.transport import Transport
 from urllib.parse import urlsplit
 
-import sentry_sdk
 from fastapi import FastAPI
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
-from sentry_sdk.transport import Transport
 from starlette.exceptions import HTTPException
 
 from app.build_info import get_build_info
 from app.config import Settings
+
+# The SDK and its integrations cost tens of MiB of RSS and a visible amount of
+# import CPU. Typical installations keep SENTRY_ENABLED=false, so nothing from
+# sentry_sdk is imported until initialize_sentry() actually starts the client.
+_sentry_initialized = False
+
+
+class _NoopSpan:
+    def set_data(self, key: str, value: Any) -> None:
+        return None
+
+
+@contextmanager
+def telemetry_span(op: str, name: str):
+    """Start a Sentry span only when telemetry is active; otherwise no-op."""
+    if not _sentry_initialized:
+        yield _NoopSpan()
+        return
+    import sentry_sdk
+
+    with sentry_sdk.start_span(op=op, name=name) as span:
+        yield span
+
+
+def sentry_active() -> bool:
+    return _sentry_initialized
+
+
+def shutdown_sentry(timeout: float = 2) -> None:
+    if not _sentry_initialized:
+        return
+    import sentry_sdk
+
+    sentry_sdk.get_client().close(timeout=timeout)
 
 _routes: list[tuple[str, re.Pattern[str]]] = []
 _EXCLUDED = {
@@ -186,6 +218,8 @@ def sanitize_event(event: Mapping[str, Any], hint: dict[str, Any]) -> dict[str, 
         if event_id := _hex(event.get("event_id"), 32):
             result["event_id"] = event_id
         # These values come from SDK init, never from request-local overrides.
+        import sentry_sdk
+
         options = sentry_sdk.get_client().options
         for key in ("release", "environment"):
             if options.get(key):
@@ -250,11 +284,16 @@ def traces_sampler(context: dict[str, Any], rate: float) -> float:
 
 
 def initialize_sentry(settings: Settings, *, transport: Transport | None = None) -> bool:
+    global _sentry_initialized
     if not settings.SENTRY_ENABLED or not settings.SENTRY_DSN:
         return False
     if settings.ENVIRONMENT == "testing" and transport is None:
         return False
     try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+
         integrations: list[Any] = [
             FastApiIntegration(
                 transaction_style="url", failed_request_status_codes=set(range(500, 600))
@@ -304,6 +343,7 @@ def initialize_sentry(settings: Settings, *, transport: Transport | None = None)
             shutdown_timeout=2,
             transport=transport,
         )
+        _sentry_initialized = True
         return True
     except Exception:
         logging.getLogger("app.telemetry").warning("Telemetry initialization disabled")
@@ -318,7 +358,11 @@ def capture_infrastructure_failure(error: Exception, operation: str) -> None:
 
         reason = getattr(error, "reason", "failed")
         diagnostic(operation, reason if reason in CODES[operation] else "failed", failed=True)
+    if not _sentry_initialized:
+        return
     try:
+        import sentry_sdk
+
         with sentry_sdk.new_scope() as scope:
             scope.set_tag("operation", operation)
             sentry_sdk.capture_exception(error)
@@ -357,4 +401,7 @@ class TelemetryFastAPI(FastAPI):
     """Sanitize propagation before the SDK's patched Starlette __call__."""
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if not _sentry_initialized:
+            await super().__call__(scope, receive, send)
+            return
         await TraceHeaderFilter(super().__call__)(scope, receive, send)
