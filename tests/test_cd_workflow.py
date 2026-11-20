@@ -126,6 +126,7 @@ def test_cd_retry_uses_same_immutable_bundle():
     assert JOBS["verify"]["needs"] == "build"
     assert JOBS["deploy"]["needs"] == ["build", "verify"]
     assert JOBS["deploy"]["if"] == (
+        "vars.ALXPRGS_DELIVERY_MODE != 'pull' && "
         "needs.build.outputs.artifact_name != '' && needs.verify.result == 'success'"
     )
     upload = next(step for step in JOBS["build"]["steps"] if step.get("id") == "artifact")
@@ -159,6 +160,24 @@ def test_cd_confines_production_environment_to_deploy():
         "environment" not in JOBS[name]
         for name in ("preflight", "build", "verify", "public-check", "report")
     )
+
+
+def test_pull_mode_publishes_verified_artifact_without_aws_deploy():
+    decide = next(step for step in JOBS["preflight"]["steps"] if step.get("id") == "decide")
+    assert decide["env"]["DELIVERY_MODE"] == "${{ vars.ALXPRGS_DELIVERY_MODE }}"
+    run = decide["run"]
+    assert run.index('"$latest" != "$DEPLOY_SHA"') < run.index('"$DELIVERY_MODE" == pull')
+    pull, push = run.split('if [[ "$DELIVERY_MODE" == pull ]]; then', 1)[1].split("else", 1)
+    assert "decision=deploy" in pull
+    assert "check_deployed_revision.py" not in pull
+    assert "check_deployed_revision.py" in push
+    for name in ("deploy", "public-check"):
+        assert "vars.ALXPRGS_DELIVERY_MODE != 'pull'" in JOBS[name]["if"]
+    report_pull, report_push = JOBS["report"]["steps"][-2:]
+    assert report_pull["if"] == "vars.ALXPRGS_DELIVERY_MODE == 'pull'"
+    assert report_pull["env"]["VERIFY_RESULT"] == "${{ needs.verify.result }}"
+    assert '"$VERIFY_RESULT" == success' in report_pull["run"]
+    assert report_push["if"] == "vars.ALXPRGS_DELIVERY_MODE != 'pull'"
 
 
 def test_early_identity_noop_skips_build_verify_and_install():

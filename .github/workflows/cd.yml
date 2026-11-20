@@ -45,6 +45,7 @@ jobs:
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
+          DELIVERY_MODE: ${{ vars.ALXPRGS_DELIVERY_MODE }}
         run: |
           latest=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
           if [[ "$latest" != "$DEPLOY_SHA" ]]; then
@@ -56,7 +57,11 @@ jobs:
             echo 'Superseded commit; no build or deployment.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          python3 scripts/check_deployed_revision.py --sha "$DEPLOY_SHA" --github-output "$GITHUB_OUTPUT"
+          if [[ "$DELIVERY_MODE" == pull ]]; then
+            printf 'decision=deploy\ninstalled_sha=\nreason=publish verified transport for ALX-3 pull\n' >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/check_deployed_revision.py --sha "$DEPLOY_SHA" --github-output "$GITHUB_OUTPUT"
+          fi
 
   build:
     needs: preflight
@@ -142,7 +147,10 @@ jobs:
 
   deploy:
     needs: [build, verify]
-    if: needs.build.outputs.artifact_name != '' && needs.verify.result == 'success'
+    if: >-
+      vars.ALXPRGS_DELIVERY_MODE != 'pull' &&
+      needs.build.outputs.artifact_name != '' &&
+      needs.verify.result == 'success'
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 40
@@ -178,6 +186,7 @@ jobs:
     needs: [preflight, deploy]
     if: >-
       always() &&
+      vars.ALXPRGS_DELIVERY_MODE != 'pull' &&
       (needs.deploy.outputs.result == 'deployed' ||
       needs.deploy.outputs.result == 'already_deployed' ||
       needs.preflight.outputs.decision == 'already_deployed')
@@ -203,7 +212,19 @@ jobs:
         with:
           ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
+      - name: Report artifact publication for ALX-3
+        if: vars.ALXPRGS_DELIVERY_MODE == 'pull'
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+        run: |
+          if [[ "$VERIFY_RESULT" == success ]]; then
+            printf 'Verified transport %s is available for ALX-3 pull.\n' "$ARTIFACT_NAME" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'No verified transport published (verification: %s).\n' "$VERIFY_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Publish deployment result
+        if: vars.ALXPRGS_DELIVERY_MODE != 'pull'
         env:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           DECISION: ${{ needs.preflight.outputs.decision }}
