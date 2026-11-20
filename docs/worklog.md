@@ -3858,3 +3858,9 @@ CodeScene на `5cf9c68`: check success, 3/3 gates passed, аннотаций н
 ### 2026-11-04T20:45:00+03:00 — DeepSeek Harness, PERF-PROFILE-01, done (локально)
 
 Ветка `new/perf-profiling`. Внедрены безопасные оптимизации: healthcheck на BusyBox wget без импорта приложения (backend/Dockerfile), ленивые boto3/botocore (ses_email.py), ленивый Sentry и no-op spans + отказ от OpenAPI-таблицы при выключенной телеметрии (telemetry.py, main.py, verification_email.py), переиспользование `User`, уже выбранного `FOR UPDATE` в get_current_session, в get_current_user и authorize (deps.py, oidc.py). Повторные замеры: простой 24,59 → 0,63 % ядра (−97,4 %), RAM 100,4 → 83,4 МиБ, пик Argon2 238,4 → 217,7 МиБ, старт 13,44 → 3,29 с, `/me` 14 → 9 запросов, `authorize` 24 → 19. A/B в 2 раунда показал, что latency/RPS на Docker Desktop шумят ±30–50 % (контрольный token_confidential без изменений дал +37 % CPU), поэтому latency-выигрыш не заявляется; отчёт фиксирует N/A и причину. Проверки: Ruff/mypy (CI-аргументы), 76 policy/contract/unit, 40 auth/OIDC/MFA/admin/security и 47 regression/privacy/audit на реальном PostgreSQL — PASS (два теста сначала требовали явный DATABASE_URL/TEST_DATABASE_URL, после корректного окружения прошли без изменения assertions); healthcheck контейнера healthy; секреты/дампы не коммитились. Отчёт: `docs/performance/2026-11-04-resource-profile.md`, данные: `docs/performance/data/`. GitHub Actions CI/CD и production deployment не запускались; merge/release не выполнялись.
+
+### CD-ALX3-PULL-01
+
+20.11.2026 11:10 МСК, Codex. Начата адаптация существующего CD SSO для ALX-3. Контракт доступа, сборки и проверки transport сохраняется. Проверка установки и отката на целевом сервере учитывается отдельно.
+
+20.11.2026 11:15 МСК, Codex. Для CD-ALX3-PULL-01 добавлены режим pull, ADR-0038, инструкция и проверка границ workflow. Локально прошли 39 тестов и 14 подслучаев CD. Изменение режима GitHub и свежая установка с откатом пока не подтверждены.
