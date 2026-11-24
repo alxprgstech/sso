@@ -2,7 +2,7 @@
 
 ## Точка продолжения
 
-- CD-ALX3-PULL-01 — in_progress. Ветка `new/alx3-pull-transport` сохраняет проверку и сборку SSO transport и добавляет режим публикации для ALX-3. Локально прошли 39 тестов CD и 14 подслучаев. Установка свежего пакета на ALX-3 и откат ожидают проверки.
+- CD-ALX3-PULL-01 — in_progress. Ветка `new/alx3-pull-transport` сохраняет проверку и сборку SSO transport и добавляет режим публикации для ALX-3. Локально прошли 39 тестов CD и 14 подслучаев. Установка свежего пакета на ALX-3 и откат ожидают проверки. 24.11.2026: пин ctl обновлён до 1.2.0 (`ssoctl update --check/--sha`); проверено 25 тестов pin; production не менялся.
 
 - PERF-PROFILE-01 — done локально: измерены RAM/CPU SSO в Docker-стенде, выполнены безопасные оптимизации (healthcheck без импорта приложения, ленивые boto3/Sentry, переиспользование пользователя сессии) и повторные замеры; простой backend 24,59 % → 0,63 % ядра, RAM 100,4 → 83,4 МиБ, `/me` 14 → 9 SQL-запросов. Отчёт — [профиль ресурсов](performance/2026-11-04-resource-profile.md), данные — `docs/performance/data/`, [PR #42](https://github.com/alxprgstech/sso/pull/42). GitHub CI/CD не запускался, production не изменялся; следующий шаг — review PR и подтверждение latency на EC2-подобном диске.
 
