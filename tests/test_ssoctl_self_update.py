@@ -33,7 +33,7 @@ PROVENANCE = DEPLOY / "operator-provenance.json"
 REQUIRED_COMMANDS = (
     "configure", "backup", "renew", "test-alert", "admin", "status", "maintenance",
     "resume", "mfa-status", "enable-mfa", "recover-admin", "admin-status", "deploy",
-    "verify-backup", "self-update",
+    "verify-backup", "update", "self-update",
 )
 
 spec = importlib.util.spec_from_file_location("sso_ec2_operator", ENTRY)
@@ -79,7 +79,7 @@ def test_pin_is_a_full_committed_delivery_identity():
     assert re.fullmatch(r"[a-f0-9]{40}", PIN["ctl_source_commit"])
     assert re.fullmatch(r"[a-f0-9]{64}", PIN["sha256"])
     assert re.fullmatch(r"[a-f0-9]{64}", PIN["content_sha256"])
-    assert PIN["ctl_version"] == "1.0.0"
+    assert PIN["ctl_version"] == "1.2.0"
 
 
 def test_vendored_artifact_matches_the_pinned_digest():
@@ -216,7 +216,8 @@ def test_fixed_trusted_source_is_the_shared_delivery():
     assert ctl.GITHUB_OPERATOR == "dist/ssoctl"
     assert ctl.GITHUB_MANIFEST == "dist/ctl-manifest.json"
     assert (ctl.ROOT_UID, ctl.ROOT_GID) == (0, 0)
-    assert ctl.GITHUB_TOKEN.as_posix().startswith("/etc/alxprgs-sso/")
+    assert ctl.GITHUB_TOKEN.as_posix() == "/etc/alxprgs/sso-github-read.token"
+    assert ctl.LEGACY_TOKEN.as_posix() == "/etc/alxprgs-sso/github-read.token"
     assert ctl.MAX_OPERATOR_BYTES >= len(SOURCE)
 
 
